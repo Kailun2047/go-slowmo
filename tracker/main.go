@@ -23,7 +23,7 @@ var byteOrder binary.ByteOrder
 var symTab *gosym.Table
 
 func main() {
-	path := "../greet/greet"
+	path := "../target/greet"
 	byteOrder = determineByteOrder()
 	symTab = getSymbolTable(path)
 

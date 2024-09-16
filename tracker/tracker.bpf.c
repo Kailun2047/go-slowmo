@@ -2,13 +2,13 @@
 #include <linux/bpf.h> // TODO: replaced with vmlinux.h
 #include <bpf/bpf_tracing.h>
 #include <stdint.h>
-#include "pt_regs.h"
+#include <asm/ptrace.h>
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
-#define GO_PARAM1(x) ((x)->ax)
-#define GO_PARAM2(x) ((x)->bx)
-#define GO_PARAM3(x) ((x)->cx)
+#define GO_PARAM1(x) ((x)->rax)
+#define GO_PARAM2(x) ((x)->rbx)
+#define GO_PARAM3(x) ((x)->rcx)
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
