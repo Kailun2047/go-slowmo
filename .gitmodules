@@ -1,3 +1,6 @@
 [submodule "tracker/libbpf"]
 	path = tracker/libbpf
 	url = https://github.com/libbpf/libbpf.git
+[submodule "instrumentation/libbpf"]
+	path = instrumentation/libbpf
+	url = https://github.com/libbpf/libbpf.git
