@@ -5,6 +5,8 @@ import (
 	"debug/gosym"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -17,20 +19,37 @@ import (
 )
 
 const symbolName = "runtime.newproc"
+const targetPath = "../target/greet"
 
 var byteOrder binary.ByteOrder
 var symTab *gosym.Table
 
+// Go equivalents of instrumentor events.
+type eventType uint64
+
+const (
+	EVENT_TYPE_NEWPROC eventType = iota
+	EVENT_TYPE_DELAY
+)
+
+type newprocEvent struct {
+	EType eventType
+	PC    uint64
+}
+type delayEvent struct {
+	EType eventType
+	PC    uint64
+}
+
 func main() {
-	path := "../target/greet"
 	byteOrder = determineByteOrder()
-	symTab = getSymbolTable(path)
+	symTab = getSymbolTable(targetPath)
 
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Fatal("RemoveMemlock: ", err)
 	}
 
-	ex, err := link.OpenExecutable(path)
+	ex, err := link.OpenExecutable(targetPath)
 	if err != nil {
 		log.Fatal("OpenExecutable for tracee: ", err)
 	}
@@ -45,12 +64,6 @@ func main() {
 		}
 	}
 	defer coll.Close()
-
-	reader, err := ringbuf.NewReader(coll.Maps["newproc_fn_pc_cnt"])
-	if err != nil {
-		log.Fatal("Create ring buffer reader: ", err)
-	}
-	defer reader.Close()
 
 	_, err = ex.Uprobe(symbolName, coll.Programs["go_newproc"], &link.UprobeOptions{})
 	if err != nil {
@@ -70,30 +83,92 @@ func main() {
 		}
 	}
 
+	eventReader, err := ringbuf.NewReader(coll.Maps["instrumentor_event"])
+	if err != nil {
+		log.Fatal("Create ring buffer reader: ", err)
+	}
+	defer eventReader.Close()
+	eventCh := createEventChan(eventReader)
+
 	stop := make(chan os.Signal, 5)
 	signal.Notify(stop, os.Interrupt)
-	ticker := time.NewTicker(1 * time.Second)
 	for {
 		select {
 		case <-stop:
-			log.Print("Received signal, exiting...")
+			log.Println("Received signal, exiting...")
 			return
-		case <-ticker.C:
-			var newprocPC uint64
-			reader.SetDeadline(time.Now().Add(1 * time.Second))
-			record, err := reader.Read()
+		case record := <-eventCh:
+			var etype eventType
+			reader := bytes.NewReader(record.RawSample)
+			err := binary.Read(reader, byteOrder, &etype)
 			if err != nil {
+				log.Fatal("Decode event type: ", err)
+			}
+			err = readEvent(reader, etype)
+			if err != nil {
+				log.Fatalf("Decode event type %v: %v\n", etype, err)
+			}
+		}
+	}
+}
+
+func createEventChan(eventReader *ringbuf.Reader) chan ringbuf.Record {
+	eventCh := make(chan ringbuf.Record)
+	go func() {
+		for {
+			eventReader.SetDeadline(time.Now().Add(1 * time.Second))
+			record, err := eventReader.Read()
+			if err != nil {
+				if errors.Is(err, ringbuf.ErrClosed) {
+					log.Println("Event reader closed")
+					return
+				}
 				if !errors.Is(err, os.ErrDeadlineExceeded) {
 					log.Fatal("Read ring buffer: ", err)
 				}
-				break
+			} else {
+				eventCh <- record
 			}
-			err = binary.Read(bytes.NewBuffer(record.RawSample), byteOrder, &newprocPC)
-			if err != nil {
-				log.Fatal("Decode ring buffer record: ", err)
-			}
-			file, line, _ := symTab.PCToLine(newprocPC)
-			log.Printf("newproc invoked (pc: %x, file: %s, line: %d)\n", newprocPC, file, line)
 		}
+	}()
+
+	return eventCh
+}
+
+func readEvent(readSeeker io.ReadSeeker, etype eventType) error {
+	var err error
+
+	_, err = readSeeker.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
 	}
+
+	switch etype {
+	case EVENT_TYPE_NEWPROC:
+		var event newprocEvent
+		err = binary.Read(readSeeker, byteOrder, &event)
+		if err != nil {
+			break
+		}
+		file, line, fn := symTab.PCToLine(event.PC)
+		if fn == nil {
+			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
+		}
+		log.Printf("newproc invoked (function: %s, file: %s, line: %d)\n", fn.Name, file, line)
+	case EVENT_TYPE_DELAY:
+		var event delayEvent
+		err = binary.Read(readSeeker, byteOrder, &event)
+		if err != nil {
+			break
+		}
+		file, line, fn := symTab.PCToLine(event.PC)
+		if fn == nil {
+			log.Fatalf("Read delay event: invalid PC %x", event.PC)
+		}
+		log.Printf("delaying line %d in function %s in file %s (pc: %x)\n", line, fn.Name, file, event.PC)
+	default:
+		err = fmt.Errorf("unrecognized event type")
+	}
+
+	return err
 }
