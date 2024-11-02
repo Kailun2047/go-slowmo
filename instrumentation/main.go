@@ -19,7 +19,7 @@ import (
 )
 
 const symbolName = "runtime.newproc"
-const targetPath = "../target/greet"
+const targetPath = "./target/greet"
 
 var byteOrder binary.ByteOrder
 var symTab *gosym.Table
