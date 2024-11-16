@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
-	"debug/gosym"
 	"encoding/binary"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -18,11 +18,14 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 )
 
-const symbolName = "runtime.newproc"
-const targetPath = "./target/greet"
+const symbolNameNewproc = "runtime.newproc"
 
-var byteOrder binary.ByteOrder
-var symTab *gosym.Table
+var (
+	byteOrder   binary.ByteOrder
+	interpreter *ELFInterpreter
+
+	targetPath = flag.String("targetpath", "", "path of the target program to be instrumented")
+)
 
 // Go equivalents of instrumentor events.
 type eventType uint64
@@ -33,8 +36,9 @@ const (
 )
 
 type newprocEvent struct {
-	EType eventType
-	PC    uint64
+	EType       eventType
+	PC          uint64
+	CreatorGoid uint64
 }
 type delayEvent struct {
 	EType eventType
@@ -42,14 +46,16 @@ type delayEvent struct {
 }
 
 func main() {
+	flag.Parse()
+
 	byteOrder = determineByteOrder()
-	symTab = getSymbolTable(targetPath)
+	interpreter = NewELFInterpreter(*targetPath)
 
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Fatal("RemoveMemlock: ", err)
 	}
 
-	ex, err := link.OpenExecutable(targetPath)
+	ex, err := link.OpenExecutable(*targetPath)
 	if err != nil {
 		log.Fatal("OpenExecutable for tracee: ", err)
 	}
@@ -65,12 +71,12 @@ func main() {
 	}
 	defer coll.Close()
 
-	_, err = ex.Uprobe(symbolName, coll.Programs["go_newproc"], &link.UprobeOptions{})
+	_, err = ex.Uprobe(symbolNameNewproc, coll.Programs["go_newproc"], &link.UprobeOptions{})
 	if err != nil {
 		log.Fatal("Attach go_newproc uprobe: ", err)
 	}
 
-	pkgOffsets := getInstrumentableOffsetsForPackage(symTab, "main")
+	pkgOffsets := interpreter.GetDelayableOffsetsForPackage("main")
 	log.Printf("Instrumentable offsets: %+v", pkgOffsets)
 	for fnSym, offsets := range pkgOffsets {
 		for _, offset := range offsets {
@@ -150,18 +156,18 @@ func readEvent(readSeeker io.ReadSeeker, etype eventType) error {
 		if err != nil {
 			break
 		}
-		file, line, fn := symTab.PCToLine(event.PC)
+		file, line, fn := interpreter.PCToLine(event.PC)
 		if fn == nil {
 			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
 		}
-		log.Printf("newproc invoked (function: %s, file: %s, line: %d)\n", fn.Name, file, line)
+		log.Printf("newproc invoked in goroutine %d (function: %s, file: %s, line: %d)\n", event.CreatorGoid, fn.Name, file, line)
 	case EVENT_TYPE_DELAY:
 		var event delayEvent
 		err = binary.Read(readSeeker, byteOrder, &event)
 		if err != nil {
 			break
 		}
-		file, line, fn := symTab.PCToLine(event.PC)
+		file, line, fn := interpreter.PCToLine(event.PC)
 		if fn == nil {
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}

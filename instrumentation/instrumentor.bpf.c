@@ -9,7 +9,11 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GO_PARAM1(x) ((x)->rax)
 #define GO_PARAM2(x) ((x)->rbx)
 #define GO_PARAM3(x) ((x)->rcx)
+#define CURR_G_PTR(x) ((x)->r14)
 #define DELAY_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
+
+#define GOID_OFFSET 144 // Byte offset of goid of a Go g struct.
+#define GET_GOID_PTR(g_addr) ((char *)(g_addr) + GOID_OFFSET)
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -24,7 +28,8 @@ struct funcval {
 
 struct newproc_event {
     uint64_t etype;
-    uint64_t pc;
+    uint64_t newproc_pc;
+    uint64_t creator_goid;
 };
 
 struct delay_event {
@@ -48,7 +53,8 @@ int BPF_UPROBE(go_newproc) {
         return 1;
     }
     e->etype = EVENT_TYPE_NEWPROC;
-    bpf_probe_read_user(&e->pc, sizeof(uint64_t), &((struct funcval *)GO_PARAM1(ctx))->fn);
+    bpf_probe_read_user(&e->newproc_pc, sizeof(uint64_t), &((struct funcval *)GO_PARAM1(ctx))->fn);
+    bpf_probe_read_user(&e->creator_goid, sizeof(uint64_t), GET_GOID_PTR(CURR_G_PTR(ctx)));
     bpf_ringbuf_submit(e, 0);
     
     return 0;
