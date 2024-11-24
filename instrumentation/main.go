@@ -18,7 +18,10 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 )
 
-const symbolNameNewproc = "runtime.newproc"
+const (
+	symbolNameNewproc = "runtime.newproc"
+	localRunqLen      = 256
+)
 
 var (
 	byteOrder   binary.ByteOrder
@@ -33,13 +36,29 @@ type eventType uint64
 const (
 	EVENT_TYPE_NEWPROC eventType = iota
 	EVENT_TYPE_DELAY
+	EVENT_TYPE_RUNTIME_FUNC_RETURN
 )
 
 type newprocEvent struct {
 	EType       eventType
 	PC          uint64
-	CreatorGoid uint64
+	CreatorGoID uint64
 }
+
+// TODO: correct the retrieval & decoding of goid and pc for each runq entry.
+type runqUpdateEvent struct {
+	EType             eventType
+	ProcID            int32
+	LocalRunqEntryNum int32
+	LocalRunq         [localRunqLen]runqEntry
+	Runnext           runqEntry
+}
+
+type runqEntry struct {
+	PC   uint64
+	GoID uint64
+}
+
 type delayEvent struct {
 	EType eventType
 	PC    uint64
@@ -75,9 +94,19 @@ func main() {
 	if err != nil {
 		log.Fatal("Attach go_newproc uprobe: ", err)
 	}
+	retOffsets := interpreter.GetFunctionReturnOffset(symbolNameNewproc)
+	log.Printf("Return offsets to instrument: %+v", retOffsets)
+	for _, offset := range retOffsets {
+		_, err := ex.Uprobe(symbolNameNewproc, coll.Programs["go_runtime_func_return"], &link.UprobeOptions{
+			Offset: offset,
+		})
+		if err != nil {
+			log.Fatal("Attach go_newproc_return uprobe: ", err, ", offset: ", offset)
+		}
+	}
 
 	pkgOffsets := interpreter.GetDelayableOffsetsForPackage("main")
-	log.Printf("Instrumentable offsets: %+v", pkgOffsets)
+	log.Printf("Delayable offsets: %+v", pkgOffsets)
 	for fnSym, offsets := range pkgOffsets {
 		for _, offset := range offsets {
 			_, err = ex.Uprobe(fnSym, coll.Programs["delay"], &link.UprobeOptions{
@@ -160,7 +189,7 @@ func readEvent(readSeeker io.ReadSeeker, etype eventType) error {
 		if fn == nil {
 			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
 		}
-		log.Printf("newproc invoked in goroutine %d (function: %s, file: %s, line: %d)\n", event.CreatorGoid, fn.Name, file, line)
+		log.Printf("newproc invoked in goroutine %d (function: %s, file: %s, line: %d)\n", event.CreatorGoID, fn.Name, file, line)
 	case EVENT_TYPE_DELAY:
 		var event delayEvent
 		err = binary.Read(readSeeker, byteOrder, &event)
@@ -172,6 +201,13 @@ func readEvent(readSeeker io.ReadSeeker, etype eventType) error {
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
 		log.Printf("delaying line %d in function %s in file %s (pc: %x)\n", line, fn.Name, file, event.PC)
+	case EVENT_TYPE_RUNTIME_FUNC_RETURN:
+		var event runqUpdateEvent
+		err = binary.Read(readSeeker, byteOrder, &event)
+		if err != nil {
+			break
+		}
+		log.Printf("runq update detected on processor %d; runq: %+v, runnext goid: %d, runnext pc: %x)\n", event.ProcID, event.LocalRunq[:event.LocalRunqEntryNum], event.Runnext.GoID, event.Runnext.PC)
 	default:
 		err = fmt.Errorf("unrecognized event type")
 	}

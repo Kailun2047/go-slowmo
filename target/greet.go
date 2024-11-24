@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -12,7 +13,7 @@ func Greet(name string) {
 }
 
 func main() {
-	// var wg sync.WaitGroup
+	var wg sync.WaitGroup
 
 	startTime := time.Now().UnixMilli()
 	defer func() {
@@ -23,13 +24,13 @@ func main() {
 	names := []string{"Mauro", "Lucas", "Kerem"}
 
 	for i := 0; i < 5; i++ {
-		// wg.Add(1)
-		// go func() {
-		// 	defer wg.Done()
-		// 	Greet(names[rand.Intn(len(names))])
-		// }()
-		Greet(names[rand.Intn(len(names))])
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			Greet(names[rand.Intn(len(names))])
+		}()
+		// Greet(names[rand.Intn(len(names))])
 	}
 
-	// wg.Wait()
+	wg.Wait()
 }

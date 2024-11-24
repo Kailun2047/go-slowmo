@@ -9,17 +9,38 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GO_PARAM1(x) ((x)->rax)
 #define GO_PARAM2(x) ((x)->rbx)
 #define GO_PARAM3(x) ((x)->rcx)
-#define CURR_G_PTR(x) ((x)->r14)
+#define CURR_G_ADDR(x) ((x)->r14)
 #define DELAY_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
 
-#define GOID_OFFSET 144 // Byte offset of goid of a Go g struct.
-#define GET_GOID_PTR(g_addr) ((char *)(g_addr) + GOID_OFFSET)
+// TODO: to be compatible with different versions of Go, we should be able to
+// retrieve Go runtime internals such as field offsets depending on the target's
+// Go version.
+#define G_GOID_OFFSET 144 // Byte offset of goid of a Go g struct.
+#define G_M_PTR_OFFSET 48
+#define G_STARTPC_OFFSET 304
+#define M_P_PTR_OFFSET 208
+#define P_LOCAL_RUNQ_MAX_LEN 256
+#define P_ID_OFFSET 0
+#define P_RUNQHEAD_OFFSET 400
+#define P_RUNQTAIL_OFFSET 404
+#define P_RUNQ_OFFSET 408
+#define P_RUNNEXT_OFFSET 2456
+#define GET_GOID_ADDR(g_addr) ((char *)(g_addr) + G_GOID_OFFSET)
+#define GET_M_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
+#define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_STARTPC_OFFSET)
+#define GET_P_ADDR(m_addr) ((char *)(m_addr) + M_P_PTR_OFFSET)
+#define GET_P_ID_ADDR(p_addr) ((char *)(p_addr) + P_ID_OFFSET)
+#define GET_P_RUNQHEAD_ADDR(p_addr) ((char *)(p_addr) + P_RUNQHEAD_OFFSET)
+#define GET_P_RUNQTAIL_ADDR(p_addr) ((char *)(p_addr) + P_RUNQTAIL_OFFSET)
+#define GET_P_RUNQ_ADDR(p_addr) ((char *)(p_addr) + P_RUNQ_OFFSET)
+#define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
 // of binary data even though event type can be fit into type of smaller size.
 const uint64_t EVENT_TYPE_NEWPROC = 0;
 const uint64_t EVENT_TYPE_DELAY = 1;
+const uint64_t EVENT_TYPE_RUNQ_UPDATE = 2;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -35,6 +56,19 @@ struct newproc_event {
 struct delay_event {
     uint64_t etype;
     uint64_t pc;
+};
+
+struct runq_entry {
+    uint64_t pc;
+    uint64_t goid;
+};
+
+struct runq_update_event {
+    uint64_t etype;
+    int32_t procid;
+    uint32_t local_runq_entry_num; // Number of entries from runqhead to runqtail.
+    struct runq_entry local_runq[P_LOCAL_RUNQ_MAX_LEN]; // Goroutines in local runq with runqhead at local_runq[0] and runqtail at local_runq[local_runq_num - 1].
+    struct runq_entry runnext;
 };
 
 struct {
@@ -54,9 +88,51 @@ int BPF_UPROBE(go_newproc) {
     }
     e->etype = EVENT_TYPE_NEWPROC;
     bpf_probe_read_user(&e->newproc_pc, sizeof(uint64_t), &((struct funcval *)GO_PARAM1(ctx))->fn);
-    bpf_probe_read_user(&e->creator_goid, sizeof(uint64_t), GET_GOID_PTR(CURR_G_PTR(ctx)));
+    bpf_probe_read_user(&e->creator_goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
     bpf_ringbuf_submit(e, 0);
     
+    return 0;
+}
+
+SEC("uprobe/go_runtime_func_return")
+int BPF_UPROBE(go_runtime_func_return) {
+    struct runq_update_event *e;
+    uint32_t runqhead, runqtail, runq_i;
+    char *m_ptr, *p_ptr, *g_ptr, *local_runq;
+    uint64_t goid, pc;
+
+    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_update_event), 0);
+    if (!e) {
+        bpf_printk("bpf_ringbuf_reserve failed in go_runtime_func_return");
+        return 1;
+    }
+    e->etype = EVENT_TYPE_RUNQ_UPDATE;
+    e->local_runq_entry_num = 0;
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
+    bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
+    bpf_probe_read_user(&runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
+    bpf_probe_read_user(&runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
+    bpf_probe_read_user(&local_runq, sizeof(char*), GET_P_RUNQ_ADDR(p_ptr));
+    bpf_probe_read_user(&e->runnext.goid, sizeof(uint64_t), GET_GOID_ADDR(GET_P_RUNNEXT_ADDR(p_ptr)));
+    bpf_probe_read_user(&e->runnext.pc, sizeof(uint64_t), GET_PC_ADDR(GET_P_RUNNEXT_ADDR(p_ptr)));
+    bpf_printk("procid: %d, head: %d, tail: %d, runnext.goid: %d, runnext.pc: %x", e->procid, runqhead, runqtail, e->runnext.goid, e->runnext.pc);
+
+    for (runq_i = runqhead%P_LOCAL_RUNQ_MAX_LEN; runq_i < runqtail%P_LOCAL_RUNQ_MAX_LEN; runq_i++) {
+        g_ptr = local_runq + runq_i;
+        bpf_probe_read_user(&goid, sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+        bpf_probe_read_user(&pc, sizeof(uint64_t), GET_PC_ADDR(g_ptr));
+        if (e->local_runq_entry_num >= P_LOCAL_RUNQ_MAX_LEN) {
+            bpf_printk("local runq entry num is greater than max runq length");
+            bpf_ringbuf_discard(e, 0);
+            return 1;
+        }
+        e->local_runq[e->local_runq_entry_num].goid = goid;
+        e->local_runq[e->local_runq_entry_num].pc = pc;
+        e->local_runq_entry_num++;
+    }
+    bpf_ringbuf_submit(e, 0);
+
     return 0;
 }
 

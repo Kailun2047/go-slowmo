@@ -4,7 +4,6 @@ import (
 	"debug/elf"
 	"debug/gosym"
 	"errors"
-	"fmt"
 	"log"
 
 	"golang.org/x/arch/x86/x86asm"
@@ -12,6 +11,7 @@ import (
 
 type ELFInterpreter struct {
 	goSymTab *gosym.Table
+	symbols  []elf.Symbol
 	text     *elf.Section
 }
 
@@ -20,8 +20,13 @@ func NewELFInterpreter(prog string) *ELFInterpreter {
 	if err != nil {
 		log.Fatal("Open ELF file: ", err)
 	}
+	symbols, err := exe.Symbols()
+	if err != nil {
+		log.Fatalf("Load ELF symbols for file %s: %v\n", prog, err)
+	}
 	return &ELFInterpreter{
 		goSymTab: getGoSymbolTable(exe),
+		symbols:  symbols,
 		text:     getSection(exe, ".text"),
 	}
 }
@@ -68,8 +73,6 @@ func (ei *ELFInterpreter) GetDelayableOffsetsForPackage(pkgName string) SymbolOf
 		if fn.PackageName() != pkgName {
 			continue
 		}
-		fmt.Println(fn.Type, fn.GoType)
-
 		file, startLn, _ := ei.goSymTab.PCToLine(fn.Entry)
 		endLn := startLn
 		// Look for the max line number of target function. Termination
@@ -100,24 +103,24 @@ func (ei *ELFInterpreter) GetDelayableOffsetsForPackage(pkgName string) SymbolOf
 
 func (ei *ELFInterpreter) GetFunctionReturnOffset(fnName string) []uint64 {
 	var (
-		fnPtr      *gosym.Func
+		fnSym      elf.Symbol
 		buf        []byte
 		retOffsets []uint64 = []uint64{}
 	)
-	for _, fn := range ei.goSymTab.Funcs {
-		if fn.Name == fnName {
-			fnPtr = &fn
+	for _, symbol := range ei.symbols {
+		if symbol.Name == fnName {
+			fnSym = symbol
 			break
 		}
 	}
-	if fnPtr == nil {
+	if len(fnSym.Name) == 0 {
 		log.Printf("Symbol table entry for function %s not found\n", fnName)
 		return retOffsets
 	}
-	buf = make([]byte, fnPtr.End-fnPtr.Entry)
-	_, err := ei.text.ReadAt(buf, int64(fnPtr.Entry))
+	buf = make([]byte, fnSym.Size)
+	_, err := ei.text.ReadAt(buf, int64(fnSym.Value-ei.text.Addr))
 	if err != nil {
-		log.Fatalf("Read symbol %s in .text section: %v\n", fnName, err)
+		log.Fatalf("Read symbol %s in .text section: %v (entry: %d, size: %d)\n", fnName, err, fnSym.Value, fnSym.Size)
 	}
 	for offset := 0; offset < len(buf); {
 		inst, err := x86asm.Decode(buf[offset:], 64)
