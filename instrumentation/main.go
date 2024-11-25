@@ -45,7 +45,6 @@ type newprocEvent struct {
 	CreatorGoID uint64
 }
 
-// TODO: correct the retrieval & decoding of goid and pc for each runq entry.
 type runqUpdateEvent struct {
 	EType             eventType
 	ProcID            int32
