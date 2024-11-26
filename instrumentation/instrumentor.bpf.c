@@ -113,18 +113,17 @@ int BPF_UPROBE(go_runtime_func_return) {
     bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
     bpf_probe_read_user(&runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
     bpf_probe_read_user(&runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
-    bpf_probe_read_user(&local_runq, sizeof(char *), GET_P_RUNQ_ADDR(p_ptr));
+    local_runq = GET_P_RUNQ_ADDR(p_ptr);
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
     bpf_probe_read_user(&e->runnext.goid, sizeof(uint64_t), GET_GOID_ADDR(runnext_g_ptr));
     bpf_probe_read_user(&e->runnext.pc, sizeof(uint64_t), GET_PC_ADDR(runnext_g_ptr));
     bpf_printk("procid: %d, head: %d, tail: %d, runnext.goid: %d, runnext.pc: %x", e->procid, runqhead, runqtail, e->runnext.goid, e->runnext.pc);
 
     for (runq_i = runqhead%P_LOCAL_RUNQ_MAX_LEN; runq_i < runqtail%P_LOCAL_RUNQ_MAX_LEN; runq_i++) {
-        // TODO: fix the retrieval of goid and pc for each local_runq entry.
-        bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + runq_i));
+        bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + runq_i * sizeof(char *)));
         bpf_probe_read_user(&goid, sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
         bpf_probe_read_user(&pc, sizeof(uint64_t), GET_PC_ADDR(g_ptr));
-        bpf_printk("entry: %d, goid: %d, pc: %x", runq_i, goid, pc);
+        bpf_printk("local_runq, entry: %d, goid: %d, pc: %x", runq_i, goid, pc);
         if (e->local_runq_entry_num >= P_LOCAL_RUNQ_MAX_LEN) {
             bpf_printk("local runq entry num is greater than max runq length");
             bpf_ringbuf_discard(e, 0);
