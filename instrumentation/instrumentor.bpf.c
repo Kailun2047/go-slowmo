@@ -64,14 +64,19 @@ struct delay_event {
 struct runq_entry {
     uint64_t pc;
     uint64_t goid;
-    uint32_t status;
+    // g status is actually uint32_t but use uint64_t to work around binary
+    // SerDe issue caused by data alignment.
+    uint64_t status;
 };
 
 struct runq_update_event {
     uint64_t etype;
     int32_t procid;
-    uint32_t local_runq_entry_num; // Number of entries from runqhead to runqtail.
-    struct runq_entry local_runq[P_LOCAL_RUNQ_MAX_LEN]; // Goroutines in local runq with runqhead at local_runq[0] and runqtail at local_runq[local_runq_num - 1].
+    // Number of entries from runqhead to runqtail.
+    uint32_t local_runq_entry_num;
+    // Goroutines in local runq with runqhead at local_runq[0] and runqtail at
+    // local_runq[local_runq_num - 1].
+    struct runq_entry local_runq[P_LOCAL_RUNQ_MAX_LEN];
     struct runq_entry runnext;
 };
 
@@ -121,7 +126,7 @@ int BPF_UPROBE(go_runtime_func_return) {
     bpf_probe_read_user(&e->runnext.goid, sizeof(uint64_t), GET_GOID_ADDR(runnext_g_ptr));
     bpf_probe_read_user(&e->runnext.pc, sizeof(uint64_t), GET_PC_ADDR(runnext_g_ptr));
     bpf_probe_read_user(&e->runnext.status, sizeof(uint32_t), GET_STATUS_ADDR(runnext_g_ptr));
-    bpf_printk("procid: %d, head: %d, tail: %d, runnext.goid: %d, runnext.pc: %x", e->procid, runqhead, runqtail, e->runnext.goid, e->runnext.pc);
+    bpf_printk("procid: %d, head: %d, tail: %d, runnext.goid: %d, runnext.pc: %x, runnext.status: %d", e->procid, runqhead, runqtail, e->runnext.goid, e->runnext.pc, e->runnext.status);
 
     for (runq_i = runqhead%P_LOCAL_RUNQ_MAX_LEN; runq_i < runqtail%P_LOCAL_RUNQ_MAX_LEN; runq_i++) {
         bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + runq_i * sizeof(char *)));
@@ -136,6 +141,7 @@ int BPF_UPROBE(go_runtime_func_return) {
         bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
         bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
         bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
+        bpf_printk("entry %d, goid: %d, pc: %x, status: %d", local_runq_entry_i, e->local_runq[local_runq_entry_i].goid, e->local_runq[local_runq_entry_i].pc, e->local_runq[local_runq_entry_i].status);
         e->local_runq_entry_num++;
     }
     bpf_ringbuf_submit(e, 0);

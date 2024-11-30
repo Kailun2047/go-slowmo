@@ -56,7 +56,11 @@ type runqUpdateEvent struct {
 type runqEntry struct {
 	PC     uint64
 	GoID   uint64
-	Status uint32
+	Status uint64
+}
+
+func (entry runqEntry) String() string {
+	return fmt.Sprintf("PC: %x, GoID: %d, Status: %d", entry.PC, entry.GoID, entry.Status)
 }
 
 type delayEvent struct {
@@ -68,6 +72,7 @@ func main() {
 	flag.Parse()
 
 	byteOrder = determineByteOrder()
+	log.Printf("Byte order: %v\n", byteOrder)
 	interpreter = NewELFInterpreter(*targetPath)
 
 	if err := rlimit.RemoveMemlock(); err != nil {
