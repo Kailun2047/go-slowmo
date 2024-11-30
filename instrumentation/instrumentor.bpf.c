@@ -10,7 +10,8 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GO_PARAM2(x) ((x)->rbx)
 #define GO_PARAM3(x) ((x)->rcx)
 #define CURR_G_ADDR(x) ((x)->r14)
-#define DELAY_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
+#define MAX_DELAY_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
+#define DELAY_NS 1e9
 
 // TODO: to be compatible with different versions of Go, we should be able to
 // retrieve Go runtime internals such as field offsets depending on the target's
@@ -18,6 +19,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define G_GOID_OFFSET 144 // Byte offset of goid of a Go g struct.
 #define G_M_PTR_OFFSET 48
 #define G_PC_OFFSET 64
+#define G_STATUS_OFFSET 144
 #define M_P_PTR_OFFSET 208
 #define P_LOCAL_RUNQ_MAX_LEN 256
 #define P_ID_OFFSET 0
@@ -28,6 +30,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_GOID_ADDR(g_addr) ((char *)(g_addr) + G_GOID_OFFSET)
 #define GET_M_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
 #define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_PC_OFFSET)
+#define GET_STATUS_ADDR(g_addr) ((char *)(g_addr) + G_STATUS_OFFSET)
 #define GET_P_ADDR(m_addr) ((char *)(m_addr) + M_P_PTR_OFFSET)
 #define GET_P_ID_ADDR(p_addr) ((char *)(p_addr) + P_ID_OFFSET)
 #define GET_P_RUNQHEAD_ADDR(p_addr) ((char *)(p_addr) + P_RUNQHEAD_OFFSET)
@@ -61,6 +64,7 @@ struct delay_event {
 struct runq_entry {
     uint64_t pc;
     uint64_t goid;
+    uint32_t status;
 };
 
 struct runq_update_event {
@@ -97,9 +101,8 @@ int BPF_UPROBE(go_newproc) {
 SEC("uprobe/go_runtime_func_return")
 int BPF_UPROBE(go_runtime_func_return) {
     struct runq_update_event *e;
-    uint32_t runqhead, runqtail, runq_i;
+    uint32_t runqhead, runqtail, runq_i, local_runq_entry_i;
     char *m_ptr, *p_ptr, *g_ptr, *runnext_g_ptr, *local_runq;
-    uint64_t goid, pc;
 
     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_update_event), 0);
     if (!e) {
@@ -117,20 +120,22 @@ int BPF_UPROBE(go_runtime_func_return) {
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
     bpf_probe_read_user(&e->runnext.goid, sizeof(uint64_t), GET_GOID_ADDR(runnext_g_ptr));
     bpf_probe_read_user(&e->runnext.pc, sizeof(uint64_t), GET_PC_ADDR(runnext_g_ptr));
+    bpf_probe_read_user(&e->runnext.status, sizeof(uint32_t), GET_STATUS_ADDR(runnext_g_ptr));
     bpf_printk("procid: %d, head: %d, tail: %d, runnext.goid: %d, runnext.pc: %x", e->procid, runqhead, runqtail, e->runnext.goid, e->runnext.pc);
 
     for (runq_i = runqhead%P_LOCAL_RUNQ_MAX_LEN; runq_i < runqtail%P_LOCAL_RUNQ_MAX_LEN; runq_i++) {
         bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + runq_i * sizeof(char *)));
-        bpf_probe_read_user(&goid, sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
-        bpf_probe_read_user(&pc, sizeof(uint64_t), GET_PC_ADDR(g_ptr));
-        bpf_printk("local_runq, entry: %d, goid: %d, pc: %x", runq_i, goid, pc);
         if (e->local_runq_entry_num >= P_LOCAL_RUNQ_MAX_LEN) {
             bpf_printk("local runq entry num is greater than max runq length");
             bpf_ringbuf_discard(e, 0);
             return 1;
         }
-        e->local_runq[e->local_runq_entry_num].goid = goid;
-        e->local_runq[e->local_runq_entry_num].pc = pc;
+        // Store e->local_runq_entry_num into local variable to prevent the
+        // verifier from complaining about potential unbounded memory access.
+        local_runq_entry_i = e->local_runq_entry_num;
+        bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+        bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
+        bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
         e->local_runq_entry_num++;
     }
     bpf_ringbuf_submit(e, 0);
@@ -141,7 +146,7 @@ int BPF_UPROBE(go_runtime_func_return) {
 SEC("uprobe/delay")
 int BPF_UPROBE(delay) {
     struct delay_event *e;
-    uint64_t i;
+    uint64_t i, ns, ns_start;
     
     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct delay_event), 0);
     if (!e) {
@@ -152,8 +157,12 @@ int BPF_UPROBE(delay) {
     e->pc = ctx->rip;
     bpf_ringbuf_submit(e, 0);
 
-    bpf_for(i, 0, DELAY_ITERS) {
-        bpf_ktime_get_ns();
+    ns_start = bpf_ktime_get_ns();
+    bpf_for(i, 0, MAX_DELAY_ITERS) {
+        ns = bpf_ktime_get_ns();
+        if (ns - ns_start >= DELAY_NS) {
+            break;
+        }
     }
     return 0;
 }

@@ -54,8 +54,9 @@ type runqUpdateEvent struct {
 }
 
 type runqEntry struct {
-	PC   uint64
-	GoID uint64
+	PC     uint64
+	GoID   uint64
+	Status uint32
 }
 
 type delayEvent struct {
@@ -206,7 +207,7 @@ func readEvent(readSeeker io.ReadSeeker, etype eventType) error {
 		if err != nil {
 			break
 		}
-		log.Printf("runq update detected on processor %d; runq: %+v, runnext goid: %d, runnext pc: %x)\n", event.ProcID, event.LocalRunq[:event.LocalRunqEntryNum], event.Runnext.GoID, event.Runnext.PC)
+		log.Printf("runq update detected on processor %d; runq: %+v, runnext: %+v)\n", event.ProcID, event.LocalRunq[:event.LocalRunqEntryNum], event.Runnext)
 	default:
 		err = fmt.Errorf("unrecognized event type")
 	}
