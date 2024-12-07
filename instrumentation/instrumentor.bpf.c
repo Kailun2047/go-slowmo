@@ -71,9 +71,9 @@ struct runq_entry {
 
 struct runq_update_event {
     uint64_t etype;
-    int32_t procid;
-    // Number of entries from runqhead to runqtail.
-    uint32_t local_runq_entry_num;
+    int64_t procid;
+    uint32_t runqhead;
+    uint32_t runqtail;
     // Goroutines in local runq with runqhead at local_runq[0] and runqtail at
     // local_runq[local_runq_num - 1].
     struct runq_entry local_runq[P_LOCAL_RUNQ_MAX_LEN];
@@ -106,7 +106,7 @@ int BPF_UPROBE(go_newproc) {
 SEC("uprobe/go_runtime_func_return")
 int BPF_UPROBE(go_runtime_func_return) {
     struct runq_update_event *e;
-    uint32_t runqhead, runqtail, runq_i, local_runq_entry_i;
+    uint32_t runq_i, local_runq_entry_i, local_runq_entry_num;
     char *m_ptr, *p_ptr, *g_ptr, *runnext_g_ptr, *local_runq;
 
     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_update_event), 0);
@@ -115,34 +115,34 @@ int BPF_UPROBE(go_runtime_func_return) {
         return 1;
     }
     e->etype = EVENT_TYPE_RUNQ_UPDATE;
-    e->local_runq_entry_num = 0;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
     bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
-    bpf_probe_read_user(&runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
-    bpf_probe_read_user(&runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
+    bpf_probe_read_user(&e->runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
+    bpf_probe_read_user(&e->runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
     local_runq = GET_P_RUNQ_ADDR(p_ptr);
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
     bpf_probe_read_user(&e->runnext.goid, sizeof(uint64_t), GET_GOID_ADDR(runnext_g_ptr));
     bpf_probe_read_user(&e->runnext.pc, sizeof(uint64_t), GET_PC_ADDR(runnext_g_ptr));
     bpf_probe_read_user(&e->runnext.status, sizeof(uint32_t), GET_STATUS_ADDR(runnext_g_ptr));
-    bpf_printk("procid: %d, head: %d, tail: %d, runnext.goid: %d, runnext.pc: %x, runnext.status: %d", e->procid, runqhead, runqtail, e->runnext.goid, e->runnext.pc, e->runnext.status);
+    bpf_printk("procid: %d, head: %d, tail: %d, runnext.goid: %d, runnext.pc: %x, runnext.status: %d", e->procid, e->runqhead, e->runqtail, e->runnext.goid, e->runnext.pc, e->runnext.status);
 
-    for (runq_i = runqhead%P_LOCAL_RUNQ_MAX_LEN; runq_i < runqtail%P_LOCAL_RUNQ_MAX_LEN; runq_i++) {
-        bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + runq_i * sizeof(char *)));
-        if (e->local_runq_entry_num >= P_LOCAL_RUNQ_MAX_LEN) {
-            bpf_printk("local runq entry num is greater than max runq length");
-            bpf_ringbuf_discard(e, 0);
-            return 1;
-        }
-        // Store e->local_runq_entry_num into local variable to prevent the
-        // verifier from complaining about potential unbounded memory access.
-        local_runq_entry_i = e->local_runq_entry_num;
+    // Store (e->runqhead - e->runqtail) into local variable to prevent the
+    // verifier from complaining about potential unbounded memory access.
+    local_runq_entry_num = e->runqtail - e->runqhead;
+    local_runq_entry_i = e->runqhead % P_LOCAL_RUNQ_MAX_LEN;
+    for (runq_i = 0; runq_i < local_runq_entry_num; runq_i++) {
+        local_runq_entry_i = (local_runq_entry_i + runq_i) % P_LOCAL_RUNQ_MAX_LEN;
+        bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + local_runq_entry_i * sizeof(char *)));
         bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
         bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
         bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
         bpf_printk("entry %d, goid: %d, pc: %x, status: %d", local_runq_entry_i, e->local_runq[local_runq_entry_i].goid, e->local_runq[local_runq_entry_i].pc, e->local_runq[local_runq_entry_i].status);
-        e->local_runq_entry_num++;
+        if (local_runq_entry_num > P_LOCAL_RUNQ_MAX_LEN) {
+            bpf_printk("distance from runqhead to runqtail is greater than max runq length");
+            bpf_ringbuf_discard(e, 0);
+            return 1;
+        }
     }
     bpf_ringbuf_submit(e, 0);
 

@@ -4,6 +4,7 @@ import (
 	"debug/elf"
 	"debug/gosym"
 	"errors"
+	"fmt"
 	"log"
 
 	"golang.org/x/arch/x86/x86asm"
@@ -75,6 +76,7 @@ func (ei *ELFInterpreter) GetDelayableOffsetsForPackage(pkgName string) SymbolOf
 		}
 		file, startLn, _ := ei.goSymTab.PCToLine(fn.Entry)
 		endLn := startLn
+
 		// Look for the max line number of target function. Termination
 		// condition is pc < fn.End because fn.End holds the entry PC value of
 		// the next function instead of the last PC value of our target
@@ -86,7 +88,14 @@ func (ei *ELFInterpreter) GetDelayableOffsetsForPackage(pkgName string) SymbolOf
 			}
 		}
 
-		for ln := startLn; ln <= endLn; ln++ {
+		// For starting line, skip the prologue.
+		startOffset, err := ei.GetFunctionStartOffset(fn.Name)
+		if err != nil {
+			log.Fatalf("Fails to find start offset for function %s\n", fn.Name)
+		}
+		symOffsets[fn.Name] = append(symOffsets[fn.Name], startOffset)
+
+		for ln := startLn + 1; ln <= endLn; ln++ {
 			pc, curFn, err := ei.goSymTab.LineToPC(file, ln)
 			var unknownLnErr *gosym.UnknownLineError
 			if err != nil {
@@ -101,12 +110,12 @@ func (ei *ELFInterpreter) GetDelayableOffsetsForPackage(pkgName string) SymbolOf
 	return symOffsets
 }
 
-func (ei *ELFInterpreter) GetFunctionReturnOffset(fnName string) []uint64 {
+func (ei *ELFInterpreter) getInstsFromTextSection(fnName string) ([]byte, error) {
 	var (
-		fnSym      elf.Symbol
-		buf        []byte
-		retOffsets []uint64 = []uint64{}
+		fnSym elf.Symbol
+		buf   []byte
 	)
+
 	for _, symbol := range ei.symbols {
 		if symbol.Name == fnName {
 			fnSym = symbol
@@ -114,13 +123,18 @@ func (ei *ELFInterpreter) GetFunctionReturnOffset(fnName string) []uint64 {
 		}
 	}
 	if len(fnSym.Name) == 0 {
-		log.Printf("Symbol table entry for function %s not found\n", fnName)
-		return retOffsets
+		return buf, fmt.Errorf("Symbol table entry for function %s not found\n", fnName)
 	}
 	buf = make([]byte, fnSym.Size)
 	_, err := ei.text.ReadAt(buf, int64(fnSym.Value-ei.text.Addr))
+	return buf, err
+}
+
+func (ei *ELFInterpreter) GetFunctionReturnOffset(fnName string) ([]uint64, error) {
+	retOffsets := []uint64{}
+	buf, err := ei.getInstsFromTextSection(fnName)
 	if err != nil {
-		log.Fatalf("Read symbol %s in .text section: %v (entry: %d, size: %d)\n", fnName, err, fnSym.Value, fnSym.Size)
+		return retOffsets, err
 	}
 	for offset := 0; offset < len(buf); {
 		inst, err := x86asm.Decode(buf[offset:], 64)
@@ -132,5 +146,31 @@ func (ei *ELFInterpreter) GetFunctionReturnOffset(fnName string) []uint64 {
 		}
 		offset += inst.Len
 	}
-	return retOffsets
+	return retOffsets, nil
+}
+
+var prologueOpSequence = []x86asm.Op{x86asm.CMP, x86asm.JBE}
+
+// Get the PC of the first instruction after the stack-splitting prologue in a
+// go function.
+func (ei *ELFInterpreter) GetFunctionStartOffset(fnName string) (uint64, error) {
+	buf, err := ei.getInstsFromTextSection(fnName)
+	if err != nil {
+		return 0, err
+	}
+	offset, opSeq := 0, []x86asm.Op{}
+	for offset < len(buf) && len(opSeq) < len(prologueOpSequence) {
+		inst, err := x86asm.Decode(buf[offset:], 64)
+		if err != nil {
+			log.Fatalf("Decode instruction for symbol %s at offset %d: %v\n", fnName, offset, err)
+		}
+		opSeq = append(opSeq, inst.Op)
+		offset += inst.Len
+	}
+	for i := 0; i < len(prologueOpSequence); i++ {
+		if i >= len(opSeq) || opSeq[i] != prologueOpSequence[i] {
+			log.Fatalf("Prologue sequence not found in function %s\n", fnName)
+		}
+	}
+	return uint64(offset), nil
 }

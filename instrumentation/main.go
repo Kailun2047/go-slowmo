@@ -46,11 +46,12 @@ type newprocEvent struct {
 }
 
 type runqUpdateEvent struct {
-	EType             eventType
-	ProcID            int32
-	LocalRunqEntryNum int32
-	LocalRunq         [localRunqLen]runqEntry
-	Runnext           runqEntry
+	EType     eventType
+	ProcID    int64
+	Runqhead  uint32
+	Runqtail  uint32
+	LocalRunq [localRunqLen]runqEntry
+	Runnext   runqEntry
 }
 
 type runqEntry struct {
@@ -95,11 +96,20 @@ func main() {
 	}
 	defer coll.Close()
 
-	_, err = ex.Uprobe(symbolNameNewproc, coll.Programs["go_newproc"], &link.UprobeOptions{})
+	startOffset, err := interpreter.GetFunctionStartOffset(symbolNameNewproc)
+	if err != nil {
+		log.Fatalf("Could not get start offset for function %s\n", symbolNameNewproc)
+	}
+	_, err = ex.Uprobe(symbolNameNewproc, coll.Programs["go_newproc"], &link.UprobeOptions{
+		Offset: startOffset,
+	})
 	if err != nil {
 		log.Fatal("Attach go_newproc uprobe: ", err)
 	}
-	retOffsets := interpreter.GetFunctionReturnOffset(symbolNameNewproc)
+	retOffsets, err := interpreter.GetFunctionReturnOffset(symbolNameNewproc)
+	if err != nil {
+		log.Fatalf("Could not get return offsets for function %s\n", symbolNameNewproc)
+	}
 	log.Printf("Return offsets to instrument: %+v", retOffsets)
 	for _, offset := range retOffsets {
 		_, err := ex.Uprobe(symbolNameNewproc, coll.Programs["go_runtime_func_return"], &link.UprobeOptions{
@@ -201,18 +211,18 @@ func readEvent(readSeeker io.ReadSeeker, etype eventType) error {
 		if err != nil {
 			break
 		}
-		file, line, fn := interpreter.PCToLine(event.PC)
+		_, _, fn := interpreter.PCToLine(event.PC)
 		if fn == nil {
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
-		log.Printf("delaying line %d in function %s in file %s (pc: %x)\n", line, fn.Name, file, event.PC)
 	case EVENT_TYPE_RUNTIME_FUNC_RETURN:
 		var event runqUpdateEvent
 		err = binary.Read(readSeeker, byteOrder, &event)
 		if err != nil {
 			break
 		}
-		log.Printf("runq update detected on processor %d; runq: %+v, runnext: %+v)\n", event.ProcID, event.LocalRunq[:event.LocalRunqEntryNum], event.Runnext)
+		log.Printf("runq update detected on processor %d; runq (head %d, tail %d): %+v, runnext: %+v)\n",
+			event.ProcID, event.Runqhead, event.Runqtail, event.LocalRunq[event.Runqhead:event.Runqtail], event.Runnext)
 	default:
 		err = fmt.Errorf("unrecognized event type")
 	}
