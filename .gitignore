@@ -1,6 +1,7 @@
 .vscode
 **/*.o
 **/*.asm
+**/*.out
 
 instrumentor
 target/greet

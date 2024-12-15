@@ -123,7 +123,7 @@ func (ei *ELFInterpreter) getInstsFromTextSection(fnName string) ([]byte, error)
 		}
 	}
 	if len(fnSym.Name) == 0 {
-		return buf, fmt.Errorf("Symbol table entry for function %s not found\n", fnName)
+		return buf, fmt.Errorf("symbol table entry for function %s not found\n", fnName)
 	}
 	buf = make([]byte, fnSym.Size)
 	_, err := ei.text.ReadAt(buf, int64(fnSym.Value-ei.text.Addr))
