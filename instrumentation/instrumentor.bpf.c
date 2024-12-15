@@ -16,7 +16,8 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 // TODO: to be compatible with different versions of Go, we should be able to
 // retrieve Go runtime internals such as field offsets depending on the target's
 // Go version.
-#define G_GOID_OFFSET 144 // Byte offset of goid of a Go g struct.
+// TODO: use unsafe.OffsetOf to acquire field offset instead of hard-coding.
+#define G_GOID_OFFSET 152
 #define G_M_PTR_OFFSET 48
 #define G_PC_OFFSET 64
 #define G_STATUS_OFFSET 144

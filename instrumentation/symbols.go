@@ -158,19 +158,27 @@ func (ei *ELFInterpreter) GetFunctionStartOffset(fnName string) (uint64, error) 
 	if err != nil {
 		return 0, err
 	}
-	offset, opSeq := 0, []x86asm.Op{}
-	for offset < len(buf) && len(opSeq) < len(prologueOpSequence) {
+	offset, prologueIdxToMatch, nextSearchStart := 0, 0, 0
+	for offset < len(buf) {
 		inst, err := x86asm.Decode(buf[offset:], 64)
 		if err != nil {
 			log.Fatalf("Decode instruction for symbol %s at offset %d: %v\n", fnName, offset, err)
 		}
-		opSeq = append(opSeq, inst.Op)
-		offset += inst.Len
-	}
-	for i := 0; i < len(prologueOpSequence); i++ {
-		if i >= len(opSeq) || opSeq[i] != prologueOpSequence[i] {
-			log.Fatalf("Prologue sequence not found in function %s\n", fnName)
+		if prologueIdxToMatch == 0 {
+			nextSearchStart = offset + inst.Len
 		}
+		if inst.Op == prologueOpSequence[prologueIdxToMatch] {
+			prologueIdxToMatch++
+			offset += inst.Len
+			if prologueIdxToMatch == len(prologueOpSequence) {
+				break
+			}
+		} else {
+			offset = nextSearchStart
+		}
+	}
+	if prologueIdxToMatch < len(prologueOpSequence) {
+		log.Fatalf("Prologue sequence not found in function %s\n", fnName)
 	}
 	return uint64(offset), nil
 }
