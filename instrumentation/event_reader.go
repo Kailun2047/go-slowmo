@@ -31,7 +31,7 @@ type newprocEvent struct {
 	PC          uint64
 	CreatorGoID uint64
 }
-type runqUpdateEvent struct {
+type runqStatusEvent struct {
 	EType     eventType
 	ProcID    int64
 	Runqhead  uint32
@@ -149,12 +149,12 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
 	case EVENT_TYPE_RUNTIME_FUNC_RETURN:
-		var event runqUpdateEvent
+		var event runqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
 		if err != nil {
 			break
 		}
-		log.Printf("runq update detected on processor %d; runq (head %d, tail %d): %+v, runnext: %+v)\n",
+		log.Printf("runq status on processor %d: runq (head %d, tail %d): %+v, runnext: %+v)\n",
 			event.ProcID, event.Runqhead, event.Runqtail, event.LocalRunq[event.Runqhead:event.Runqtail], event.Runnext)
 	default:
 		err = fmt.Errorf("unrecognized event type")

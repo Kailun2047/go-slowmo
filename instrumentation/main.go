@@ -31,7 +31,7 @@ func main() {
 	instrumentor.InstrumentReturns(UprobeAttachSpec{
 		targetPkg: "runtime",
 		targetFn:  "newproc",
-		bpfFn:     "go_runtime_func_return",
+		bpfFn:     "go_runq_status",
 	})
 	instrumentor.Delay(UprobeAttachSpec{
 		targetPkg: "main",

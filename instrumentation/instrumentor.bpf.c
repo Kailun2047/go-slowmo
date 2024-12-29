@@ -39,6 +39,8 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_RUNQ_ADDR(p_addr) ((char *)(p_addr) + P_RUNQ_OFFSET)
 #define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
 
+int report_runq_status(uint64_t p_ptr_scalar);
+
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
 // of binary data even though event type can be fit into type of smaller size.
@@ -70,13 +72,11 @@ struct runq_entry {
     uint64_t status;
 };
 
-struct runq_update_event {
+struct runq_status_event {
     uint64_t etype;
     int64_t procid;
     uint32_t runqhead;
     uint32_t runqtail;
-    // Goroutines in local runq with runqhead at local_runq[0] and runqtail at
-    // local_runq[local_runq_num - 1].
     struct runq_entry local_runq[P_LOCAL_RUNQ_MAX_LEN];
     struct runq_entry runnext;
 };
@@ -104,20 +104,30 @@ int BPF_UPROBE(go_newproc) {
     return 0;
 }
 
-SEC("uprobe/go_runtime_func_return")
-int BPF_UPROBE(go_runtime_func_return) {
-    struct runq_update_event *e;
+SEC("uprobe/go_runq_status")
+int BPF_UPROBE(go_runq_status) {
     uint32_t runq_i, local_runq_entry_i, local_runq_entry_num;
-    char *m_ptr, *p_ptr, *g_ptr, *runnext_g_ptr, *local_runq;
+    char *m_ptr, *p_ptr;
 
-    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_update_event), 0);
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
+    if (!p_ptr) {
+        return 1;
+    }
+    return report_runq_status((uint64_t)(p_ptr));
+}
+
+int report_runq_status(uint64_t p_ptr_scalar) {
+    struct runq_status_event *e;
+    char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar);
+    uint32_t runq_i, local_runq_entry_i, local_runq_entry_num;
+
+    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_status_event), 0);
     if (!e) {
-        bpf_printk("bpf_ringbuf_reserve failed in go_runtime_func_return");
+        bpf_printk("bpf_ringbuf_reserve failed in go_runq_status");
         return 1;
     }
     e->etype = EVENT_TYPE_RUNQ_UPDATE;
-    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
     bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
     bpf_probe_read_user(&e->runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
     bpf_probe_read_user(&e->runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
@@ -146,7 +156,6 @@ int BPF_UPROBE(go_runtime_func_return) {
         }
     }
     bpf_ringbuf_submit(e, 0);
-
     return 0;
 }
 
