@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -86,7 +87,7 @@ func (in *Instrumentor) InstrumentReturns(spec UprobeAttachSpec) {
 	if err != nil {
 		log.Fatalf("Could not get return offsets for function %s\n", targetSym)
 	}
-	log.Printf("Return offsets to instrument: %+v", retOffsets)
+	log.Printf("Return offsets for function %s to instrument: %+v", fmt.Sprintf("%s.%s", spec.targetPkg, spec.targetFn), retOffsets)
 	for _, offset := range retOffsets {
 		_, err := in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[spec.bpfFn], &link.UprobeOptions{
 			Offset: offset,

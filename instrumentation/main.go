@@ -31,8 +31,28 @@ func main() {
 	instrumentor.InstrumentReturns(UprobeAttachSpec{
 		targetPkg: "runtime",
 		targetFn:  "newproc",
-		bpfFn:     "go_runq_status",
+		bpfFn:     "go_runtime_func_ret_runq_status",
 	})
+	instrumentor.InstrumentReturns(UprobeAttachSpec{
+		targetPkg: "runtime",
+		targetFn:  "runqget",
+		bpfFn:     "go_runtime_func_ret_runq_status",
+	})
+	instrumentor.InstrumentEntry(UprobeAttachSpec{
+		targetPkg: "runtime",
+		targetFn:  "runqsteal",
+		bpfFn:     "go_runqsteal",
+	})
+	instrumentor.InstrumentReturns(UprobeAttachSpec{
+		targetPkg: "runtime",
+		targetFn:  "runqsteal",
+		bpfFn:     "go_runqsteal_ret_runq_status",
+	})
+	instrumentor.InstrumentEntry((UprobeAttachSpec{
+		targetPkg: "runtime",
+		targetFn:  "execute",
+		bpfFn:     "go_execute",
+	}))
 	instrumentor.Delay(UprobeAttachSpec{
 		targetPkg: "main",
 		bpfFn:     "delay",

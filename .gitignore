@@ -2,6 +2,7 @@
 **/*.o
 **/*.asm
 **/*.out
+**/*.log
 
 instrumentor
 target/greet

@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-//go:noinline
 func Greet(name string) {
 	log.Println("Hello, " + name)
 }
