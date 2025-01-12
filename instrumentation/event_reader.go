@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/cilium/ebpf"
@@ -48,8 +49,32 @@ type runqEntry struct {
 	Status uint64
 }
 
-func (entry runqEntry) String() string {
-	return fmt.Sprintf("PC: %x, GoID: %d, Status: %d", entry.PC, entry.GoID, entry.Status)
+func (r *EventReader) interpretAndFmtRunqEntries(entries []runqEntry) string {
+	sb := strings.Builder{}
+	sb.WriteByte('[')
+	for i, entry := range entries {
+		sb.WriteByte('(')
+		sb.WriteString(r.interpretAndFmtRunqEntry(entry))
+		sb.WriteByte(')')
+		if i != len(entries)-1 {
+			sb.WriteByte(',')
+		}
+	}
+	sb.WriteByte(']')
+	return sb.String()
+}
+
+func (r *EventReader) interpretAndFmtRunqEntry(entry runqEntry) string {
+	return fmt.Sprintf("PC: %s, GoID: %d, Status: %d", r.interpretAndFmtPC(entry.PC), entry.GoID, entry.Status)
+}
+
+func (r *EventReader) interpretAndFmtPC(pc uint64) string {
+	file, line, fn := r.interpreter.PCToLine(pc)
+	if fn == nil {
+		log.Printf("Cannot interpret PC %x", pc)
+		return fmt.Sprintf("%x", pc)
+	}
+	return fmt.Sprintf("%s (%s:%d)", fn.Name, file, line)
 }
 
 type delayEvent struct {
@@ -190,9 +215,8 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil || !r.shouldKeepEvent(event) {
 			break
 		}
-		_, _, fn := r.interpreter.PCToLine(event.PC)
-		log.Printf("In %s, runq status on processor %d: runq (head %d, tail %d): %+v, runnext: %+v)\n",
-			fn.Name, event.ProcID, event.Runqhead, event.Runqtail, event.LocalRunq[event.Runqhead:event.Runqtail], event.Runnext)
+		log.Printf("In %s, runq status on processor %d: runq (head %d, tail %d): %s, runnext: %s)\n",
+			r.interpretAndFmtPC(event.PC), event.ProcID, event.Runqhead, event.Runqtail, r.interpretAndFmtRunqEntries(event.LocalRunq[event.Runqhead:event.Runqtail]), r.interpretAndFmtRunqEntry(event.Runnext))
 	case EVENT_TYPE_RUNQ_STEAL:
 		var event runqStealEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -206,7 +230,8 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil || !r.shouldKeepEvent(event) {
 			break
 		}
-		log.Printf("Executing GoID %d (pc: %x) on processor %d", event.GoID, event.GoPC, event.ProcID)
+		log.Printf("Executing GoID %d (function: %s) on processor %d",
+			event.GoID, r.interpretAndFmtPC(event.GoPC), event.ProcID)
 	default:
 		err = fmt.Errorf("unrecognized event type")
 	}
