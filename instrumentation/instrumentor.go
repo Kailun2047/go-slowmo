@@ -23,12 +23,34 @@ type Instrumentor struct {
 	bpfColl     *ebpf.Collection
 }
 
-func NewInstrumentor(interpreter *ELFInterpreter, bpfProg string) *Instrumentor {
-	initInstrumentor(interpreter, bpfProg)
+type InstrumentorOption func(*ELFInterpreter, *ebpf.CollectionSpec)
+
+type GlobalVariable struct {
+	NameInBPFProg, NameInTargetProg string
+}
+
+func WithGlobalVariableAddrs(variables []GlobalVariable) InstrumentorOption {
+	return func(interpreter *ELFInterpreter, spec *ebpf.CollectionSpec) {
+		for _, variable := range variables {
+			varSpec := spec.Variables[variable.NameInBPFProg]
+			if varSpec == nil {
+				log.Fatalf("Global variable %s not found in loaded BPF specification", variable.NameInBPFProg)
+			}
+			addr := interpreter.GetGlobalVariableAddr(variable.NameInTargetProg)
+			if addr == 0 {
+				log.Fatalf("Global variable %s not found in target program", variable.NameInTargetProg)
+			}
+			varSpec.Set(addr)
+		}
+	}
+}
+
+func NewInstrumentor(interpreter *ELFInterpreter, bpfProg string, opts ...InstrumentorOption) *Instrumentor {
+	initInstrumentor(interpreter, bpfProg, opts...)
 	return instrumentor
 }
 
-func initInstrumentor(interpreter *ELFInterpreter, bpfProg string) {
+func initInstrumentor(interpreter *ELFInterpreter, bpfProg string, opts ...InstrumentorOption) {
 	if instrumentor != nil {
 		return
 	}
@@ -40,7 +62,14 @@ func initInstrumentor(interpreter *ELFInterpreter, bpfProg string) {
 		if err != nil {
 			log.Fatal("OpenExecutable for tracee: ", err)
 		}
-		coll, err := ebpf.LoadCollection(bpfProg)
+		spec, err := ebpf.LoadCollectionSpec(bpfProg)
+		if err != nil {
+			log.Fatal("LoadCollectionSpec: ", err)
+		}
+		for _, opt := range opts {
+			opt(interpreter, spec)
+		}
+		coll, err := ebpf.NewCollection(spec)
 		if err != nil {
 			var verifierErr *ebpf.VerifierError
 			if errors.As(err, &verifierErr) {

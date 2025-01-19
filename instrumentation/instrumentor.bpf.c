@@ -22,6 +22,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define G_M_PTR_OFFSET 48
 #define G_PC_OFFSET 64
 #define G_STATUS_OFFSET 144
+#define G_SCHEDLINK_OFFSET 160
 #define M_P_PTR_OFFSET 208
 #define P_LOCAL_RUNQ_MAX_LEN 256
 #define P_ID_OFFSET 0
@@ -33,6 +34,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_M_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
 #define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_PC_OFFSET)
 #define GET_STATUS_ADDR(g_addr) ((char *)(g_addr) + G_STATUS_OFFSET)
+#define GET_SCHEDLINK_ADDR(g_addr) ((char *)(g_addr) + G_SCHEDLINK_OFFSET)
 #define GET_P_ADDR(m_addr) ((char *)(m_addr) + M_P_PTR_OFFSET)
 #define GET_P_ID_ADDR(p_addr) ((char *)(p_addr) + P_ID_OFFSET)
 #define GET_P_RUNQHEAD_ADDR(p_addr) ((char *)(p_addr) + P_RUNQHEAD_OFFSET)
@@ -40,7 +42,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_RUNQ_ADDR(p_addr) ((char *)(p_addr) + P_RUNQ_OFFSET)
 #define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
 
-int report_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx);
+int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx);
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -50,6 +52,7 @@ const uint64_t EVENT_TYPE_DELAY = 1;
 const uint64_t EVENT_TYPE_RUNQ_STATUS = 2;
 const uint64_t EVENT_TYPE_RUNQ_STEAL = 3;
 const uint64_t EVENT_TYPE_EXECUTE = 4;
+const uint64_t EVENT_TYPE_GLOBRUNQ_STATUS = 5;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -139,7 +142,6 @@ int BPF_UPROBE(go_runqsteal) {
 
     stealing_p_ptr = (uint64_t)(GO_PARAM1(ctx));
     stolen_p_ptr = (uint64_t)(GO_PARAM2(ctx));
-    bpf_printk("updating runq_stealing key %x with value %x", stealing_p_ptr, stolen_p_ptr);
     if ((result = bpf_map_update_elem(&runq_stealing, &stealing_p_ptr, &stolen_p_ptr, BPF_ANY)) != 0) {
         bpf_printk("cannot update runq_stealing entry with key %x", stealing_p_ptr);
         return 1;
@@ -196,14 +198,13 @@ int BPF_UPROBE(go_runqsteal_ret_runq_status) {
         bpf_printk("cannot retrieve stolen processor pointer with stealing processor pointer %x", stealing_p_ptr);
         return 1;
     }
-    bpf_printk("read runq_stealing key %x", stealing_p_ptr);
 
     // Report runq status of both stealing processor and stolen processor.
-    result = report_runq_status(stealing_p_ptr, ctx);
+    result = report_local_runq_status(stealing_p_ptr, ctx);
     if (result) {
         return result;
     }
-    result = report_runq_status(*stolen_p_ptr_ptr, ctx);
+    result = report_local_runq_status(*stolen_p_ptr_ptr, ctx);
     return result;
 }
 
@@ -218,12 +219,12 @@ int BPF_UPROBE(go_runtime_func_ret_runq_status) {
         return 1;
     }
     // BCC treats p_ptr as scalar (because it is calculated by adding scalar to
-    // memory reference) so we need to make report_runq_status accept p's
+    // memory reference) so we need to make report_local_runq_status accept p's
     // address as scalar value and cast p_ptr.
-    return report_runq_status((uint64_t)(p_ptr), ctx);
+    return report_local_runq_status((uint64_t)(p_ptr), ctx);
 }
 
-int report_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) {
+int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) {
     struct runq_status_event *e;
     char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar);
     uint32_t runq_i, local_runq_entry_i, local_runq_entry_num;
@@ -245,8 +246,9 @@ int report_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) {
     bpf_probe_read_user(&e->runnext.pc, sizeof(uint64_t), GET_PC_ADDR(runnext_g_ptr));
     bpf_probe_read_user(&e->runnext.status, sizeof(uint32_t), GET_STATUS_ADDR(runnext_g_ptr));
 
-    // Store (e->runqhead - e->runqtail) into local variable to prevent the
-    // verifier from complaining about potential unbounded memory access.
+    // Store (e->runqhead - e->runqtail) into local variable and check it in
+    // every iteration to prevent the verifier from complaining about potential
+    // unbounded memory access.
     local_runq_entry_num = e->runqtail - e->runqhead;
     local_runq_entry_i = e->runqhead % P_LOCAL_RUNQ_MAX_LEN;
     for (runq_i = 0; runq_i < local_runq_entry_num; runq_i++) {
@@ -286,5 +288,81 @@ int BPF_UPROBE(delay) {
             break;
         }
     }
+    return 0;
+}
+
+volatile const __u64 runtime_sched_addr;
+
+#define SCHED_RUNQ_HEAD_OFFSET 104
+#define SCHED_RUNQ_SIZE_OFFSET 120
+#define SCHED_GET_RUNQ_HEAD_ADDR(sched_addr) ((char *)(sched_addr) + SCHED_RUNQ_HEAD_OFFSET)
+#define SCHED_GET_RUNQ_SIZE_ADDR(sched_addr) ((char *)(sched_addr) + SCHED_RUNQ_SIZE_OFFSET)
+
+struct globrunq_status_event {
+    uint64_t etype;
+    uint64_t pc;
+    uint64_t callerpc;
+    // The globrunq is a linked structure instead of a fixed-cap array (as local
+    // runq is). We chunk it into fixed-cap arrays if needed and put each array
+    // ("runq") into a ringbuf entry. In addition an extra field ("size") is
+    // used to indicate the length of each array, so when a ringbuf entry has
+    // size less then P_LOCAL_RUNQ_MAX_LEN we know it's the last chunk.
+    uint64_t size;
+    struct runq_entry runq[P_LOCAL_RUNQ_MAX_LEN];
+};
+
+// Make sure the target attachmend point of this probe has exclusive access to
+// the lock of globrunq (this should hold true for most, if not all, functions
+// that read/write the runtime.sched global variable), so that the submitted
+// ringbuf entries are not interleaved.
+SEC("uprobe/globrunq_status")
+int BPF_UPROBE(globrunq_status) {
+    char *g_ptr;
+    uint64_t pc, callerpc;
+    int32_t runq_i, runq_size, curr_runq_i;
+    struct globrunq_status_event *e;
+
+    pc = CURR_PC(ctx);
+    bpf_probe_read_user(&callerpc, sizeof(uint64_t), CURR_STACK_TOP(ctx));
+    bpf_probe_read_user(&g_ptr, sizeof(char *), SCHED_GET_RUNQ_HEAD_ADDR(runtime_sched_addr));
+    bpf_probe_read_user(&runq_size, sizeof(int32_t), SCHED_GET_RUNQ_SIZE_ADDR(runtime_sched_addr));
+    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct globrunq_status_event), 0);
+    if (!e) {
+        bpf_printk("bpf_ringbuf_reserve failed in globrunq_status");
+        return 1;
+    }
+    e->etype = EVENT_TYPE_GLOBRUNQ_STATUS;
+    e->pc = pc;
+    e->callerpc = callerpc;
+    for (runq_i = 0; runq_i < runq_size; runq_i++) {
+        curr_runq_i = runq_i % P_LOCAL_RUNQ_MAX_LEN;
+        if (runq_i > 0 && curr_runq_i == 0) {
+            e->size = P_LOCAL_RUNQ_MAX_LEN;
+            bpf_ringbuf_submit(e, 0);
+            e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct globrunq_status_event), 0);
+            if (!e) {
+                bpf_printk("bpf_ringbuf_reserve failed in globrunq_status");
+                return 1;
+            }
+            e->etype = EVENT_TYPE_GLOBRUNQ_STATUS;
+            e->pc = pc;
+            e->callerpc = callerpc;
+        }
+        bpf_probe_read_user(&(e->runq[curr_runq_i].goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+        bpf_probe_read_user(&(e->runq[curr_runq_i].pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
+        bpf_probe_read_user(&(e->runq[curr_runq_i].status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
+        bpf_probe_read_user(&g_ptr, sizeof(char *), GET_SCHEDLINK_ADDR(g_ptr));
+        // The verifier will report an error if the total number of iterations
+        // is unbounded (which is the case for "runq_size" since its value is
+        // read dynamically at runtime). Set a max allowable iteration count as
+        // a workaround here.
+        if (runq_size > P_LOCAL_RUNQ_MAX_LEN * 4) {
+            bpf_printk("globrunq size %d is greater than the max length that can be handled");
+            bpf_ringbuf_discard(e, 0);
+            return 1;
+        }
+    }
+    e->size = runq_i % P_LOCAL_RUNQ_MAX_LEN;
+    bpf_ringbuf_submit(e, 0);   
     return 0;
 }

@@ -21,7 +21,9 @@ func main() {
 	log.Printf("Byte order: %v\n", byteOrder)
 
 	interpreter := NewELFInterpreter(*targetPath)
-	instrumentor := NewInstrumentor(interpreter, bpfProg)
+	instrumentor := NewInstrumentor(interpreter, bpfProg, WithGlobalVariableAddrs([]GlobalVariable{
+		{NameInBPFProg: "runtime_sched_addr", NameInTargetProg: "runtime.sched"},
+	}))
 	defer instrumentor.Close()
 	instrumentor.InstrumentEntry(UprobeAttachSpec{
 		targetPkg: "runtime",
@@ -48,11 +50,21 @@ func main() {
 		targetFn:  "runqsteal",
 		bpfFn:     "go_runqsteal_ret_runq_status",
 	})
-	instrumentor.InstrumentEntry((UprobeAttachSpec{
+	instrumentor.InstrumentEntry(UprobeAttachSpec{
 		targetPkg: "runtime",
 		targetFn:  "execute",
 		bpfFn:     "go_execute",
-	}))
+	})
+	instrumentor.InstrumentReturns(UprobeAttachSpec{
+		targetPkg: "runtime",
+		targetFn:  "globrunqget",
+		bpfFn:     "globrunq_status",
+	})
+	instrumentor.InstrumentReturns(UprobeAttachSpec{
+		targetPkg: "runtime",
+		targetFn:  "globrunqput",
+		bpfFn:     "globrunq_status",
+	})
 	instrumentor.Delay(UprobeAttachSpec{
 		targetPkg: "main",
 		bpfFn:     "delay",

@@ -27,6 +27,7 @@ const (
 	EVENT_TYPE_RUNQ_STATUS
 	EVENT_TYPE_RUNQ_STEAL
 	EVENT_TYPE_EXECUTE
+	EVENT_TYPE_GLOBAL_RUNQ_STATUS
 )
 
 type newprocEvent struct {
@@ -96,6 +97,13 @@ type executeEvent struct {
 	callStack
 }
 
+type globalRunqStatusEvent struct {
+	EType eventType
+	callStack
+	Size uint64
+	Runq [localRunqLen]runqEntry
+}
+
 type callStack struct {
 	PC       uint64
 	CallerPC uint64
@@ -119,6 +127,7 @@ type EventReader struct {
 	ringbufReader *ringbuf.Reader
 	eventCh       chan ringbuf.Record
 	byteOrder     binary.ByteOrder
+	globrunq      []runqEntry
 }
 
 func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventReader {
@@ -198,7 +207,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if fn == nil {
 			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
 		}
-		log.Printf("newproc invoked in goroutine %d (function: %s, file: %s, line: %d)\n", event.CreatorGoID, fn.Name, file, line)
+		log.Printf("newproc invoked in goroutine %d (function: %s, file: %s, line: %d)", event.CreatorGoID, fn.Name, file, line)
 	case EVENT_TYPE_DELAY:
 		var event delayEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -215,7 +224,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil || !r.shouldKeepEvent(event) {
 			break
 		}
-		log.Printf("In %s, runq status on processor %d: runq (head %d, tail %d): %s, runnext: %s)\n",
+		log.Printf("In %s, runq status on processor %d: runq (head %d, tail %d): %s, runnext: %s)",
 			r.interpretAndFmtPC(event.PC), event.ProcID, event.Runqhead, event.Runqtail, r.interpretAndFmtRunqEntries(event.LocalRunq[event.Runqhead:event.Runqtail]), r.interpretAndFmtRunqEntry(event.Runnext))
 	case EVENT_TYPE_RUNQ_STEAL:
 		var event runqStealEvent
@@ -232,6 +241,17 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		log.Printf("Executing GoID %d (function: %s) on processor %d",
 			event.GoID, r.interpretAndFmtPC(event.GoPC), event.ProcID)
+	case EVENT_TYPE_GLOBAL_RUNQ_STATUS:
+		var event globalRunqStatusEvent
+		err = binary.Read(readSeeker, r.byteOrder, &event)
+		if err != nil {
+			break
+		}
+		r.globrunq = append(r.globrunq, event.Runq[:event.Size]...)
+		if event.Size < localRunqLen {
+			log.Printf("In %s, global runq status: %s", r.interpretAndFmtPC(event.PC), r.interpretAndFmtRunqEntries(r.globrunq))
+			r.globrunq = []runqEntry{}
+		}
 	default:
 		err = fmt.Errorf("unrecognized event type")
 	}

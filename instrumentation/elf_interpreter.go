@@ -182,3 +182,14 @@ func (ei *ELFInterpreter) GetFunctionStartOffset(fnName string) (uint64, error) 
 	}
 	return uint64(offset), nil
 }
+
+func (ei *ELFInterpreter) GetGlobalVariableAddr(varName string) uint64 {
+	var targetSym elf.Symbol
+	for _, sym := range ei.symbols {
+		if sym.Name == varName {
+			targetSym = sym
+			break
+		}
+	}
+	return targetSym.Value
+}
