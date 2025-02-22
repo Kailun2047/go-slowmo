@@ -33,7 +33,7 @@ func main() {
 	startTime := time.Now().UnixMilli()
 	defer func() {
 		endTime := time.Now().UnixMilli()
-		log.Printf("Time elapsed: %d\n", endTime-startTime)
+		log.Printf("Time elapsed: %d ms\n", endTime-startTime)
 	}()
 
 	names := []string{"Mauro", "Lucas", "Kerem"}

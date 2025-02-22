@@ -66,6 +66,9 @@ func (r *EventReader) interpretAndFmtRunqEntries(entries []runqEntry) string {
 }
 
 func (r *EventReader) interpretAndFmtRunqEntry(entry runqEntry) string {
+	if entry.PC == 0 {
+		return "nil"
+	}
 	return fmt.Sprintf("PC: %s, GoID: %d, Status: %d", r.interpretAndFmtPC(entry.PC), entry.GoID, entry.Status)
 }
 
@@ -239,7 +242,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil || !r.shouldKeepEvent(event) {
 			break
 		}
-		log.Printf("Executing GoID %d (function: %s) on processor %d",
+		log.Printf("Executing GoID: %d (function: %s) on processor %d",
 			event.GoID, r.interpretAndFmtPC(event.GoPC), event.ProcID)
 	case EVENT_TYPE_GLOBAL_RUNQ_STATUS:
 		var event globalRunqStatusEvent

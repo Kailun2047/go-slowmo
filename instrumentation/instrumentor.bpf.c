@@ -165,7 +165,7 @@ int BPF_UPROBE(go_execute) {
     struct execute_event *e;
     char *m_ptr, *p_ptr, *g_ptr;
 
-    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_status_event), 0);
+    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct execute_event), 0);
     if (!e) {
         bpf_printk("bpf_ringbuf_reserve failed in go_execute");
         return 1;
