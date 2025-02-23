@@ -2,12 +2,10 @@ package main
 
 import (
 	"flag"
-	"log"
 )
 
 const (
-	bpfProg      = "instrumentor.o"
-	localRunqLen = 256
+	bpfProg = "instrumentor.o"
 )
 
 var (
@@ -16,9 +14,6 @@ var (
 
 func main() {
 	flag.Parse()
-
-	byteOrder := determineByteOrder()
-	log.Printf("Byte order: %v\n", byteOrder)
 
 	interpreter := NewELFInterpreter(*targetPath)
 	instrumentor := NewInstrumentor(interpreter, bpfProg, WithGlobalVariableAddrs([]GlobalVariable{

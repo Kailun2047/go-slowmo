@@ -71,6 +71,7 @@ struct delay_event {
 };
 
 struct runq_entry {
+    // A zero PC indicate an empty entry.
     uint64_t pc;
     uint64_t goid;
     // g status is actually uint32_t but use uint64_t to work around binary
@@ -83,10 +84,13 @@ struct runq_status_event {
     int64_t procid;
     uint64_t pc;
     uint64_t callerpc;
-    uint32_t runqhead;
-    uint32_t runqtail;
-    struct runq_entry local_runq[P_LOCAL_RUNQ_MAX_LEN];
-    struct runq_entry runnext;
+    uint64_t runqhead;
+    uint64_t runqtail;
+    // The index of the reported runq entry. When runq_entry_idx = runqtail, it
+    // indicates the runq_entry field holds the content of runnext, and the
+    // userspace can take it as the last event of the reported runq.
+    uint64_t runq_entry_idx;
+    struct runq_entry runq_entry;
 };
 
 struct runq_steal_event {
@@ -210,14 +214,11 @@ int BPF_UPROBE(go_runqsteal_ret_runq_status) {
 
 SEC("uprobe/go_runtime_func_ret_runq_status")
 int BPF_UPROBE(go_runtime_func_ret_runq_status) {
-    uint32_t runq_i, local_runq_entry_i, local_runq_entry_num;
+    uint32_t runq_i, local_runq_entry_i;
     char *m_ptr, *p_ptr;
 
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
-    if (!p_ptr) {
-        return 1;
-    }
     // BCC treats p_ptr as scalar (because it is calculated by adding scalar to
     // memory reference) so we need to make report_local_runq_status accept p's
     // address as scalar value and cast p_ptr.
@@ -227,43 +228,46 @@ int BPF_UPROBE(go_runtime_func_ret_runq_status) {
 int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) {
     struct runq_status_event *e;
     char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar);
-    uint32_t runq_i, local_runq_entry_i, local_runq_entry_num;
+    uint32_t runqhead, runqtail;
+    uint64_t runq_i;
+    uint64_t pc, callerpc;
+    int32_t procid;
 
-    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_status_event), 0);
-    if (!e) {
-        bpf_printk("bpf_ringbuf_reserve failed in go_runtime_func_ret_runq_status");
-        return 1;
-    }
-    e->etype = EVENT_TYPE_RUNQ_STATUS;
-    e->pc = CURR_PC(ctx);
-    bpf_probe_read_user(&e->callerpc, sizeof(uint64_t), CURR_STACK_TOP(ctx));
-    bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
-    bpf_probe_read_user(&e->runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
-    bpf_probe_read_user(&e->runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
+    pc = CURR_PC(ctx);
+    bpf_probe_read_user(&callerpc, sizeof(uint64_t), CURR_STACK_TOP(ctx));
+    bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
+    bpf_probe_read_user(&runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
+    bpf_probe_read_user(&runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
     local_runq = GET_P_RUNQ_ADDR(p_ptr);
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
-    bpf_probe_read_user(&e->runnext.goid, sizeof(uint64_t), GET_GOID_ADDR(runnext_g_ptr));
-    bpf_probe_read_user(&e->runnext.pc, sizeof(uint64_t), GET_PC_ADDR(runnext_g_ptr));
-    bpf_probe_read_user(&e->runnext.status, sizeof(uint32_t), GET_STATUS_ADDR(runnext_g_ptr));
 
-    // Store (e->runqhead - e->runqtail) into local variable and check it in
-    // every iteration to prevent the verifier from complaining about potential
-    // unbounded memory access.
-    local_runq_entry_num = e->runqtail - e->runqhead;
-    local_runq_entry_i = e->runqhead % P_LOCAL_RUNQ_MAX_LEN;
-    for (runq_i = 0; runq_i < local_runq_entry_num; runq_i++) {
-        local_runq_entry_i = (local_runq_entry_i + runq_i) % P_LOCAL_RUNQ_MAX_LEN;
-        bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + local_runq_entry_i * sizeof(char *)));
-        bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
-        bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
-        bpf_probe_read_user(&(e->local_runq[local_runq_entry_i].status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
-        if (local_runq_entry_num > P_LOCAL_RUNQ_MAX_LEN) {
-            bpf_printk("distance from runqhead to runqtail is greater than max runq length");
-            bpf_ringbuf_discard(e, 0);
+    bpf_for(runq_i, runqhead, runqtail + 1) {
+        e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_status_event), 0);
+        if (!e) {
+            bpf_printk("bpf_ringbuf_reserve failed for local runq entry in go_runtime_func_ret_runq_status");
             return 1;
         }
+        e->etype = EVENT_TYPE_RUNQ_STATUS;
+        e->pc = pc;
+        e->runq_entry_idx = runq_i;
+        e->callerpc = callerpc;
+        e->procid = procid;
+        e->runqhead = runqhead;
+        e->runqtail = runqtail;
+        if (runq_i == runqtail) {
+            g_ptr = runnext_g_ptr;
+        } else {
+            bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + (runq_i % P_LOCAL_RUNQ_MAX_LEN) * sizeof(char *)));
+        }
+        if (!g_ptr) {
+            e->runq_entry.pc = 0;
+        } else {
+            bpf_probe_read_user(&(e->runq_entry.goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+            bpf_probe_read_user(&(e->runq_entry.pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
+            bpf_probe_read_user(&(e->runq_entry.status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
+        }
+        bpf_ringbuf_submit(e, 0);
     }
-    bpf_ringbuf_submit(e, 0);
     return 0;
 }
 
@@ -291,6 +295,9 @@ int BPF_UPROBE(delay) {
     return 0;
 }
 
+// The compiler doesn't know runtime_sched_addr is assigned in userspace. Use
+// "volatile" to avoid having runtime_sched_addr treated as an ununsed variable
+// and optimized away by compiler.
 volatile const __u64 runtime_sched_addr;
 
 #define SCHED_RUNQ_HEAD_OFFSET 104
@@ -303,29 +310,45 @@ struct globrunq_status_event {
     uint64_t pc;
     uint64_t callerpc;
     // The globrunq is a linked structure instead of a fixed-cap array (as local
-    // runq is). We chunk it into fixed-cap arrays if needed and put each array
-    // ("runq") into a ringbuf entry. In addition an extra field ("size") is
-    // used to indicate the length of each array, so when a ringbuf entry has
-    // size less then P_LOCAL_RUNQ_MAX_LEN we know it's the last chunk.
-    uint64_t size;
-    struct runq_entry runq[P_LOCAL_RUNQ_MAX_LEN];
+    // runq is), but we have access to its size. So the userspace knows the
+    // event marks the end of globrunq when runq_entry_idx = size - 1.
+    int64_t size;
+    uint64_t runq_entry_idx;
+    struct runq_entry runq_entry;
 };
 
-// Make sure the target attachmend point of this probe has exclusive access to
-// the lock of globrunq (this should hold true for most, if not all, functions
-// that read/write the runtime.sched global variable), so that the submitted
-// ringbuf entries are not interleaved.
 SEC("uprobe/globrunq_status")
 int BPF_UPROBE(globrunq_status) {
     char *g_ptr;
     uint64_t pc, callerpc;
-    int32_t runq_i, runq_size, curr_runq_i;
+    int64_t runq_size;
+    uint64_t runq_i;
     struct globrunq_status_event *e;
 
     pc = CURR_PC(ctx);
     bpf_probe_read_user(&callerpc, sizeof(uint64_t), CURR_STACK_TOP(ctx));
     bpf_probe_read_user(&g_ptr, sizeof(char *), SCHED_GET_RUNQ_HEAD_ADDR(runtime_sched_addr));
     bpf_probe_read_user(&runq_size, sizeof(int32_t), SCHED_GET_RUNQ_SIZE_ADDR(runtime_sched_addr));
+
+    bpf_for(runq_i, 0, runq_size) {
+        e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct globrunq_status_event), 0);
+        if (!e) {
+            bpf_printk("bpf_ringbuf_reserve failed in globrunq_status");
+            return 1;
+        }
+        e->etype = EVENT_TYPE_GLOBRUNQ_STATUS;
+        e->pc = pc;
+        e->callerpc = callerpc;
+        e->size = runq_size;
+        e->runq_entry_idx = runq_i;
+        bpf_probe_read_user(&(e->runq_entry.goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+        bpf_probe_read_user(&(e->runq_entry.pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
+        bpf_probe_read_user(&(e->runq_entry.status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
+        bpf_probe_read_user(&g_ptr, sizeof(char *), GET_SCHEDLINK_ADDR(g_ptr));
+        bpf_ringbuf_submit(e, 0);
+    }
+
+    // Report an empty entry to indicate the end of globrunq.
     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct globrunq_status_event), 0);
     if (!e) {
         bpf_printk("bpf_ringbuf_reserve failed in globrunq_status");
@@ -334,35 +357,9 @@ int BPF_UPROBE(globrunq_status) {
     e->etype = EVENT_TYPE_GLOBRUNQ_STATUS;
     e->pc = pc;
     e->callerpc = callerpc;
-    for (runq_i = 0; runq_i < runq_size; runq_i++) {
-        curr_runq_i = runq_i % P_LOCAL_RUNQ_MAX_LEN;
-        if (runq_i > 0 && curr_runq_i == 0) {
-            e->size = P_LOCAL_RUNQ_MAX_LEN;
-            bpf_ringbuf_submit(e, 0);
-            e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct globrunq_status_event), 0);
-            if (!e) {
-                bpf_printk("bpf_ringbuf_reserve failed in globrunq_status");
-                return 1;
-            }
-            e->etype = EVENT_TYPE_GLOBRUNQ_STATUS;
-            e->pc = pc;
-            e->callerpc = callerpc;
-        }
-        bpf_probe_read_user(&(e->runq[curr_runq_i].goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
-        bpf_probe_read_user(&(e->runq[curr_runq_i].pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
-        bpf_probe_read_user(&(e->runq[curr_runq_i].status), sizeof(uint32_t), GET_STATUS_ADDR(g_ptr));
-        bpf_probe_read_user(&g_ptr, sizeof(char *), GET_SCHEDLINK_ADDR(g_ptr));
-        // The verifier will report an error if the total number of iterations
-        // is unbounded (which is the case for "runq_size" since its value is
-        // read dynamically at runtime). Set a max allowable iteration count as
-        // a workaround here.
-        if (runq_size > P_LOCAL_RUNQ_MAX_LEN * 4) {
-            bpf_printk("globrunq size %d is greater than the max length that can be handled");
-            bpf_ringbuf_discard(e, 0);
-            return 1;
-        }
-    }
-    e->size = runq_i % P_LOCAL_RUNQ_MAX_LEN;
-    bpf_ringbuf_submit(e, 0);   
+    e->size = runq_size;
+    e->runq_entry_idx = runq_size;
+    e->runq_entry.pc = 0;
+    bpf_ringbuf_submit(e, 0);
     return 0;
 }

@@ -39,15 +39,22 @@ type runqStatusEvent struct {
 	EType  eventType
 	ProcID int64
 	callStack
-	Runqhead  uint32
-	Runqtail  uint32
-	LocalRunq [localRunqLen]runqEntry
-	Runnext   runqEntry
+	Runqhead uint64
+	Runqtail uint64
+	indexedRunqEntry
+}
+type indexedRunqEntry struct {
+	RunqEntryIdx uint64
+	RunqEntry    runqEntry
 }
 type runqEntry struct {
 	PC     uint64
 	GoID   uint64
 	Status uint64
+}
+
+func isEmptyEntry(entry runqEntry) bool {
+	return entry.PC == 0
 }
 
 func (r *EventReader) interpretAndFmtRunqEntries(entries []runqEntry) string {
@@ -66,7 +73,7 @@ func (r *EventReader) interpretAndFmtRunqEntries(entries []runqEntry) string {
 }
 
 func (r *EventReader) interpretAndFmtRunqEntry(entry runqEntry) string {
-	if entry.PC == 0 {
+	if isEmptyEntry(entry) {
 		return "nil"
 	}
 	return fmt.Sprintf("PC: %s, GoID: %d, Status: %d", r.interpretAndFmtPC(entry.PC), entry.GoID, entry.Status)
@@ -103,8 +110,8 @@ type executeEvent struct {
 type globalRunqStatusEvent struct {
 	EType eventType
 	callStack
-	Size uint64
-	Runq [localRunqLen]runqEntry
+	Size int64
+	indexedRunqEntry
 }
 
 type callStack struct {
@@ -130,6 +137,7 @@ type EventReader struct {
 	ringbufReader *ringbuf.Reader
 	eventCh       chan ringbuf.Record
 	byteOrder     binary.ByteOrder
+	localRunqs    map[int64][]runqEntry
 	globrunq      []runqEntry
 }
 
@@ -143,6 +151,7 @@ func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventRea
 		ringbufReader: ringbufReader,
 		eventCh:       make(chan ringbuf.Record),
 		byteOrder:     determineByteOrder(),
+		localRunqs:    make(map[int64][]runqEntry),
 	}
 }
 
@@ -210,7 +219,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if fn == nil {
 			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
 		}
-		log.Printf("newproc invoked in goroutine %d (function: %s, file: %s, line: %d)", event.CreatorGoID, fn.Name, file, line)
+		log.Printf("newproc invoked in GoID: %d (function: %s, file: %s, line: %d)", event.CreatorGoID, fn.Name, file, line)
 	case EVENT_TYPE_DELAY:
 		var event delayEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -227,8 +236,16 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil || !r.shouldKeepEvent(event) {
 			break
 		}
-		log.Printf("In %s, runq status on processor %d: runq (head %d, tail %d): %s, runnext: %s)",
-			r.interpretAndFmtPC(event.PC), event.ProcID, event.Runqhead, event.Runqtail, r.interpretAndFmtRunqEntries(event.LocalRunq[event.Runqhead:event.Runqtail]), r.interpretAndFmtRunqEntry(event.Runnext))
+		if _, ok := r.localRunqs[event.ProcID]; !ok {
+			r.localRunqs[event.ProcID] = []runqEntry{}
+		}
+		if event.RunqEntryIdx == uint64(event.Runqtail) {
+			log.Printf("In %s, runq status on processor %d: runq (head %d, tail %d): %s, runnext: %s)",
+				r.interpretAndFmtPC(event.PC), event.ProcID, event.Runqhead, event.Runqtail, r.interpretAndFmtRunqEntries(r.localRunqs[event.ProcID]), r.interpretAndFmtRunqEntry(event.RunqEntry))
+			delete(r.localRunqs, event.ProcID)
+		} else {
+			r.localRunqs[event.ProcID] = append(r.localRunqs[event.ProcID], event.RunqEntry)
+		}
 	case EVENT_TYPE_RUNQ_STEAL:
 		var event runqStealEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -250,10 +267,11 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil {
 			break
 		}
-		r.globrunq = append(r.globrunq, event.Runq[:event.Size]...)
-		if event.Size < localRunqLen {
+		if event.RunqEntryIdx == uint64(event.Size) {
 			log.Printf("In %s, global runq status: %s", r.interpretAndFmtPC(event.PC), r.interpretAndFmtRunqEntries(r.globrunq))
 			r.globrunq = []runqEntry{}
+		} else {
+			r.globrunq = append(r.globrunq, event.RunqEntry)
 		}
 	default:
 		err = fmt.Errorf("unrecognized event type")
