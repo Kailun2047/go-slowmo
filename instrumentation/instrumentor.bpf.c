@@ -135,7 +135,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __type(key, uint64_t);
     __type(value, uint64_t);
-    __uint(max_entries, 8);
+    __uint(max_entries, 8); // TODO: use GOMAXPROCS
 } runq_stealing SEC(".maps");
 
 SEC("uprobe/go_runqsteal")
@@ -363,3 +363,24 @@ int BPF_UPROBE(globrunq_status) {
     bpf_ringbuf_submit(e, 0);
     return 0;
 }
+
+#define MAX_PCTAB_SIZE 1024*1024 // TODO: figure out a reasonable value
+
+struct go_pctab {
+    uint64_t size;
+    uint64_t data_addr;
+};
+
+volatile const struct go_pctab pctab;
+
+struct go_func_info {
+    uint64_t entry_pc;
+    uint32_t pcsp; // pcsp table (offset to pc-value table)
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __type(key, uint32_t);
+    __type(value, struct go_func_info);
+    __uint(max_entries, 256 * 1024);
+} go_functab SEC(".maps");

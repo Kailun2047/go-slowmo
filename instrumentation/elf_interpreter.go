@@ -6,8 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"reflect"
 
 	"golang.org/x/arch/x86/x86asm"
+)
+
+const (
+	symTabFieldNameGo12Line = "go12line"
+	lnTabFieldNamePCTab     = "pctab"
 )
 
 type ELFInterpreter struct {
@@ -191,5 +197,20 @@ func (ei *ELFInterpreter) GetGlobalVariableAddr(varName string) uint64 {
 			break
 		}
 	}
+	if targetSym.Value == 0 {
+		log.Fatalf("Global variable %s not found in target program", varName)
+	}
 	return targetSym.Value
+}
+
+func (ei *ELFInterpreter) GetPCTab() []byte {
+	symTabV := reflect.ValueOf(ei.goSymTab)
+	lnTabP := symTabV.FieldByName(symTabFieldNameGo12Line)
+	lnTabV := lnTabP.Elem()
+	return lnTabV.FieldByName(lnTabFieldNamePCTab).Interface().([]byte)
+}
+
+func (ei *ELFInterpreter) ParseFuncTab() []instrumentorGoFuncInfo {
+	// TODO: retrieve pcsp offsets of all functions.
+	return nil
 }

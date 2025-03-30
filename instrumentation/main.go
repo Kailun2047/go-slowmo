@@ -2,6 +2,10 @@ package main
 
 import (
 	"flag"
+	"log"
+	"unsafe"
+
+	"github.com/cilium/ebpf"
 )
 
 const (
@@ -16,10 +20,32 @@ func main() {
 	flag.Parse()
 
 	interpreter := NewELFInterpreter(*targetPath)
-	instrumentor := NewInstrumentor(interpreter, bpfProg, WithGlobalVariableAddrs([]GlobalVariable{
-		{NameInBPFProg: "runtime_sched_addr", NameInTargetProg: "runtime.sched"},
-	}))
+
+	addr := interpreter.GetGlobalVariableAddr("runtime.sched")
+	pctab := interpreter.GetPCTab()
+	instrumentor := NewInstrumentor(
+		interpreter, bpfProg,
+		WithGlobalVariable(GlobalVariable[uint64]{
+			NameInBPFProg: "runtime_sched_addr",
+			Value:         addr,
+		}),
+		WithGlobalVariable(GlobalVariable[instrumentorGoPctab]{
+			NameInBPFProg: "pctab",
+			Value:         instrumentorGoPctab{Size: uint64(len(pctab)), DataAddr: *(*uint64)(unsafe.Pointer(&pctab[0]))},
+		}),
+	)
+
+	functabMap := instrumentor.GetMap("go_functab")
+	funcTab := interpreter.ParseFuncTab()
+	for i, funcInfo := range funcTab {
+		err := functabMap.Update(i, funcInfo, ebpf.UpdateNoExist)
+		if err != nil {
+			log.Fatalf("error writing function info %v into go_functab map: %v", funcInfo, err)
+		}
+	}
+
 	defer instrumentor.Close()
+
 	instrumentor.InstrumentEntry(UprobeAttachSpec{
 		targetPkg: "runtime",
 		targetFn:  "newproc",

@@ -25,23 +25,22 @@ type Instrumentor struct {
 
 type InstrumentorOption func(*ELFInterpreter, *ebpf.CollectionSpec)
 
-type GlobalVariable struct {
-	NameInBPFProg, NameInTargetProg string
+type GlobalVariableValue interface {
+	uint64 | instrumentorGoPctab
 }
 
-func WithGlobalVariableAddrs(variables []GlobalVariable) InstrumentorOption {
+type GlobalVariable[T GlobalVariableValue] struct {
+	NameInBPFProg string
+	Value         T
+}
+
+func WithGlobalVariable[T GlobalVariableValue](variable GlobalVariable[T]) InstrumentorOption {
 	return func(interpreter *ELFInterpreter, spec *ebpf.CollectionSpec) {
-		for _, variable := range variables {
-			varSpec := spec.Variables[variable.NameInBPFProg]
-			if varSpec == nil {
-				log.Fatalf("Global variable %s not found in loaded BPF specification", variable.NameInBPFProg)
-			}
-			addr := interpreter.GetGlobalVariableAddr(variable.NameInTargetProg)
-			if addr == 0 {
-				log.Fatalf("Global variable %s not found in target program", variable.NameInTargetProg)
-			}
-			varSpec.Set(addr)
+		varSpec := spec.Variables[variable.NameInBPFProg]
+		if varSpec == nil {
+			log.Fatalf("Global variable %s not found in loaded BPF specification", variable.NameInBPFProg)
 		}
+		varSpec.Set(variable.Value)
 	}
 }
 
