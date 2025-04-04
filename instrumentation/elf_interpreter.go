@@ -3,10 +3,12 @@ package main
 import (
 	"debug/elf"
 	"debug/gosym"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
 	"reflect"
+	"unsafe"
 
 	"golang.org/x/arch/x86/x86asm"
 )
@@ -14,12 +16,25 @@ import (
 const (
 	symTabFieldNameGo12Line = "go12line"
 	lnTabFieldNamePCTab     = "pctab"
+	lnTabFieldNameFuncTabN  = "nfunctab"
+	lnTabFieldNameTextStart = "textStart"
+
+	// functab and funcdata are 2 parts of a single byte chunk, where functab
+	// acts as index and funcdata is the actual data (i.e. _func structures).
+	lnTabFieldNameFuncTab  = "functab"
+	lnTabFieldNameFuncData = "functab"
+
+	funcInfoFieldIdxPCSP = 4
 )
 
 type ELFInterpreter struct {
 	goSymTab *gosym.Table
+	goLnTab  *gosym.LineTable
 	symbols  []elf.Symbol
 	text     *elf.Section
+	// The byte order info is actually included as an unexported field in
+	// LineTable. Retrieve and store it in a dedicated field for convenience.
+	byteOrder binary.ByteOrder
 }
 
 func NewELFInterpreter(prog string) *ELFInterpreter {
@@ -31,14 +46,17 @@ func NewELFInterpreter(prog string) *ELFInterpreter {
 	if err != nil {
 		log.Fatalf("Load ELF symbols for file %s: %v\n", prog, err)
 	}
+	lnTab, symTab := getGoSymbolTable(exe)
 	return &ELFInterpreter{
-		goSymTab: getGoSymbolTable(exe),
-		symbols:  symbols,
-		text:     getSection(exe, ".text"),
+		goSymTab:  symTab,
+		goLnTab:   lnTab,
+		symbols:   symbols,
+		text:      getSection(exe, ".text"),
+		byteOrder: determineByteOrder(),
 	}
 }
 
-func getGoSymbolTable(exe *elf.File) *gosym.Table {
+func getGoSymbolTable(exe *elf.File) (*gosym.LineTable, *gosym.Table) {
 	textSeg := getSection(exe, ".text")
 	lnTabSeg := getSection(exe, ".gopclntab")
 	lnTabData, err := lnTabSeg.Data()
@@ -56,7 +74,7 @@ func getGoSymbolTable(exe *elf.File) *gosym.Table {
 	if err != nil {
 		log.Fatal("Create symbol table: ", err)
 	}
-	return tab
+	return lnTab, tab
 }
 
 func getSection(exe *elf.File, name string) *elf.Section {
@@ -204,13 +222,41 @@ func (ei *ELFInterpreter) GetGlobalVariableAddr(varName string) uint64 {
 }
 
 func (ei *ELFInterpreter) GetPCTab() []byte {
-	symTabV := reflect.ValueOf(ei.goSymTab)
-	lnTabP := symTabV.FieldByName(symTabFieldNameGo12Line)
-	lnTabV := lnTabP.Elem()
-	return lnTabV.FieldByName(lnTabFieldNamePCTab).Interface().([]byte)
+	lnTabV := reflect.ValueOf(ei.goLnTab).Elem()
+	pcTabV := lnTabV.FieldByName(lnTabFieldNamePCTab)
+	return *(*[]byte)(unsafe.Pointer(pcTabV.UnsafeAddr()))
 }
 
 func (ei *ELFInterpreter) ParseFuncTab() []instrumentorGoFuncInfo {
-	// TODO: retrieve pcsp offsets of all functions.
-	return nil
+	var (
+		res              []instrumentorGoFuncInfo
+		nfunctab         uint32
+		funcTab          []byte
+		funcData         []byte
+		funcTabFieldSize = 4 // Size in bytes of a single functab field; 4 for go version >= 1.18
+		textStart        uint64
+	)
+	lnTabV := reflect.ValueOf(ei.goLnTab).Elem()
+	nfunctab = uint32(lnTabV.FieldByName(lnTabFieldNameFuncTabN).Uint())
+	funcTabV := lnTabV.FieldByName(lnTabFieldNameFuncTab)
+	funcTab = *(*[]byte)(unsafe.Pointer(funcTabV.UnsafeAddr()))
+	funcDataV := lnTabV.FieldByName(lnTabFieldNameFuncData)
+	funcData = *(*[]byte)(unsafe.Pointer(funcDataV.UnsafeAddr()))
+	textStart = lnTabV.FieldByName(lnTabFieldNameTextStart).Uint()
+
+	for i := range nfunctab {
+		funcOff := uint64(ei.byteOrder.Uint32(funcTab[(2*i+1)*uint32(funcTabFieldSize):]))
+		funcInfoData := funcData[funcOff:] // The byte chunk of _func struct
+
+		// In Go 1.18, the first field of _func changed from a uintptr entry PC
+		// to a uint32 entry offset. All other fields are also 4 byte each.
+		entryOff := uint64(ei.byteOrder.Uint32(funcInfoData))
+		pcsp := ei.byteOrder.Uint32(funcInfoData[4*funcInfoFieldIdxPCSP:])
+		res = append(res, instrumentorGoFuncInfo{
+			EntryPc: textStart + entryOff,
+			Pcsp:    pcsp,
+		})
+	}
+
+	return res
 }

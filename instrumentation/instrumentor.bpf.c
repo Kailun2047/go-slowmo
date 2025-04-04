@@ -364,8 +364,6 @@ int BPF_UPROBE(globrunq_status) {
     return 0;
 }
 
-#define MAX_PCTAB_SIZE 1024*1024 // TODO: figure out a reasonable value
-
 struct go_pctab {
     uint64_t size;
     uint64_t data_addr;
