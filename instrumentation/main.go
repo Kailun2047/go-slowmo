@@ -21,17 +21,22 @@ func main() {
 
 	interpreter := NewELFInterpreter(*targetPath)
 
-	addr := interpreter.GetGlobalVariableAddr("runtime.sched")
+	runtimeSchedAddr := interpreter.GetGlobalVariableAddr("runtime.sched")
+	semTableAddr := interpreter.GetGlobalVariableAddr("runtime.semtable")
 	pctab := interpreter.GetPCTab()
 	instrumentor := NewInstrumentor(
 		interpreter, bpfProg,
 		WithGlobalVariable(GlobalVariable[uint64]{
 			NameInBPFProg: "runtime_sched_addr",
-			Value:         addr,
+			Value:         runtimeSchedAddr,
 		}),
 		WithGlobalVariable(GlobalVariable[instrumentorGoPctab]{
 			NameInBPFProg: "pctab",
 			Value:         instrumentorGoPctab{Size: uint64(len(pctab)), DataAddr: *(*uint64)(unsafe.Pointer(&pctab[0]))},
+		}),
+		WithGlobalVariable(GlobalVariable[uint64]{
+			NameInBPFProg: "semtab_addr",
+			Value:         semTableAddr,
 		}),
 	)
 
@@ -89,6 +94,11 @@ func main() {
 		targetFn:  "globrunqput",
 		bpfFn:     "globrunq_status",
 	})
+	instrumentor.InstrumentEntry((UprobeAttachSpec{
+		targetPkg: "runtime",
+		targetFn:  "gopark",
+		bpfFn:     "gopark",
+	}))
 	instrumentor.Delay(UprobeAttachSpec{
 		targetPkg: "main",
 		bpfFn:     "delay",

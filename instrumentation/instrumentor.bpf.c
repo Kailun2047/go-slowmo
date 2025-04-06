@@ -43,6 +43,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
 
 int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx);
+int report_semtable_status();
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -53,6 +54,7 @@ const uint64_t EVENT_TYPE_RUNQ_STATUS = 2;
 const uint64_t EVENT_TYPE_RUNQ_STEAL = 3;
 const uint64_t EVENT_TYPE_EXECUTE = 4;
 const uint64_t EVENT_TYPE_GLOBRUNQ_STATUS = 5;
+const uint64_t EVENT_TYPE_SEMTABLE_STATUS = 6;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -361,6 +363,69 @@ int BPF_UPROBE(globrunq_status) {
     e->runq_entry_idx = runq_size;
     e->runq_entry.pc = 0;
     bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+#define WAITREASON_SYNC_MUTEX_LOCK 21
+
+SEC("uprobe/gopark")
+int BPF_UPROBE(gopark) {
+    uint8_t waitreason;
+
+    waitreason = GO_PARAM3(ctx);
+    if (waitreason == WAITREASON_SYNC_MUTEX_LOCK) {
+        return report_semtable_status();
+    } else {
+        bpf_printk("unprobed gopark reason %d", waitreason);
+    }
+    return 0;
+}
+
+volatile const __u64 semtab_addr;
+
+#define SEMTAB_ENTRY_NUM 251
+#define SEMTAB_ENTRY_SIZE 64 // size of a Go sem table entry (padding included, different under different arch)
+#define SEMTAB_GET_SEMROOT_ADDR(semtab_addr, i) ((char *)(semtab_addr) + SEMTAB_ENTRY_SIZE*(i))
+#define SEMROOT_TREAP_OFFSET 24 // TODO: confirm offset (check if static lock rank is on by default)
+#define SEMROOT_GET_TREAP_ADDR(semroot_addr) ((char *)(semroot_addr) + SEMROOT_TREAP_OFFSET)
+#define MAX_SEMROOT_SUDOG_NUM 128 // need to limit the iteration down to a fixed num to pass the verifier
+#define SUDOG_NEXT_OFFSET 8
+#define SUDOG_GET_NEXT(sudog_addr) ((char *)(sudog_addr) + SUDOG_NEXT_OFFSET)
+
+struct semtable_status_event {
+    uint64_t etype;
+    uint64_t semroot_idx;
+    uint64_t goid;
+};
+
+int report_semtable_status() {
+    struct semtable_status_event *e;
+    uint8_t semroot_i, sudog_i;
+    char *semroot, *root_sudog, *sudog, *sudog_gp, *sudog_next;
+
+    bpf_for(semroot_i, 0, SEMTAB_ENTRY_NUM) {
+        bpf_probe_read_user(&semroot, sizeof(char *), SEMTAB_GET_SEMROOT_ADDR(semtab_addr, semroot_i));
+        bpf_probe_read_user(&root_sudog, sizeof(char *), SEMROOT_GET_TREAP_ADDR(semroot));
+        sudog = root_sudog;
+        bpf_for(sudog_i, 0, MAX_SEMROOT_SUDOG_NUM) {
+            e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct semtable_status_event), 0);
+            if (!e) {
+                bpf_printk("bpf_ringbuf_reserve failed in report_semtable_status");
+                return 1;
+            }
+            e->etype = EVENT_TYPE_SEMTABLE_STATUS;
+            e->semroot_idx = semroot_i;
+            sudog_gp = sudog; // pointer to g is the first field of sudog struct
+            bpf_probe_read_user(&(e->goid), sizeof(uint64_t), GET_GOID_ADDR(sudog_gp));
+            bpf_ringbuf_submit(e, 0);
+
+            bpf_probe_read_user(&sudog_next, sizeof(char *), SUDOG_GET_NEXT(sudog));
+            if (!sudog_next) {
+                return 0;
+            }
+            sudog = sudog_next;
+        }
+    }
     return 0;
 }
 
