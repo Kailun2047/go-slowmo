@@ -380,5 +380,5 @@ struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __type(key, uint32_t);
     __type(value, struct go_func_info);
-    __uint(max_entries, 256 * 1024);
+    __uint(max_entries, 8 * 1024);
 } go_functab SEC(".maps");

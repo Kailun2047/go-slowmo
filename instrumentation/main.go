@@ -38,9 +38,12 @@ func main() {
 	functabMap := instrumentor.GetMap("go_functab")
 	funcTab := interpreter.ParseFuncTab()
 	for i, funcInfo := range funcTab {
-		err := functabMap.Update(i, funcInfo, ebpf.UpdateNoExist)
+		// Note that for BPF map of array type, there will be max_entry of
+		// key-value pairs upon creation of the map. Therefore manipulation of
+		// any KV acts as updating an existing entry.
+		err := functabMap.Update(uint32(i), funcInfo, ebpf.UpdateExist)
 		if err != nil {
-			log.Fatalf("error writing function info %v into go_functab map: %v", funcInfo, err)
+			log.Fatalf("error writing function info into go_functab map; key: %d, value %+v, error: %v", i, funcInfo, err)
 		}
 	}
 

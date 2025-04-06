@@ -22,7 +22,7 @@ const (
 	// functab and funcdata are 2 parts of a single byte chunk, where functab
 	// acts as index and funcdata is the actual data (i.e. _func structures).
 	lnTabFieldNameFuncTab  = "functab"
-	lnTabFieldNameFuncData = "functab"
+	lnTabFieldNameFuncData = "funcdata"
 
 	funcInfoFieldIdxPCSP = 4
 )
