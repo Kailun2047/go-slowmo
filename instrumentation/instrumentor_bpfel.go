@@ -72,6 +72,7 @@ type instrumentorProgramSpecs struct {
 	GoRunqsteal                *ebpf.ProgramSpec `ebpf:"go_runqsteal"`
 	GoRunqstealRetRunqStatus   *ebpf.ProgramSpec `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.ProgramSpec `ebpf:"go_runtime_func_ret_runq_status"`
+	Gopark                     *ebpf.ProgramSpec `ebpf:"gopark"`
 }
 
 // instrumentorMapSpecs contains maps before they are loaded into the kernel.
@@ -81,6 +82,7 @@ type instrumentorMapSpecs struct {
 	GoFunctab         *ebpf.MapSpec `ebpf:"go_functab"`
 	InstrumentorEvent *ebpf.MapSpec `ebpf:"instrumentor_event"`
 	RunqStealing      *ebpf.MapSpec `ebpf:"runq_stealing"`
+	SudogStack        *ebpf.MapSpec `ebpf:"sudog_stack"`
 }
 
 // instrumentorVariableSpecs contains global variables before they are loaded into the kernel.
@@ -93,8 +95,11 @@ type instrumentorVariableSpecs struct {
 	EVENT_TYPE_NEWPROC         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
+	EVENT_TYPE_SEMTABLE_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
 	Pctab                      *ebpf.VariableSpec `ebpf:"pctab"`
 	RuntimeSchedAddr           *ebpf.VariableSpec `ebpf:"runtime_sched_addr"`
+	SemtabAddr                 *ebpf.VariableSpec `ebpf:"semtab_addr"`
+	SemtabVersion              *ebpf.VariableSpec `ebpf:"semtab_version"`
 }
 
 // instrumentorObjects contains all objects after they have been loaded into the kernel.
@@ -120,6 +125,7 @@ type instrumentorMaps struct {
 	GoFunctab         *ebpf.Map `ebpf:"go_functab"`
 	InstrumentorEvent *ebpf.Map `ebpf:"instrumentor_event"`
 	RunqStealing      *ebpf.Map `ebpf:"runq_stealing"`
+	SudogStack        *ebpf.Map `ebpf:"sudog_stack"`
 }
 
 func (m *instrumentorMaps) Close() error {
@@ -127,6 +133,7 @@ func (m *instrumentorMaps) Close() error {
 		m.GoFunctab,
 		m.InstrumentorEvent,
 		m.RunqStealing,
+		m.SudogStack,
 	)
 }
 
@@ -140,8 +147,11 @@ type instrumentorVariables struct {
 	EVENT_TYPE_NEWPROC         *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
+	EVENT_TYPE_SEMTABLE_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
 	Pctab                      *ebpf.Variable `ebpf:"pctab"`
 	RuntimeSchedAddr           *ebpf.Variable `ebpf:"runtime_sched_addr"`
+	SemtabAddr                 *ebpf.Variable `ebpf:"semtab_addr"`
+	SemtabVersion              *ebpf.Variable `ebpf:"semtab_version"`
 }
 
 // instrumentorPrograms contains all programs after they have been loaded into the kernel.
@@ -155,6 +165,7 @@ type instrumentorPrograms struct {
 	GoRunqsteal                *ebpf.Program `ebpf:"go_runqsteal"`
 	GoRunqstealRetRunqStatus   *ebpf.Program `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.Program `ebpf:"go_runtime_func_ret_runq_status"`
+	Gopark                     *ebpf.Program `ebpf:"gopark"`
 }
 
 func (p *instrumentorPrograms) Close() error {
@@ -166,6 +177,7 @@ func (p *instrumentorPrograms) Close() error {
 		p.GoRunqsteal,
 		p.GoRunqstealRetRunqStatus,
 		p.GoRuntimeFuncRetRunqStatus,
+		p.Gopark,
 	)
 }
 

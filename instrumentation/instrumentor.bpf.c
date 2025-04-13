@@ -12,7 +12,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define CURR_G_ADDR(x) ((x)->r14)
 #define CURR_PC(x) ((x)->rip)
 #define CURR_STACK_TOP(x) ((char *)((x)->rsp))
-#define MAX_DELAY_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
+#define MAX_LOOP_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
 #define DELAY_NS 1e9
 
 // TODO: to be compatible with different versions of Go, we should be able to
@@ -42,8 +42,10 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_RUNQ_ADDR(p_addr) ((char *)(p_addr) + P_RUNQ_OFFSET)
 #define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
 
-int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx);
-int report_semtable_status();
+static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx);
+static int report_semtable_status();
+static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version);
+static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -227,7 +229,7 @@ int BPF_UPROBE(go_runtime_func_ret_runq_status) {
     return report_local_runq_status((uint64_t)(p_ptr), ctx);
 }
 
-int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) {
+static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) {
     struct runq_status_event *e;
     char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar);
     uint32_t runqhead, runqtail;
@@ -288,7 +290,7 @@ int BPF_UPROBE(delay) {
     bpf_ringbuf_submit(e, 0);
 
     ns_start = bpf_ktime_get_ns();
-    bpf_for(i, 0, MAX_DELAY_ITERS) {
+    bpf_for(i, 0, MAX_LOOP_ITERS) {
         ns = bpf_ktime_get_ns();
         if (ns - ns_start >= DELAY_NS) {
             break;
@@ -382,50 +384,152 @@ int BPF_UPROBE(gopark) {
 }
 
 volatile const __u64 semtab_addr;
+__u64 semtab_version = 0;
 
 #define SEMTAB_ENTRY_NUM 251
 #define SEMTAB_ENTRY_SIZE 64 // size of a Go sem table entry (padding included, different under different arch)
 #define SEMTAB_GET_SEMROOT_ADDR(semtab_addr, i) ((char *)(semtab_addr) + SEMTAB_ENTRY_SIZE*(i))
 #define SEMROOT_TREAP_OFFSET 24 // TODO: confirm offset (check if static lock rank is on by default)
 #define SEMROOT_GET_TREAP_ADDR(semroot_addr) ((char *)(semroot_addr) + SEMROOT_TREAP_OFFSET)
-#define MAX_SEMROOT_SUDOG_NUM 128 // need to limit the iteration down to a fixed num to pass the verifier
 #define SUDOG_NEXT_OFFSET 8
+#define SUDOG_PREV_OFFSET 16
+#define SUDOG_ELEM_OFFSET 24
+#define SUDOG_WAITLINK_OFFSET 64 // TODO: confirm offset
 #define SUDOG_GET_NEXT(sudog_addr) ((char *)(sudog_addr) + SUDOG_NEXT_OFFSET)
+#define SUDOG_GET_PREV(sudog_addr) ((char *)(sudog_addr) + SUDOG_PREV_OFFSET)
+#define SUDOG_GET_ELEM(sudog_addr) ((char *)(sudog_addr) + SUDOG_ELEM_OFFSET)
+#define SUDOG_GET_WAITLINK(sudog_addr) ((char *)(sudog_addr) + SUDOG_WAITLINK_OFFSET)
+#define MAX_TREAP_HEIGHT 10
+#define MAX_WAITLIST_LEN 64
+
+struct sudog {
+    uint64_t goid;
+    uint64_t elem;
+};
 
 struct semtable_status_event {
     uint64_t etype;
-    uint64_t semroot_idx;
-    uint64_t goid;
+    // In case multiple gopark()s might get invoked concurrently on different
+    // CPUs, the version field (which is atomically incremented every time
+    // semtable status is reported by report_semtable_status()) is used to help
+    // the user space pick the latest semtable to read among the concurrently
+    // reported ones.
+    uint64_t version;
+    struct sudog sudog;
+    // Marks the end of semtable status event stream (sudog field holds no
+    // meaningful value when is_last is 1).
+    uint64_t is_last;
 };
 
-int report_semtable_status() {
+// TODO: handle potential race condition across multiple CPUs (maybe use a
+// map-in-map with the version as the top level key).
+struct {
+    __uint(type, BPF_MAP_TYPE_STACK);
+    __type(value, char *);
+    __uint(max_entries, MAX_TREAP_HEIGHT);
+} sudog_stack SEC(".maps");
+
+static int report_semtable_status() {
     struct semtable_status_event *e;
-    uint8_t semroot_i, sudog_i;
-    char *semroot, *root_sudog, *sudog, *sudog_gp, *sudog_next;
+    uint8_t semroot_i;
+    char *semroot, *root_sudog;
+    uint64_t version;
+
+    version = __sync_fetch_and_add(&semtab_version, 1);
 
     bpf_for(semroot_i, 0, SEMTAB_ENTRY_NUM) {
         bpf_probe_read_user(&semroot, sizeof(char *), SEMTAB_GET_SEMROOT_ADDR(semtab_addr, semroot_i));
         bpf_probe_read_user(&root_sudog, sizeof(char *), SEMROOT_GET_TREAP_ADDR(semroot));
-        sudog = root_sudog;
-        bpf_for(sudog_i, 0, MAX_SEMROOT_SUDOG_NUM) {
-            e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct semtable_status_event), 0);
-            if (!e) {
-                bpf_printk("bpf_ringbuf_reserve failed in report_semtable_status");
-                return 1;
-            }
-            e->etype = EVENT_TYPE_SEMTABLE_STATUS;
-            e->semroot_idx = semroot_i;
-            sudog_gp = sudog; // pointer to g is the first field of sudog struct
-            bpf_probe_read_user(&(e->goid), sizeof(uint64_t), GET_GOID_ADDR(sudog_gp));
-            bpf_ringbuf_submit(e, 0);
-
-            bpf_probe_read_user(&sudog_next, sizeof(char *), SUDOG_GET_NEXT(sudog));
-            if (!sudog_next) {
-                return 0;
-            }
-            sudog = sudog_next;
+        if (!traverse_sudog_inorder(root_sudog, version)) {
+            bpf_printk("error traversing sudog");
+            return 1;
         }
     }
+
+    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct semtable_status_event), 0);
+    if (!e) {
+        bpf_printk("bpf_ringbuf_reserve failed in report_semtable_status");
+        return 1;
+    }
+    e->etype = EVENT_TYPE_SEMTABLE_STATUS;
+    e->version = version;
+    e->is_last = 1;
+    bpf_ringbuf_submit(e, 0);
+
+    return 0;
+}
+
+// In-order traverse a sudog and submit the traversed sudogs as ringbuf event
+// stream. Uses bpf_repeat() to approximate while() loop.
+static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version) {
+    char *cur_sudog = root_sudog;
+
+    bpf_repeat(MAX_TREAP_HEIGHT) {
+        if (!cur_sudog) {
+            break;
+        }
+        if (!bpf_map_push_elem(&sudog_stack, cur_sudog, 0)) {
+            bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
+            return 1;
+        }
+        bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_PREV(cur_sudog));
+    }
+    bpf_repeat(1 << MAX_TREAP_HEIGHT) {
+        if (!bpf_map_pop_elem(&sudog_stack, &cur_sudog)) {
+            bpf_printk("bpf_map_pop_elem from sudog_stack failed");
+            return 1;
+        }
+        // Done traversing.
+        if (!cur_sudog) {
+            break;
+        }
+        if (!traverse_sudog_waitlink(cur_sudog, semtab_version)) {
+            bpf_printk("traverse_sudog_waitlink failed");
+            return 1;
+        }
+        bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_NEXT(cur_sudog));
+        bpf_repeat(MAX_TREAP_HEIGHT) {
+            if (!cur_sudog) {
+                break;
+            }
+            if (!bpf_map_push_elem(&sudog_stack, cur_sudog, 0)) {
+                bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
+                return 1;
+            }
+            bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_PREV(cur_sudog));
+        }
+    }
+    return 0;
+}
+
+static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
+    struct semtable_status_event *e;
+    char *sudog, *sudog_gp;
+    uint8_t i;
+
+    bpf_for(i, 0, MAX_WAITLIST_LEN + 1) {
+        if (i == MAX_WAITLIST_LEN) {
+            bpf_printk("traverse_sudog_waitlink number of linked sudogs greater than max len reserved");
+            break;
+        }
+        if (!sudog) {
+            break;
+        }
+        e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct semtable_status_event), 0);
+        if (!e) {
+            bpf_printk("bpf_ringbuf_reserve failed in traverse_sudog_waitlink");
+            return 1;
+        }
+        e->etype = EVENT_TYPE_SEMTABLE_STATUS;
+        e->version = semtab_version;
+        e->is_last = 0;
+        bpf_probe_read_user(&((e->sudog).elem), sizeof(char *), SUDOG_GET_ELEM(sudog));
+        bpf_probe_read_user(&sudog_gp, sizeof(char *), sudog); // pointer to g is the first field of sudog struct
+        bpf_probe_read_user(&((e->sudog).goid), sizeof(uint64_t), GET_GOID_ADDR(sudog_gp));
+        bpf_probe_read_user(&sudog, sizeof(char *), SUDOG_GET_WAITLINK(sudog));
+        bpf_ringbuf_submit(e, 0);
+    }
+
     return 0;
 }
 

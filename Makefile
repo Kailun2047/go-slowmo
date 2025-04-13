@@ -14,6 +14,7 @@ $(instrumentor_bpf_prog): $(instrumentor_bpf_src)
 	$(CC) $(CFLAGS) -o $(instrumentor_bpf_prog) -c $(instrumentor_bpf_src)
 
 $(instrumentor_go_prog): $(instrumentor_bpf_prog) $(instrumentor_go_src)
+	go generate -C $(instrumentation_dir)
 	go build -C $(instrumentation_dir) -o ../$(instrumentor_go_prog)
 
 clean:
