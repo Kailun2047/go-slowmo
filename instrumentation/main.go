@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"runtime"
 	"unsafe"
 
 	"github.com/cilium/ebpf"
@@ -40,6 +42,9 @@ func main() {
 		}),
 	)
 
+	// Parse go functab and write the parsing result into a map to make it
+	// available in ebpf program, so that the ebpf program can perform things
+	// like callstack unwinding.
 	functabMap := instrumentor.GetMap("go_functab")
 	funcTab := interpreter.ParseFuncTab()
 	for i, funcInfo := range funcTab {
@@ -49,6 +54,31 @@ func main() {
 		err := functabMap.Update(uint32(i), funcInfo, ebpf.UpdateExist)
 		if err != nil {
 			log.Fatalf("error writing function info into go_functab map; key: %d, value %+v, error: %v", i, funcInfo, err)
+		}
+	}
+
+	// Initialize the map-in-map with GOMAXPROCS stacks for the ebpf program to inspect semtable without potential
+	// race condition.
+	//
+	// Assumptions made here:
+	// 1. GOMAXPROCS defaults to num of logical CPUs
+	// 2. the instrumentor and the instrumented program perceive the same value for GOMAXPROCS;
+	// 3. the IDs of processors ("P") are orderded, 0-based numbers.
+	// Adjustment is needed if any of the above assumptions doesn't hold true.
+	sudogStacks := instrumentor.GetMap("sudog_stacks")
+	for i := range runtime.NumCPU() {
+		sudogStackName := fmt.Sprintf("sudog_stack_%d", i)
+		sudogStack, err := ebpf.NewMap(&ebpf.MapSpec{
+			Name:      sudogStackName,
+			Type:      ebpf.Stack,
+			ValueSize: 8, // a sudog stack will hold pointers to sudogs
+		})
+		if err != nil {
+			log.Fatalf("Error creating sudog stack map %s: %v", sudogStackName, err)
+		}
+		err = sudogStacks.Update(uint32(i), sudogStack.FD(), ebpf.UpdateNoExist)
+		if err != nil {
+			log.Fatalf("Error inserting inner sudog stack map %s into outer map: %v", sudogStackName, err)
 		}
 	}
 

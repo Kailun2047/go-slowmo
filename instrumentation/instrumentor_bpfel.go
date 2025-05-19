@@ -82,7 +82,7 @@ type instrumentorMapSpecs struct {
 	GoFunctab         *ebpf.MapSpec `ebpf:"go_functab"`
 	InstrumentorEvent *ebpf.MapSpec `ebpf:"instrumentor_event"`
 	RunqStealing      *ebpf.MapSpec `ebpf:"runq_stealing"`
-	SudogStack        *ebpf.MapSpec `ebpf:"sudog_stack"`
+	SudogStacks       *ebpf.MapSpec `ebpf:"sudog_stacks"`
 }
 
 // instrumentorVariableSpecs contains global variables before they are loaded into the kernel.
@@ -125,7 +125,7 @@ type instrumentorMaps struct {
 	GoFunctab         *ebpf.Map `ebpf:"go_functab"`
 	InstrumentorEvent *ebpf.Map `ebpf:"instrumentor_event"`
 	RunqStealing      *ebpf.Map `ebpf:"runq_stealing"`
-	SudogStack        *ebpf.Map `ebpf:"sudog_stack"`
+	SudogStacks       *ebpf.Map `ebpf:"sudog_stacks"`
 }
 
 func (m *instrumentorMaps) Close() error {
@@ -133,7 +133,7 @@ func (m *instrumentorMaps) Close() error {
 		m.GoFunctab,
 		m.InstrumentorEvent,
 		m.RunqStealing,
-		m.SudogStack,
+		m.SudogStacks,
 	)
 }
 

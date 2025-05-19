@@ -43,8 +43,8 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
 
 static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx);
-static int report_semtable_status();
-static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version);
+static int report_semtable_status(int32_t procid);
+static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int32_t procid);
 static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
@@ -171,7 +171,7 @@ int BPF_UPROBE(go_runqsteal) {
 SEC("uprobe/go_execute")
 int BPF_UPROBE(go_execute) {
     struct execute_event *e;
-    char *m_ptr, *p_ptr, *g_ptr;
+    char *m_ptr, *p_ptr;
 
     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct execute_event), 0);
     if (!e) {
@@ -373,10 +373,15 @@ int BPF_UPROBE(globrunq_status) {
 SEC("uprobe/gopark")
 int BPF_UPROBE(gopark) {
     uint8_t waitreason;
+    char *m_ptr, *p_ptr;
+    int32_t procid;
 
     waitreason = GO_PARAM3(ctx);
     if (waitreason == WAITREASON_SYNC_MUTEX_LOCK) {
-        return report_semtable_status();
+        bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
+        bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
+        bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
+        return report_semtable_status(procid);
     } else {
         bpf_printk("unprobed gopark reason %d", waitreason);
     }
@@ -421,15 +426,7 @@ struct semtable_status_event {
     uint64_t is_last;
 };
 
-// TODO: handle potential race condition across multiple CPUs (maybe use a
-// map-in-map with the version as the top level key).
-struct {
-    __uint(type, BPF_MAP_TYPE_STACK);
-    __type(value, char *);
-    __uint(max_entries, MAX_TREAP_HEIGHT);
-} sudog_stack SEC(".maps");
-
-static int report_semtable_status() {
+static int report_semtable_status(int32_t procid) {
     struct semtable_status_event *e;
     uint8_t semroot_i;
     char *semroot, *root_sudog;
@@ -440,7 +437,7 @@ static int report_semtable_status() {
     bpf_for(semroot_i, 0, SEMTAB_ENTRY_NUM) {
         bpf_probe_read_user(&semroot, sizeof(char *), SEMTAB_GET_SEMROOT_ADDR(semtab_addr, semroot_i));
         bpf_probe_read_user(&root_sudog, sizeof(char *), SEMROOT_GET_TREAP_ADDR(semroot));
-        if (!traverse_sudog_inorder(root_sudog, version)) {
+        if (!traverse_sudog_inorder(root_sudog, version, procid)) {
             bpf_printk("error traversing sudog");
             return 1;
         }
@@ -459,23 +456,51 @@ static int report_semtable_status() {
     return 0;
 }
 
+#define MAX_NUM_CPU 4
+
+// The max number of logical CPUs that can be used by the tracee program needs
+// to be manually restricted. It would be more flexible to have the use space
+// read it via runtime.NumCPU(), but it's trickier to have the user space create
+// the map first and then access the map within ebpf program.
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY_OF_MAPS);
+    __uint(max_entries, MAX_NUM_CPU);
+    __array(values, struct {
+        __uint(type, BPF_MAP_TYPE_STACK);
+        __uint(max_entries, MAX_TREAP_HEIGHT);
+        __type(value, char *);
+    });
+} sudog_stacks SEC(".maps");
+
 // In-order traverse a sudog and submit the traversed sudogs as ringbuf event
 // stream. Uses bpf_repeat() to approximate while() loop.
-static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version) {
+//
+// TODO: an in-order traversal is not enough if we want to illustrate the tree
+// structure of a treap. Maybe we need to in addition report a pre-order or
+// post-order traversal.
+static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int32_t procid) {
     char *cur_sudog = root_sudog;
+    void *sudog_stack_ptr;
+    uint32_t u_procid;
+
+    u_procid = (uint32_t) procid;
+    if (!(sudog_stack_ptr = bpf_map_lookup_elem(&sudog_stacks, &u_procid))) {
+        bpf_printk("bpf_map_lookup_elem didn't find sudog_stack for semtab version %d", semtab_version);
+        return 1;
+    }
 
     bpf_repeat(MAX_TREAP_HEIGHT) {
         if (!cur_sudog) {
             break;
         }
-        if (!bpf_map_push_elem(&sudog_stack, cur_sudog, 0)) {
+        if (!bpf_map_push_elem(sudog_stack_ptr, cur_sudog, 0)) {
             bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
             return 1;
         }
         bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_PREV(cur_sudog));
     }
     bpf_repeat(1 << MAX_TREAP_HEIGHT) {
-        if (!bpf_map_pop_elem(&sudog_stack, &cur_sudog)) {
+        if (!bpf_map_pop_elem(sudog_stack_ptr, &cur_sudog)) {
             bpf_printk("bpf_map_pop_elem from sudog_stack failed");
             return 1;
         }
@@ -492,7 +517,7 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version) {
             if (!cur_sudog) {
                 break;
             }
-            if (!bpf_map_push_elem(&sudog_stack, cur_sudog, 0)) {
+            if (!bpf_map_push_elem(sudog_stack_ptr, cur_sudog, 0)) {
                 bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
                 return 1;
             }
