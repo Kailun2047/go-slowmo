@@ -465,6 +465,7 @@ static int report_semtable_status(int32_t procid) {
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY_OF_MAPS);
     __uint(max_entries, MAX_NUM_CPU);
+    __type(key, uint32_t);
     __array(values, struct {
         __uint(type, BPF_MAP_TYPE_STACK);
         __uint(max_entries, MAX_TREAP_HEIGHT);
