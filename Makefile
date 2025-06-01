@@ -10,8 +10,6 @@ instrumentor_go_prog := instrumentor
 
 all: $(instrumentor_bpf_prog) $(instrumentor_go_prog)
 
-# TODO: add a debug flag to make go build command accept "all=-N -l" gcflags.
-
 # TODO: add libbpf as dependency.
 $(instrumentor_bpf_prog): $(instrumentor_bpf_src)
 	$(CC) $(CFLAGS) -o $(instrumentor_bpf_prog) -c $(instrumentor_bpf_src)

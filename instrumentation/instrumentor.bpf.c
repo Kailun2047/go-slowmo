@@ -466,6 +466,7 @@ struct {
     __uint(type, BPF_MAP_TYPE_ARRAY_OF_MAPS);
     __uint(max_entries, MAX_NUM_CPU);
     __type(key, uint32_t);
+    __type(value, uint32_t);
     __array(values, struct {
         __uint(type, BPF_MAP_TYPE_STACK);
         __uint(max_entries, MAX_TREAP_HEIGHT);
@@ -494,7 +495,7 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
         if (!cur_sudog) {
             break;
         }
-        if (!bpf_map_push_elem(sudog_stack_ptr, cur_sudog, 0)) {
+        if (!bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0)) {
             bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
             return 1;
         }
@@ -518,7 +519,7 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
             if (!cur_sudog) {
                 break;
             }
-            if (!bpf_map_push_elem(sudog_stack_ptr, cur_sudog, 0)) {
+            if (!bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0)) {
                 bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
                 return 1;
             }
