@@ -28,6 +28,7 @@ const (
 	EVENT_TYPE_RUNQ_STEAL
 	EVENT_TYPE_EXECUTE
 	EVENT_TYPE_GLOBAL_RUNQ_STATUS
+	EVENT_TYPE_SEMTABLE_STATUS
 )
 
 type newprocEvent struct {
@@ -132,6 +133,23 @@ func (cs callStack) getCallerPC() uint64 {
 	return cs.CallerPC
 }
 
+type semtableStatusEvent struct {
+	EType   eventType
+	Version uint64
+	Sudog   sudog
+	IsLast  uint64
+}
+
+type sudog struct {
+	Goid uint64
+	Elem uint64
+}
+
+type versionedSemtable struct {
+	version uint64
+	sudogs  []sudog
+}
+
 type EventReader struct {
 	interpreter   *ELFInterpreter
 	ringbufReader *ringbuf.Reader
@@ -139,6 +157,7 @@ type EventReader struct {
 	byteOrder     binary.ByteOrder
 	localRunqs    map[int64][]runqEntry
 	globrunq      []runqEntry
+	semtable      versionedSemtable
 }
 
 func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventReader {
@@ -272,6 +291,24 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			r.globrunq = []runqEntry{}
 		} else {
 			r.globrunq = append(r.globrunq, event.RunqEntry)
+		}
+	case EVENT_TYPE_SEMTABLE_STATUS:
+		var event semtableStatusEvent
+		err = binary.Read(readSeeker, r.byteOrder, &event)
+		if err != nil {
+			break
+		}
+		if event.Version > r.semtable.version {
+			log.Printf("Received semtable status event of newer version %d, resetting semtable", event.Version)
+			r.semtable.version = event.Version
+		} else if event.Version < r.semtable.version {
+			log.Printf("Received semtable status event of stale version %d, discarding", event.Version)
+			break
+		}
+		if event.IsLast == 1 {
+			log.Printf("Semtable: %+v", r.semtable)
+		} else {
+			r.semtable.sudogs = append(r.semtable.sudogs, event.Sudog)
 		}
 	default:
 		err = fmt.Errorf("unrecognized event type")

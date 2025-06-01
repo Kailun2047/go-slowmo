@@ -378,6 +378,7 @@ int BPF_UPROBE(gopark) {
 
     waitreason = GO_PARAM3(ctx);
     if (waitreason == WAITREASON_SYNC_MUTEX_LOCK) {
+        bpf_printk("reporting semtable status under WAITREASON_SYNC_MUTEX_LOCK");
         bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
         bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
         bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
@@ -431,15 +432,16 @@ static int report_semtable_status(int32_t procid) {
     uint8_t semroot_i;
     char *semroot, *root_sudog;
     uint64_t version;
+    int traverse_sudog_err;
 
     version = __sync_fetch_and_add(&semtab_version, 1);
 
     bpf_for(semroot_i, 0, SEMTAB_ENTRY_NUM) {
         bpf_probe_read_user(&semroot, sizeof(char *), SEMTAB_GET_SEMROOT_ADDR(semtab_addr, semroot_i));
         bpf_probe_read_user(&root_sudog, sizeof(char *), SEMROOT_GET_TREAP_ADDR(semroot));
-        if (!traverse_sudog_inorder(root_sudog, version, procid)) {
-            bpf_printk("error traversing sudog");
-            return 1;
+        if ((traverse_sudog_err = traverse_sudog_inorder(root_sudog, version, procid))) {
+            bpf_printk("error traversing sudog: %d", traverse_sudog_err);
+            return traverse_sudog_err;
         }
     }
 
@@ -484,6 +486,7 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
     char *cur_sudog = root_sudog;
     void *sudog_stack_ptr;
     uint32_t u_procid;
+    int err;
 
     u_procid = (uint32_t) procid;
     if (!(sudog_stack_ptr = bpf_map_lookup_elem(&sudog_stacks, &u_procid))) {
@@ -495,33 +498,34 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
         if (!cur_sudog) {
             break;
         }
-        if (!bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0)) {
+        if ((err = bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0))) {
             bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
-            return 1;
+            return err;
         }
         bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_PREV(cur_sudog));
     }
     bpf_repeat(1 << MAX_TREAP_HEIGHT) {
-        if (!bpf_map_pop_elem(sudog_stack_ptr, &cur_sudog)) {
-            bpf_printk("bpf_map_pop_elem from sudog_stack failed");
-            return 1;
+        err = bpf_map_pop_elem(sudog_stack_ptr, &cur_sudog);
+        if (!err) {
+            if (err == -2) { // ENOENT means the stack is empty, and we are done traversing
+                break;
+            } else {
+                bpf_printk("bpf_map_pop_elem from sudog_stack failed");
+                return err;
+            }
         }
-        // Done traversing.
-        if (!cur_sudog) {
-            break;
-        }
-        if (!traverse_sudog_waitlink(cur_sudog, semtab_version)) {
+        if ((err = traverse_sudog_waitlink(cur_sudog, semtab_version))) {
             bpf_printk("traverse_sudog_waitlink failed");
-            return 1;
+            return err;
         }
         bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_NEXT(cur_sudog));
         bpf_repeat(MAX_TREAP_HEIGHT) {
             if (!cur_sudog) {
                 break;
             }
-            if (!bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0)) {
+            if ((err = bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0))) {
                 bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
-                return 1;
+                return err;
             }
             bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_PREV(cur_sudog));
         }
