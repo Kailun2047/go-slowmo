@@ -378,7 +378,6 @@ int BPF_UPROBE(gopark) {
 
     waitreason = GO_PARAM3(ctx);
     if (waitreason == WAITREASON_SYNC_MUTEX_LOCK) {
-        bpf_printk("reporting semtable status under WAITREASON_SYNC_MUTEX_LOCK");
         bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
         bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
         bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
@@ -394,8 +393,7 @@ __u64 semtab_version = 0;
 
 #define SEMTAB_ENTRY_NUM 251
 #define SEMTAB_ENTRY_SIZE 64 // size of a Go sem table entry (padding included, different under different arch)
-#define SEMTAB_GET_SEMROOT_ADDR(semtab_addr, i) ((char *)(semtab_addr) + SEMTAB_ENTRY_SIZE*(i))
-#define SEMROOT_TREAP_OFFSET 24 // TODO: confirm offset (check if static lock rank is on by default)
+#define SEMROOT_TREAP_OFFSET 8 // static lock rank is off by default on amd64, which means the runtime.mutex struct is 8-byte
 #define SEMROOT_GET_TREAP_ADDR(semroot_addr) ((char *)(semroot_addr) + SEMROOT_TREAP_OFFSET)
 #define SUDOG_NEXT_OFFSET 8
 #define SUDOG_PREV_OFFSET 16
@@ -430,15 +428,18 @@ struct semtable_status_event {
 static int report_semtable_status(int32_t procid) {
     struct semtable_status_event *e;
     uint8_t semroot_i;
-    char *semroot, *root_sudog;
+    char *root_sudog;
     uint64_t version;
     int traverse_sudog_err;
 
     version = __sync_fetch_and_add(&semtab_version, 1);
 
     bpf_for(semroot_i, 0, SEMTAB_ENTRY_NUM) {
-        bpf_probe_read_user(&semroot, sizeof(char *), SEMTAB_GET_SEMROOT_ADDR(semtab_addr, semroot_i));
-        bpf_probe_read_user(&root_sudog, sizeof(char *), SEMROOT_GET_TREAP_ADDR(semroot));
+        bpf_probe_read_user(&root_sudog, sizeof(char *), SEMROOT_GET_TREAP_ADDR(semtab_addr + semroot_i * SEMTAB_ENTRY_SIZE));
+        if (!root_sudog) {
+            continue;
+        }
+        bpf_printk("Addr for treap of semroot %d: %x", semroot_i, root_sudog);
         if ((traverse_sudog_err = traverse_sudog_inorder(root_sudog, version, procid))) {
             bpf_printk("error traversing sudog: %d", traverse_sudog_err);
             return traverse_sudog_err;
@@ -506,11 +507,11 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
     }
     bpf_repeat(1 << MAX_TREAP_HEIGHT) {
         err = bpf_map_pop_elem(sudog_stack_ptr, &cur_sudog);
-        if (!err) {
+        if (err) {
             if (err == -2) { // ENOENT means the stack is empty, and we are done traversing
                 break;
             } else {
-                bpf_printk("bpf_map_pop_elem from sudog_stack failed");
+                bpf_printk("bpf_map_pop_elem from sudog_stack failed: %d", err);
                 return err;
             }
         }
@@ -535,7 +536,7 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
 
 static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
     struct semtable_status_event *e;
-    char *sudog, *sudog_gp;
+    char *sudog = head_sudog, *sudog_gp;
     uint8_t i;
 
     bpf_for(i, 0, MAX_WAITLIST_LEN + 1) {
@@ -554,7 +555,7 @@ static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
         e->etype = EVENT_TYPE_SEMTABLE_STATUS;
         e->version = semtab_version;
         e->is_last = 0;
-        bpf_probe_read_user(&((e->sudog).elem), sizeof(char *), SUDOG_GET_ELEM(sudog));
+        bpf_probe_read_user(&((e->sudog).elem), sizeof(uint64_t), SUDOG_GET_ELEM(sudog));
         bpf_probe_read_user(&sudog_gp, sizeof(char *), sudog); // pointer to g is the first field of sudog struct
         bpf_probe_read_user(&((e->sudog).goid), sizeof(uint64_t), GET_GOID_ADDR(sudog_gp));
         bpf_probe_read_user(&sudog, sizeof(char *), SUDOG_GET_WAITLINK(sudog));

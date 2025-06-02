@@ -135,10 +135,12 @@ func main() {
 		targetFn:  "gopark",
 		bpfFn:     "gopark",
 	}))
-	instrumentor.Delay(UprobeAttachSpec{
-		targetPkg: "main",
-		bpfFn:     "delay",
-	})
+	// Temporarily disable the delay probe to avoid triggering preemption.
+	// TODO: handle preemption properly or disable preemption.
+	// instrumentor.Delay(UprobeAttachSpec{
+	// 	targetPkg: "main",
+	// 	bpfFn:     "delay",
+	// })
 
 	eventReader := NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
 	defer eventReader.Close()

@@ -301,6 +301,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if event.Version > r.semtable.version {
 			log.Printf("Received semtable status event of newer version %d, resetting semtable", event.Version)
 			r.semtable.version = event.Version
+			r.semtable.sudogs = []sudog{}
 		} else if event.Version < r.semtable.version {
 			log.Printf("Received semtable status event of stale version %d, discarding", event.Version)
 			break
