@@ -439,7 +439,6 @@ static int report_semtable_status(int32_t procid) {
         if (!root_sudog) {
             continue;
         }
-        bpf_printk("Addr for treap of semroot %d: %x", semroot_i, root_sudog);
         if ((traverse_sudog_err = traverse_sudog_inorder(root_sudog, version, procid))) {
             bpf_printk("error traversing sudog: %d", traverse_sudog_err);
             return traverse_sudog_err;

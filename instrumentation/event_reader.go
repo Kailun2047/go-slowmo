@@ -307,7 +307,16 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		if event.IsLast == 1 {
-			log.Printf("Semtable: %+v", r.semtable)
+			var semtableSb strings.Builder
+			semtableSb.WriteString("[")
+			for i, entry := range r.semtable.sudogs {
+				semtableSb.WriteString(fmt.Sprintf("GoID %d is waiting on %s (%x)", entry.Goid, r.interpreter.SymByDataElemAddr(entry.Elem), entry.Elem))
+				if i < len(r.semtable.sudogs)-1 {
+					semtableSb.WriteString(", ")
+				}
+			}
+			semtableSb.WriteString("]")
+			log.Printf("Semtable: %s", semtableSb.String())
 		} else {
 			r.semtable.sudogs = append(r.semtable.sudogs, event.Sudog)
 		}
