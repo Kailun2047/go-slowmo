@@ -3,6 +3,7 @@ CFLAGS = -target bpf -O2 -g
 debug = off
 
 instrumentation_dir := ./instrumentation
+server_dir := ./server
 instrumentor_bpf_src := $(instrumentation_dir)/instrumentor.bpf.c
 instrumentor_go_src := $(instrumentation_dir)/*.go
 instrumentor_bpf_prog := instrumentor.o
@@ -17,9 +18,9 @@ $(instrumentor_bpf_prog): $(instrumentor_bpf_src)
 $(instrumentor_go_prog): $(instrumentor_bpf_prog) $(instrumentor_go_src)
 	go generate -C $(instrumentation_dir)
 ifeq ($(debug), on)
-	go build -C $(instrumentation_dir) -gcflags="all=-N -l" -o ../$(instrumentor_go_prog)
+	go build -gcflags="all=-N -l" -o $(instrumentor_go_prog)
 else
-	go build -C $(instrumentation_dir) -o ../$(instrumentor_go_prog)
+	go build -o $(instrumentor_go_prog)
 endif
 
 clean:

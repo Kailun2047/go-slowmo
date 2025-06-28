@@ -1,0 +1,51 @@
+syntax = "proto3";
+package slowmo;
+option go_package = "github.com/kailun2047/slowmo/proto";
+
+message CompileAndRunRequest {
+    string source = 1; // Go source code from user.
+}
+
+message CompileAndRunResponse {
+    oneof compile_and_run_oneof {
+        CompilationError compile_error = 1;
+        RuntimeError runtime_error = 2;
+        ProbeEvent run_event = 3;
+    };
+}
+
+message CompilationError  {
+    string error_message = 1;
+}
+
+message RuntimeError {
+    string error_message = 1;
+}
+
+message ProbeEvent {
+    oneof probe_event_oneof {
+        RunqStatusEvent runq_status_event = 1;
+    };
+}
+
+message RunqStatusEvent {
+    int64 proc_id = 1;
+    InterpretedPC current_pc = 2;
+    repeated RunqEntry runq_entries = 3;
+    RunqEntry runnext = 4;
+}
+
+message InterpretedPC {
+    string file = 1;
+    int32 line = 2;
+    string func = 3;
+}
+
+message RunqEntry {
+    int64 go_id = 1;
+    InterpretedPC execution_context = 2;
+}
+
+service SlowmoService {
+    rpc CompileAndRun(CompileAndRunRequest) returns (stream CompileAndRunResponse);
+}

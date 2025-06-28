@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"flag"
@@ -8,35 +8,30 @@ import (
 	"unsafe"
 
 	"github.com/cilium/ebpf"
+	"github.com/kailun2047/slowmo/instrumentation"
 )
 
-const (
-	bpfProg = "instrumentor.o"
-)
-
-var (
-	targetPath = flag.String("targetpath", "", "path of the target program to be instrumented")
-)
-
-func main() {
+func StartInstrumentation(bpfProg, targetPath string) {
 	flag.Parse()
 
-	interpreter := NewELFInterpreter(*targetPath)
+	interpreter := instrumentation.NewELFInterpreter(targetPath)
 
 	runtimeSchedAddr := interpreter.GetGlobalVariableAddr("runtime.sched")
 	semTableAddr := interpreter.GetGlobalVariableAddr("runtime.semtable")
 	pctab := interpreter.GetPCTab()
-	instrumentor := NewInstrumentor(
-		interpreter, bpfProg,
-		WithGlobalVariable(GlobalVariable[uint64]{
+	instrumentor := instrumentation.NewInstrumentor(
+		interpreter,
+		bpfProg,
+		targetPath,
+		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
 			NameInBPFProg: "runtime_sched_addr",
 			Value:         runtimeSchedAddr,
 		}),
-		WithGlobalVariable(GlobalVariable[instrumentorGoPctab]{
+		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[instrumentation.InstrumentorGoPctab]{
 			NameInBPFProg: "pctab",
-			Value:         instrumentorGoPctab{Size: uint64(len(pctab)), DataAddr: *(*uint64)(unsafe.Pointer(&pctab[0]))},
+			Value:         instrumentation.InstrumentorGoPctab{Size: uint64(len(pctab)), DataAddr: *(*uint64)(unsafe.Pointer(&pctab[0]))},
 		}),
-		WithGlobalVariable(GlobalVariable[uint64]{
+		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
 			NameInBPFProg: "semtab_addr",
 			Value:         semTableAddr,
 		}),
@@ -90,59 +85,59 @@ func main() {
 
 	defer instrumentor.Close()
 
-	instrumentor.InstrumentEntry(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "newproc",
-		bpfFn:     "go_newproc",
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "newproc",
+		BpfFn:     "go_newproc",
 	})
-	instrumentor.InstrumentReturns(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "newproc",
-		bpfFn:     "go_runtime_func_ret_runq_status",
+	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "newproc",
+		BpfFn:     "go_runtime_func_ret_runq_status",
 	})
-	instrumentor.InstrumentReturns(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "runqget",
-		bpfFn:     "go_runtime_func_ret_runq_status",
+	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "runqget",
+		BpfFn:     "go_runtime_func_ret_runq_status",
 	})
-	instrumentor.InstrumentEntry(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "runqsteal",
-		bpfFn:     "go_runqsteal",
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "runqsteal",
+		BpfFn:     "go_runqsteal",
 	})
-	instrumentor.InstrumentReturns(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "runqsteal",
-		bpfFn:     "go_runqsteal_ret_runq_status",
+	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "runqsteal",
+		BpfFn:     "go_runqsteal_ret_runq_status",
 	})
-	instrumentor.InstrumentEntry(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "execute",
-		bpfFn:     "go_execute",
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "execute",
+		BpfFn:     "go_execute",
 	})
-	instrumentor.InstrumentReturns(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "globrunqget",
-		bpfFn:     "globrunq_status",
+	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "globrunqget",
+		BpfFn:     "globrunq_status",
 	})
-	instrumentor.InstrumentReturns(UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "globrunqput",
-		bpfFn:     "globrunq_status",
+	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "globrunqput",
+		BpfFn:     "globrunq_status",
 	})
-	instrumentor.InstrumentEntry((UprobeAttachSpec{
-		targetPkg: "runtime",
-		targetFn:  "gopark",
-		bpfFn:     "gopark",
+	instrumentor.InstrumentEntry((instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "gopark",
+		BpfFn:     "gopark",
 	}))
 	// Temporarily disable the delay probe to avoid triggering preemption.
 	// TODO: handle preemption properly or disable preemption.
-	// instrumentor.Delay(UprobeAttachSpec{
-	// 	targetPkg: "main",
-	// 	bpfFn:     "delay",
-	// })
+	// instrumentor.Delay(instrumentation.UprobeAttachSpec{
+	// 	TargetPkg: "main",
+	// 	TpfFn:     "delay",
+	// }B
 
-	eventReader := NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
+	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
 	defer eventReader.Close()
 	eventReader.Start()
 }

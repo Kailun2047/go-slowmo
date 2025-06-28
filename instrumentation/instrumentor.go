@@ -1,4 +1,4 @@
-package main
+package instrumentation
 
 import (
 	"errors"
@@ -25,8 +25,10 @@ type Instrumentor struct {
 
 type InstrumentorOption func(*ELFInterpreter, *ebpf.CollectionSpec)
 
+type InstrumentorGoPctab = instrumentorGoPctab
+
 type GlobalVariableValue interface {
-	uint64 | instrumentorGoPctab
+	uint64 | InstrumentorGoPctab
 }
 
 type GlobalVariable[T GlobalVariableValue] struct {
@@ -44,12 +46,12 @@ func WithGlobalVariable[T GlobalVariableValue](variable GlobalVariable[T]) Instr
 	}
 }
 
-func NewInstrumentor(interpreter *ELFInterpreter, bpfProg string, opts ...InstrumentorOption) *Instrumentor {
-	initInstrumentor(interpreter, bpfProg, opts...)
+func NewInstrumentor(interpreter *ELFInterpreter, bpfProg, targetPath string, opts ...InstrumentorOption) *Instrumentor {
+	initInstrumentor(interpreter, bpfProg, targetPath, opts...)
 	return instrumentor
 }
 
-func initInstrumentor(interpreter *ELFInterpreter, bpfProg string, opts ...InstrumentorOption) {
+func initInstrumentor(interpreter *ELFInterpreter, bpfProg, targetPath string, opts ...InstrumentorOption) {
 	if instrumentor != nil {
 		return
 	}
@@ -57,7 +59,7 @@ func initInstrumentor(interpreter *ELFInterpreter, bpfProg string, opts ...Instr
 		if err := rlimit.RemoveMemlock(); err != nil {
 			log.Fatal("RemoveMemlock: ", err)
 		}
-		exe, err := link.OpenExecutable(*targetPath)
+		exe, err := link.OpenExecutable(targetPath)
 		if err != nil {
 			log.Fatal("OpenExecutable for tracee: ", err)
 		}
@@ -90,18 +92,18 @@ func (in *Instrumentor) Close() {
 }
 
 type UprobeAttachSpec struct {
-	targetPkg string
-	targetFn  string
-	bpfFn     string
+	TargetPkg string
+	TargetFn  string
+	BpfFn     string
 }
 
 func (in *Instrumentor) InstrumentEntry(spec UprobeAttachSpec) {
-	targetSym := strings.Join([]string{spec.targetPkg, spec.targetFn}, ".")
+	targetSym := strings.Join([]string{spec.TargetPkg, spec.TargetFn}, ".")
 	startOffset, err := in.interpreter.GetFunctionStartOffset(targetSym)
 	if err != nil {
 		log.Fatalf("Could not get start offset for target %s\n", targetSym)
 	}
-	_, err = in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[spec.bpfFn], &link.UprobeOptions{
+	_, err = in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[spec.BpfFn], &link.UprobeOptions{
 		Offset: startOffset,
 	})
 	if err != nil {
@@ -110,14 +112,14 @@ func (in *Instrumentor) InstrumentEntry(spec UprobeAttachSpec) {
 }
 
 func (in *Instrumentor) InstrumentReturns(spec UprobeAttachSpec) {
-	targetSym := strings.Join([]string{spec.targetPkg, spec.targetFn}, ".")
+	targetSym := strings.Join([]string{spec.TargetPkg, spec.TargetFn}, ".")
 	retOffsets, err := in.interpreter.GetFunctionReturnOffset(targetSym)
 	if err != nil {
 		log.Fatalf("Could not get return offsets for function %s\n", targetSym)
 	}
-	log.Printf("Return offsets for function %s to instrument: %+v", fmt.Sprintf("%s.%s", spec.targetPkg, spec.targetFn), retOffsets)
+	log.Printf("Return offsets for function %s to instrument: %+v", fmt.Sprintf("%s.%s", spec.TargetPkg, spec.TargetFn), retOffsets)
 	for _, offset := range retOffsets {
-		_, err := in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[spec.bpfFn], &link.UprobeOptions{
+		_, err := in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[spec.BpfFn], &link.UprobeOptions{
 			Offset: offset,
 		})
 		if err != nil {
@@ -127,14 +129,14 @@ func (in *Instrumentor) InstrumentReturns(spec UprobeAttachSpec) {
 }
 
 func (in *Instrumentor) Delay(spec UprobeAttachSpec) {
-	if len(spec.targetFn) > 0 {
+	if len(spec.TargetFn) > 0 {
 		log.Fatal("Delay of specific function in target package is not supported")
 	}
-	pkgOffsets := in.interpreter.GetDelayableOffsetsForPackage(spec.targetPkg)
-	log.Printf("Delayable offsets for package %s: %+v", spec.targetPkg, pkgOffsets)
+	pkgOffsets := in.interpreter.GetDelayableOffsetsForPackage(spec.TargetPkg)
+	log.Printf("Delayable offsets for package %s: %+v", spec.TargetPkg, pkgOffsets)
 	for fnSym, offsets := range pkgOffsets {
 		for _, offset := range offsets {
-			_, err := in.targetExe.Uprobe(fnSym, in.bpfColl.Programs[spec.bpfFn], &link.UprobeOptions{
+			_, err := in.targetExe.Uprobe(fnSym, in.bpfColl.Programs[spec.BpfFn], &link.UprobeOptions{
 				Offset: offset,
 			})
 			if err != nil {
