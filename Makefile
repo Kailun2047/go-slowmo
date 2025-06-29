@@ -7,21 +7,21 @@ server_dir := ./server
 instrumentor_bpf_src := $(instrumentation_dir)/instrumentor.bpf.c
 instrumentor_go_src := $(instrumentation_dir)/*.go
 instrumentor_bpf_prog := instrumentor.o
-instrumentor_go_prog := instrumentor
+server_prog := slowmo-server
 
-all: $(instrumentor_bpf_prog) $(instrumentor_go_prog)
+all: $(instrumentor_bpf_prog) $(server_prog)
 
 # TODO: add libbpf as dependency.
 $(instrumentor_bpf_prog): $(instrumentor_bpf_src)
 	$(CC) $(CFLAGS) -o $(instrumentor_bpf_prog) -c $(instrumentor_bpf_src)
 
-$(instrumentor_go_prog): $(instrumentor_bpf_prog) $(instrumentor_go_src)
+$(server_prog): $(instrumentor_bpf_prog) $(instrumentor_go_src)
 	go generate -C $(instrumentation_dir)
 ifeq ($(debug), on)
-	go build -gcflags="all=-N -l" -o $(instrumentor_go_prog)
+	go build -gcflags="all=-N -l" -o $(server_prog)
 else
-	go build -o $(instrumentor_go_prog)
+	go build -o $(server_prog)
 endif
 
 clean:
-	rm $(instrumentor_bpf_prog) $(instrumentor_go_prog)
+	rm $(instrumentor_bpf_prog) $(server_prog)

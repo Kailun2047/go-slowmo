@@ -1,14 +1,21 @@
 package server
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/kailun2047/slowmo/instrumentation"
+	"github.com/kailun2047/slowmo/proto"
+	"google.golang.org/grpc"
 )
 
 func StartInstrumentation(bpfProg, targetPath string) {
@@ -135,9 +142,87 @@ func StartInstrumentation(bpfProg, targetPath string) {
 	// instrumentor.Delay(instrumentation.UprobeAttachSpec{
 	// 	TargetPkg: "main",
 	// 	TpfFn:     "delay",
-	// }B
+	// }
 
 	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
 	defer eventReader.Close()
 	eventReader.Start()
+}
+
+type SlowmoServer struct {
+	proto.UnimplementedSlowmoServiceServer
+}
+
+func NewSlowmoServer() *SlowmoServer {
+	return &SlowmoServer{}
+}
+
+var (
+	errCompilation = fmt.Errorf("")
+)
+
+type compileError struct {
+	errMsg string
+}
+
+func (ce compileError) Error() string {
+	return ce.errMsg
+}
+
+func (ce compileError) Is(target error) bool {
+	return target == errCompilation
+}
+
+func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) error {
+	outName, err := sandboxedBuild(req.GetSource())
+	if err != nil {
+		if !errors.Is(err, errCompilation) {
+			return fmt.Errorf("internal error when building the program")
+		}
+		stream.Send(&proto.CompileAndRunResponse{
+			CompileAndRunOneof: &proto.CompileAndRunResponse_CompileError{
+				CompileError: &proto.CompilationError{
+					ErrorMessage: err.Error(),
+				},
+			},
+		})
+		return nil
+	}
+
+	defer func() {
+		err := os.Remove(outName)
+		if err != nil {
+			log.Printf("Failed to remove temp built output file %s: %v", outName, err)
+		}
+	}()
+
+	return nil
+}
+
+func sandboxedBuild(source string) (string, error) {
+	tempFile, err := os.CreateTemp("", "target-*.go")
+	if err != nil {
+		log.Printf("Failed to create temp file: %v", err)
+		return "", err
+	}
+	tempFile.WriteString(source)
+	defer func() {
+		tempFile.Close()
+		err := os.Remove(tempFile.Name())
+		if err != nil {
+			log.Printf("Failed to remove temp source file %s: %v", tempFile.Name(), err)
+		}
+	}()
+
+	outName := strings.TrimSuffix(tempFile.Name(), ".go")
+	goBuildCmd := exec.Command("go", "build", `-gcflags="all=-N -l"`, tempFile.Name(), "-o", outName)
+	buf := bytes.Buffer{}
+	goBuildCmd.Stderr = &buf
+	err = goBuildCmd.Run()
+	if err != nil {
+		return "", compileError{
+			errMsg: buf.String(),
+		}
+	}
+	return outName, nil
 }

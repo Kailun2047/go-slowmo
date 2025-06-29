@@ -4,5 +4,5 @@
 **/*.out
 **/*.log
 
-instrumentor
+slowmo-server
 target/greet
