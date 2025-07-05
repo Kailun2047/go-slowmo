@@ -2,10 +2,17 @@ import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
 import { useEffect, useRef, type MouseEventHandler } from 'react';
+import { SlowmoServiceClient } from '../../proto/slowmo.client';
+import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
+import { CompileAndRunRequest } from '../../proto/slowmo';
 
 export default function AceEditorWrapper() {
     const elemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
+        slowmo?: {
+            transport: GrpcWebFetchTransport,
+            client: SlowmoServiceClient,
+        },
     }>(null);
     useEffect(() => {
         if (!elemRef.current) {
@@ -21,13 +28,38 @@ export default function AceEditorWrapper() {
         elemRef.current.editor = editor;
     })
 
-    function onClickRun() {
-        var editor = elemRef.current?.editor;
-        if (!editor) {
+    async function onClickRun() {
+        if (!elemRef.current?.editor) {
             throw new Error("ace editor wrapper has no initialized editor")
         }
-        // console.log(editor.getValue());
-        // Call slowmo service.
+        if (!elemRef.current.slowmo) {
+            const transport = new GrpcWebFetchTransport({
+                baseUrl: import.meta.env.VITE_SLOWMO_SERVER_HOSTNAME,
+            });
+            const client = new SlowmoServiceClient(transport);
+            elemRef.current.slowmo = {transport, client};
+        }
+        const { editor, slowmo } = elemRef.current;
+        const { client } = slowmo;
+        var request: CompileAndRunRequest = {
+            source: editor.getValue(),
+        };
+        const stream = client.compileAndRun(request);
+        for await (const msg of stream.responses) {
+            switch (msg.compileAndRunOneof.oneofKind) {
+                case 'compileError':
+                    console.log('compilation returns error: ', msg.compileAndRunOneof.compileError.errorMessage);
+                    break;
+                case 'runEvent':
+                    console.log('run event: ', JSON.stringify(msg.compileAndRunOneof.runEvent));
+                    break;
+                case 'runtimeError':
+                    console.log('runtime error: ', msg.compileAndRunOneof.runtimeError.errorMessage);
+                    break;
+                default:
+                    console.log('unexpected stream message type: ', msg.compileAndRunOneof.oneofKind);
+            }
+        }
     }
 
     return (
