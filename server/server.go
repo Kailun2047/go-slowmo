@@ -174,6 +174,7 @@ func (ce compileError) Is(target error) bool {
 }
 
 func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) error {
+	log.Println("Received CompileAndRun request")
 	outName, err := sandboxedBuild(req.GetSource())
 	if err != nil {
 		if !errors.Is(err, errCompilation) {
@@ -215,8 +216,10 @@ func sandboxedBuild(source string) (string, error) {
 	}()
 
 	outName := strings.TrimSuffix(tempFile.Name(), ".go")
-	goBuildCmd := exec.Command("go", "build", `-gcflags="all=-N -l"`, tempFile.Name(), "-o", outName)
+	// TODO: find path to go binary dynamically.
+	goBuildCmd := exec.Command("/home/kailun/go/go1.22.5/bin/go", "build", "-gcflags=all=-N -l", "-o", outName, tempFile.Name())
 	buf := bytes.Buffer{}
+	goBuildCmd.Stdout = &buf
 	goBuildCmd.Stderr = &buf
 	err = goBuildCmd.Run()
 	if err != nil {

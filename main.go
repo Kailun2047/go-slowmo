@@ -23,5 +23,6 @@ func main() {
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
 	proto.RegisterSlowmoServiceServer(grpcServer, server.NewSlowmoServer())
+	log.Print("Server listening on port ", *port)
 	grpcServer.Serve(lis)
 }
