@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -19,6 +19,7 @@
   "devDependencies": {
     "@eslint/js": "^9.25.0",
     "@protobuf-ts/plugin": "^2.11.1",
+    "@types/node": "^24.0.13",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
