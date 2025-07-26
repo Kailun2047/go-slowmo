@@ -235,7 +235,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		}()
 
 		pipeReader, pipeWriter := io.Pipe()
-		runTargetCmd, err := sandboxedRun(outName, pipeReader, pipeWriter)
+		runTargetCmd, err := sandboxedRun(outName, pipeWriter)
 		if err != nil {
 			internalErr = fmt.Errorf("internal error when starting the program: %w", err)
 		} else {
@@ -305,11 +305,11 @@ func sandboxedBuild(source string) (string, error) {
 	return outName, nil
 }
 
-func sandboxedRun(targetName string, pipeReader *io.PipeReader, pipeWriter *io.PipeWriter) (startedCmd *exec.Cmd, err error) {
+func sandboxedRun(targetName string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
 	log.Printf("Start sandbox run of program %s", targetName)
 	// TODO: prevent filesystem and network access in the sandbox.
 	runTargetCmd := exec.Command(targetName)
-	runTargetCmd.Stdout, runTargetCmd.Stderr = pipeWriter, pipeWriter
+	runTargetCmd.Stdout, runTargetCmd.Stderr = writer, writer
 	runTargetCmd.WaitDelay = executionTimeLimit
 	err = runTargetCmd.Start()
 	if err == nil {
