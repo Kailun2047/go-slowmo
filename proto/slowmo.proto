@@ -11,6 +11,7 @@ message CompileAndRunResponse {
         CompilationError compile_error = 1;
         RuntimeError runtime_error = 2;
         ProbeEvent run_event = 3;
+        RuntimeOutput runtime_output = 4;
     };
 }
 
@@ -44,6 +45,10 @@ message InterpretedPC {
 message RunqEntry {
     int64 go_id = 1;
     InterpretedPC execution_context = 2;
+}
+
+message RuntimeOutput {
+    string output = 1;
 }
 
 service SlowmoService {

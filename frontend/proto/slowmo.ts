@@ -46,6 +46,12 @@ export interface CompileAndRunResponse {
          */
         runEvent: ProbeEvent;
     } | {
+        oneofKind: "runtimeOutput";
+        /**
+         * @generated from protobuf field: slowmo.RuntimeOutput runtime_output = 4
+         */
+        runtimeOutput: RuntimeOutput;
+    } | {
         oneofKind: undefined;
     };
 }
@@ -135,6 +141,15 @@ export interface RunqEntry {
      */
     executionContext?: InterpretedPC;
 }
+/**
+ * @generated from protobuf message slowmo.RuntimeOutput
+ */
+export interface RuntimeOutput {
+    /**
+     * @generated from protobuf field: string output = 1
+     */
+    output: string;
+}
 // @generated message type with reflection information, may provide speed optimized methods
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
     constructor() {
@@ -188,7 +203,8 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
         super("slowmo.CompileAndRunResponse", [
             { no: 1, name: "compile_error", kind: "message", oneof: "compileAndRunOneof", T: () => CompilationError },
             { no: 2, name: "runtime_error", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeError },
-            { no: 3, name: "run_event", kind: "message", oneof: "compileAndRunOneof", T: () => ProbeEvent }
+            { no: 3, name: "run_event", kind: "message", oneof: "compileAndRunOneof", T: () => ProbeEvent },
+            { no: 4, name: "runtime_output", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeOutput }
         ]);
     }
     create(value?: PartialMessage<CompileAndRunResponse>): CompileAndRunResponse {
@@ -221,6 +237,12 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
                         runEvent: ProbeEvent.internalBinaryRead(reader, reader.uint32(), options, (message.compileAndRunOneof as any).runEvent)
                     };
                     break;
+                case /* slowmo.RuntimeOutput runtime_output */ 4:
+                    message.compileAndRunOneof = {
+                        oneofKind: "runtimeOutput",
+                        runtimeOutput: RuntimeOutput.internalBinaryRead(reader, reader.uint32(), options, (message.compileAndRunOneof as any).runtimeOutput)
+                    };
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -242,6 +264,9 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
         /* slowmo.ProbeEvent run_event = 3; */
         if (message.compileAndRunOneof.oneofKind === "runEvent")
             ProbeEvent.internalBinaryWrite(message.compileAndRunOneof.runEvent, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
+        /* slowmo.RuntimeOutput runtime_output = 4; */
+        if (message.compileAndRunOneof.oneofKind === "runtimeOutput")
+            RuntimeOutput.internalBinaryWrite(message.compileAndRunOneof.runtimeOutput, writer.tag(4, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -582,6 +607,53 @@ class RunqEntry$Type extends MessageType<RunqEntry> {
  * @generated MessageType for protobuf message slowmo.RunqEntry
  */
 export const RunqEntry = new RunqEntry$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
+    constructor() {
+        super("slowmo.RuntimeOutput", [
+            { no: 1, name: "output", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<RuntimeOutput>): RuntimeOutput {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.output = "";
+        if (value !== undefined)
+            reflectionMergePartial<RuntimeOutput>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RuntimeOutput): RuntimeOutput {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* string output */ 1:
+                    message.output = reader.string();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: RuntimeOutput, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* string output = 1; */
+        if (message.output !== "")
+            writer.tag(1, WireType.LengthDelimited).string(message.output);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message slowmo.RuntimeOutput
+ */
+export const RuntimeOutput = new RuntimeOutput$Type();
 /**
  * @generated ServiceType for protobuf service slowmo.SlowmoService
  */

@@ -51,11 +51,14 @@ export default function AceEditorWrapper() {
                     console.log('compilation returns error: ', msg.compileAndRunOneof.compileError.errorMessage);
                     break;
                 case 'runEvent':
-                    console.log('run event: ', JSON.stringify(msg.compileAndRunOneof.runEvent));
+                    console.log('run event of type ', msg.compileAndRunOneof.runEvent.probeEventOneof.oneofKind);
                     break;
                 case 'runtimeError':
                     console.log('runtime error: ', msg.compileAndRunOneof.runtimeError.errorMessage);
                     break;
+                case 'runtimeOutput':
+                    console.log('runtime output: ', msg.compileAndRunOneof.runtimeOutput.output)
+                    break
                 default:
                     console.log('unexpected stream message type: ', msg.compileAndRunOneof.oneofKind);
             }
@@ -65,7 +68,7 @@ export default function AceEditorWrapper() {
     return (
         <div className='ace-editor-wrapper'>
             <div id="banner">
-                <div id='head'>Go Runtime Presented in Slowmo</div>
+                <div id='head'>Go Runtime in Slowmo</div>
                 <Button id='button-run' onClick={onClickRun}>Run</Button>
             </div>
             <div ref={elemRef} id='golang-editor'></div>

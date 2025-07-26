@@ -72,6 +72,7 @@ type CompileAndRunResponse struct {
 	//	*CompileAndRunResponse_CompileError
 	//	*CompileAndRunResponse_RuntimeError
 	//	*CompileAndRunResponse_RunEvent
+	//	*CompileAndRunResponse_RuntimeOutput
 	CompileAndRunOneof isCompileAndRunResponse_CompileAndRunOneof `protobuf_oneof:"compile_and_run_oneof"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -141,6 +142,15 @@ func (x *CompileAndRunResponse) GetRunEvent() *ProbeEvent {
 	return nil
 }
 
+func (x *CompileAndRunResponse) GetRuntimeOutput() *RuntimeOutput {
+	if x != nil {
+		if x, ok := x.CompileAndRunOneof.(*CompileAndRunResponse_RuntimeOutput); ok {
+			return x.RuntimeOutput
+		}
+	}
+	return nil
+}
+
 type isCompileAndRunResponse_CompileAndRunOneof interface {
 	isCompileAndRunResponse_CompileAndRunOneof()
 }
@@ -157,11 +167,17 @@ type CompileAndRunResponse_RunEvent struct {
 	RunEvent *ProbeEvent `protobuf:"bytes,3,opt,name=run_event,json=runEvent,proto3,oneof"`
 }
 
+type CompileAndRunResponse_RuntimeOutput struct {
+	RuntimeOutput *RuntimeOutput `protobuf:"bytes,4,opt,name=runtime_output,json=runtimeOutput,proto3,oneof"`
+}
+
 func (*CompileAndRunResponse_CompileError) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 func (*CompileAndRunResponse_RuntimeError) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 func (*CompileAndRunResponse_RunEvent) isCompileAndRunResponse_CompileAndRunOneof() {}
+
+func (*CompileAndRunResponse_RuntimeOutput) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 type CompilationError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -497,17 +513,62 @@ func (x *RunqEntry) GetExecutionContext() *InterpretedPC {
 	return nil
 }
 
+type RuntimeOutput struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Output        string                 `protobuf:"bytes,1,opt,name=output,proto3" json:"output,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RuntimeOutput) Reset() {
+	*x = RuntimeOutput{}
+	mi := &file_slowmo_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RuntimeOutput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RuntimeOutput) ProtoMessage() {}
+
+func (x *RuntimeOutput) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RuntimeOutput.ProtoReflect.Descriptor instead.
+func (*RuntimeOutput) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RuntimeOutput) GetOutput() string {
+	if x != nil {
+		return x.Output
+	}
+	return ""
+}
+
 var File_slowmo_proto protoreflect.FileDescriptor
 
 const file_slowmo_proto_rawDesc = "" +
 	"\n" +
 	"\fslowmo.proto\x12\x06slowmo\".\n" +
 	"\x14CompileAndRunRequest\x12\x16\n" +
-	"\x06source\x18\x01 \x01(\tR\x06source\"\xe1\x01\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\"\xa1\x02\n" +
 	"\x15CompileAndRunResponse\x12?\n" +
 	"\rcompile_error\x18\x01 \x01(\v2\x18.slowmo.CompilationErrorH\x00R\fcompileError\x12;\n" +
 	"\rruntime_error\x18\x02 \x01(\v2\x14.slowmo.RuntimeErrorH\x00R\fruntimeError\x121\n" +
-	"\trun_event\x18\x03 \x01(\v2\x12.slowmo.ProbeEventH\x00R\brunEventB\x17\n" +
+	"\trun_event\x18\x03 \x01(\v2\x12.slowmo.ProbeEventH\x00R\brunEvent\x12>\n" +
+	"\x0eruntime_output\x18\x04 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutputB\x17\n" +
 	"\x15compile_and_run_oneof\"7\n" +
 	"\x10CompilationError\x12#\n" +
 	"\rerror_message\x18\x01 \x01(\tR\ferrorMessage\"3\n" +
@@ -529,7 +590,9 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x04func\x18\x03 \x01(\tR\x04func\"d\n" +
 	"\tRunqEntry\x12\x13\n" +
 	"\x05go_id\x18\x01 \x01(\x03R\x04goId\x12B\n" +
-	"\x11execution_context\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\x10executionContext2_\n" +
+	"\x11execution_context\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\x10executionContext\"'\n" +
+	"\rRuntimeOutput\x12\x16\n" +
+	"\x06output\x18\x01 \x01(\tR\x06output2_\n" +
 	"\rSlowmoService\x12N\n" +
 	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01B$Z\"github.com/kailun2047/slowmo/protob\x06proto3"
 
@@ -545,7 +608,7 @@ func file_slowmo_proto_rawDescGZIP() []byte {
 	return file_slowmo_proto_rawDescData
 }
 
-var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_slowmo_proto_goTypes = []any{
 	(*CompileAndRunRequest)(nil),  // 0: slowmo.CompileAndRunRequest
 	(*CompileAndRunResponse)(nil), // 1: slowmo.CompileAndRunResponse
@@ -555,23 +618,25 @@ var file_slowmo_proto_goTypes = []any{
 	(*RunqStatusEvent)(nil),       // 5: slowmo.RunqStatusEvent
 	(*InterpretedPC)(nil),         // 6: slowmo.InterpretedPC
 	(*RunqEntry)(nil),             // 7: slowmo.RunqEntry
+	(*RuntimeOutput)(nil),         // 8: slowmo.RuntimeOutput
 }
 var file_slowmo_proto_depIdxs = []int32{
-	2, // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
-	3, // 1: slowmo.CompileAndRunResponse.runtime_error:type_name -> slowmo.RuntimeError
-	4, // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
-	5, // 3: slowmo.ProbeEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
-	6, // 4: slowmo.RunqStatusEvent.current_pc:type_name -> slowmo.InterpretedPC
-	7, // 5: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
-	7, // 6: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
-	6, // 7: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
-	0, // 8: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
-	1, // 9: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
-	9, // [9:10] is the sub-list for method output_type
-	8, // [8:9] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	2,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
+	3,  // 1: slowmo.CompileAndRunResponse.runtime_error:type_name -> slowmo.RuntimeError
+	4,  // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
+	8,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
+	5,  // 4: slowmo.ProbeEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
+	6,  // 5: slowmo.RunqStatusEvent.current_pc:type_name -> slowmo.InterpretedPC
+	7,  // 6: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
+	7,  // 7: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
+	6,  // 8: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
+	0,  // 9: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
+	1,  // 10: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_slowmo_proto_init() }
@@ -583,6 +648,7 @@ func file_slowmo_proto_init() {
 		(*CompileAndRunResponse_CompileError)(nil),
 		(*CompileAndRunResponse_RuntimeError)(nil),
 		(*CompileAndRunResponse_RunEvent)(nil),
+		(*CompileAndRunResponse_RuntimeOutput)(nil),
 	}
 	file_slowmo_proto_msgTypes[4].OneofWrappers = []any{
 		(*ProbeEvent_RunqStatusEvent)(nil),
@@ -593,7 +659,7 @@ func file_slowmo_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_slowmo_proto_rawDesc), len(file_slowmo_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

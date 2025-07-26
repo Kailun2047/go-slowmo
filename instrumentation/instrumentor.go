@@ -5,16 +5,10 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
-)
-
-var (
-	instrumentor         *Instrumentor
-	initInstrumentorOnce sync.Once
 )
 
 type Instrumentor struct {
@@ -47,44 +41,34 @@ func WithGlobalVariable[T GlobalVariableValue](variable GlobalVariable[T]) Instr
 }
 
 func NewInstrumentor(interpreter *ELFInterpreter, bpfProg, targetPath string, opts ...InstrumentorOption) *Instrumentor {
-	initInstrumentor(interpreter, bpfProg, targetPath, opts...)
-	return instrumentor
-}
-
-func initInstrumentor(interpreter *ELFInterpreter, bpfProg, targetPath string, opts ...InstrumentorOption) {
-	if instrumentor != nil {
-		return
+	if err := rlimit.RemoveMemlock(); err != nil {
+		log.Fatal("RemoveMemlock: ", err)
 	}
-	initInstrumentorOnce.Do(func() {
-		if err := rlimit.RemoveMemlock(); err != nil {
-			log.Fatal("RemoveMemlock: ", err)
+	exe, err := link.OpenExecutable(targetPath)
+	if err != nil {
+		log.Fatal("OpenExecutable for tracee: ", err)
+	}
+	spec, err := ebpf.LoadCollectionSpec(bpfProg)
+	if err != nil {
+		log.Fatal("LoadCollectionSpec: ", err)
+	}
+	for _, opt := range opts {
+		opt(interpreter, spec)
+	}
+	coll, err := ebpf.NewCollection(spec)
+	if err != nil {
+		var verifierErr *ebpf.VerifierError
+		if errors.As(err, &verifierErr) {
+			log.Fatalf("LoadCollection verifier error: %+v\n", verifierErr)
+		} else {
+			log.Fatal("LoadCollection: ", err)
 		}
-		exe, err := link.OpenExecutable(targetPath)
-		if err != nil {
-			log.Fatal("OpenExecutable for tracee: ", err)
-		}
-		spec, err := ebpf.LoadCollectionSpec(bpfProg)
-		if err != nil {
-			log.Fatal("LoadCollectionSpec: ", err)
-		}
-		for _, opt := range opts {
-			opt(interpreter, spec)
-		}
-		coll, err := ebpf.NewCollection(spec)
-		if err != nil {
-			var verifierErr *ebpf.VerifierError
-			if errors.As(err, &verifierErr) {
-				log.Fatalf("LoadCollection verifier error: %+v\n", verifierErr)
-			} else {
-				log.Fatal("LoadCollection: ", err)
-			}
-		}
-		instrumentor = &Instrumentor{
-			interpreter: interpreter,
-			targetExe:   exe,
-			bpfColl:     coll,
-		}
-	})
+	}
+	return &Instrumentor{
+		interpreter: interpreter,
+		targetExe:   exe,
+		bpfColl:     coll,
+	}
 }
 
 func (in *Instrumentor) Close() {

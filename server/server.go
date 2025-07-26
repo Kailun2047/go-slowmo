@@ -5,11 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/cilium/ebpf"
@@ -18,7 +21,15 @@ import (
 	"google.golang.org/grpc"
 )
 
-func StartInstrumentation(bpfProg, targetPath string) {
+const (
+	goBinaryPath         = "/home/kailun/go/go1.22.5/bin/go"
+	instrumentorProgPath = "./instrumentor.o"
+
+	outputReaderLimit  = 1024
+	executionTimeLimit = 10 * time.Second
+)
+
+func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrumentor, *instrumentation.EventReader) {
 	flag.Parse()
 
 	interpreter := instrumentation.NewELFInterpreter(targetPath)
@@ -90,8 +101,6 @@ func StartInstrumentation(bpfProg, targetPath string) {
 		}
 	}
 
-	defer instrumentor.Close()
-
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
 		TargetFn:  "newproc",
@@ -145,8 +154,8 @@ func StartInstrumentation(bpfProg, targetPath string) {
 	// }
 
 	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
-	defer eventReader.Close()
 	eventReader.Start()
+	return instrumentor, eventReader
 }
 
 type SlowmoServer struct {
@@ -173,31 +182,98 @@ func (ce compileError) Is(target error) bool {
 	return target == errCompilation
 }
 
-func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) error {
+func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) (compileAndRunErr error) {
 	log.Println("Received CompileAndRun request")
-	outName, err := sandboxedBuild(req.GetSource())
-	if err != nil {
-		if !errors.Is(err, errCompilation) {
-			return fmt.Errorf("internal error when building the program")
-		}
-		stream.Send(&proto.CompileAndRunResponse{
-			CompileAndRunOneof: &proto.CompileAndRunResponse_CompileError{
-				CompileError: &proto.CompilationError{
-					ErrorMessage: err.Error(),
-				},
-			},
-		})
-		return nil
-	}
+	var (
+		internalErr error
+		wg          sync.WaitGroup
+	)
 
 	defer func() {
-		err := os.Remove(outName)
-		if err != nil {
-			log.Printf("Failed to remove temp built output file %s: %v", outName, err)
+		if err := recover(); err != nil {
+			internalErr = errors.Join(internalErr, fmt.Errorf("panic detected: %v", err))
+		}
+		if internalErr != nil {
+			log.Printf("unexpected error during CompileAndRun (error: %v, program: %s)", internalErr, req.GetSource())
 		}
 	}()
 
-	return nil
+	outName, err := sandboxedBuild(req.GetSource())
+	if err != nil {
+		if !errors.Is(err, errCompilation) {
+			internalErr = fmt.Errorf("internal error when building the program")
+		} else {
+			stream.Send(&proto.CompileAndRunResponse{
+				CompileAndRunOneof: &proto.CompileAndRunResponse_CompileError{
+					CompileError: &proto.CompilationError{
+						ErrorMessage: err.Error(),
+					},
+				},
+			})
+		}
+	} else {
+		defer func() {
+			err := os.Remove(outName)
+			if err != nil {
+				log.Printf("Failed to remove temp built output file %s: %v", outName, err)
+			}
+		}()
+
+		instrumentor, probeEventReader := startInstrumentation(instrumentorProgPath, outName)
+		log.Printf("Instrumentor started for program %s", outName)
+		defer instrumentor.Close()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for event := range probeEventReader.ProbeEventCh {
+				stream.Send(&proto.CompileAndRunResponse{
+					CompileAndRunOneof: &proto.CompileAndRunResponse_RunEvent{
+						RunEvent: event,
+					},
+				})
+			}
+		}()
+
+		pipeReader, pipeWriter := io.Pipe()
+		runTargetCmd, err := sandboxedRun(outName, pipeReader, pipeWriter)
+		if err != nil {
+			internalErr = fmt.Errorf("internal error when starting the program: %w", err)
+		} else {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				var (
+					n       int
+					readErr error
+					buf     []byte = make([]byte, outputReaderLimit)
+				)
+				for readErr == nil {
+					n, readErr = pipeReader.Read(buf)
+					if n > 0 {
+						stream.Send(&proto.CompileAndRunResponse{
+							CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeOutput{
+								RuntimeOutput: &proto.RuntimeOutput{
+									Output: string(buf),
+								},
+							},
+						})
+					}
+				}
+				if !errors.Is(readErr, io.EOF) {
+					log.Printf("Received unexpected error from pipe reader: %v", readErr)
+				}
+			}()
+
+			runTargetCmd.Wait()
+			pipeWriter.Close()
+			log.Printf("Program %s exited", outName)
+		}
+		probeEventReader.Close()
+	}
+
+	wg.Wait()
+	log.Println("Finished serving CompileAndRun request")
+	return
 }
 
 func sandboxedBuild(source string) (string, error) {
@@ -216,8 +292,7 @@ func sandboxedBuild(source string) (string, error) {
 	}()
 
 	outName := strings.TrimSuffix(tempFile.Name(), ".go")
-	// TODO: find path to go binary dynamically.
-	goBuildCmd := exec.Command("/home/kailun/go/go1.22.5/bin/go", "build", "-gcflags=all=-N -l", "-o", outName, tempFile.Name())
+	goBuildCmd := exec.Command(goBinaryPath, "build", "-gcflags=all=-N -l", "-o", outName, tempFile.Name())
 	buf := bytes.Buffer{}
 	goBuildCmd.Stdout = &buf
 	goBuildCmd.Stderr = &buf
@@ -228,4 +303,17 @@ func sandboxedBuild(source string) (string, error) {
 		}
 	}
 	return outName, nil
+}
+
+func sandboxedRun(targetName string, pipeReader *io.PipeReader, pipeWriter *io.PipeWriter) (startedCmd *exec.Cmd, err error) {
+	log.Printf("Start sandbox run of program %s", targetName)
+	// TODO: prevent filesystem and network access in the sandbox.
+	runTargetCmd := exec.Command(targetName)
+	runTargetCmd.Stdout, runTargetCmd.Stderr = pipeWriter, pipeWriter
+	runTargetCmd.WaitDelay = executionTimeLimit
+	err = runTargetCmd.Start()
+	if err == nil {
+		startedCmd = runTargetCmd
+	}
+	return
 }

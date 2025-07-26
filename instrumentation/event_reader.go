@@ -8,12 +8,12 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/signal"
 	"strings"
 	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
+	"github.com/kailun2047/slowmo/proto"
 )
 
 /*
@@ -58,35 +58,32 @@ func isEmptyEntry(entry runqEntry) bool {
 	return entry.PC == 0
 }
 
-func (r *EventReader) interpretAndFmtRunqEntries(entries []runqEntry) string {
-	sb := strings.Builder{}
-	sb.WriteByte('[')
+func (r *EventReader) interpretRunqEntries(entries []runqEntry) []*proto.RunqEntry {
+	runqEntries := make([]*proto.RunqEntry, len(entries))
 	for i, entry := range entries {
-		sb.WriteByte('(')
-		sb.WriteString(r.interpretAndFmtRunqEntry(entry))
-		sb.WriteByte(')')
-		if i != len(entries)-1 {
-			sb.WriteByte(',')
+		runqEntries[i] = &proto.RunqEntry{
+			GoId:             int64(entry.GoID),
+			ExecutionContext: r.interpretPC(entry.PC),
 		}
 	}
-	sb.WriteByte(']')
-	return sb.String()
+	return runqEntries
 }
 
-func (r *EventReader) interpretAndFmtRunqEntry(entry runqEntry) string {
-	if isEmptyEntry(entry) {
-		return "nil"
-	}
-	return fmt.Sprintf("PC: %s, GoID: %d, Status: %d", r.interpretAndFmtPC(entry.PC), entry.GoID, entry.Status)
-}
-
-func (r *EventReader) interpretAndFmtPC(pc uint64) string {
+func (r *EventReader) interpretPC(pc uint64) *proto.InterpretedPC {
 	file, line, fn := r.interpreter.PCToLine(pc)
 	if fn == nil {
 		log.Printf("Cannot interpret PC %x", pc)
-		return fmt.Sprintf("%x", pc)
+		return &proto.InterpretedPC{
+			File: "",
+			Func: "",
+			Line: 0,
+		}
 	}
-	return fmt.Sprintf("%s (%s:%d)", fn.Name, file, line)
+	return &proto.InterpretedPC{
+		File: file,
+		Func: fn.Name,
+		Line: int32(line),
+	}
 }
 
 type delayEvent struct {
@@ -158,6 +155,7 @@ type EventReader struct {
 	localRunqs    map[int64][]runqEntry
 	globrunq      []runqEntry
 	semtable      versionedSemtable
+	ProbeEventCh  chan *proto.ProbeEvent
 }
 
 func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventReader {
@@ -171,15 +169,21 @@ func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventRea
 		eventCh:       make(chan ringbuf.Record),
 		byteOrder:     determineByteOrder(),
 		localRunqs:    make(map[int64][]runqEntry),
+		ProbeEventCh:  make(chan *proto.ProbeEvent),
 	}
 }
 
+// When Close() is called, there's no guarantee that all events which are
+// intended to be collected are indeed transmitted. Thus it's the caller's
+// responsibility to make sure there won't be any further events to collect
+// before calling Close().
 func (r *EventReader) Close() {
 	r.ringbufReader.Close()
 }
 
 func (r *EventReader) Start() {
 	go func() {
+		defer close(r.eventCh)
 		for {
 			r.ringbufReader.SetDeadline(time.Now().Add(1 * time.Second))
 			record, err := r.ringbufReader.Read()
@@ -197,14 +201,9 @@ func (r *EventReader) Start() {
 		}
 	}()
 
-	stop := make(chan os.Signal, 5)
-	signal.Notify(stop, os.Interrupt)
-	for {
-		select {
-		case <-stop:
-			log.Println("Received signal, exiting...")
-			return
-		case record := <-r.eventCh:
+	go func() {
+		defer close(r.ProbeEventCh)
+		for record := range r.eventCh {
 			var etype eventType
 			bytesReader := bytes.NewReader(record.RawSample)
 			err := binary.Read(bytesReader, r.byteOrder, &etype)
@@ -216,7 +215,7 @@ func (r *EventReader) Start() {
 				log.Fatalf("Decode event type %v: %v\n", etype, err)
 			}
 		}
-	}
+	}()
 }
 
 func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error {
@@ -259,9 +258,18 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			r.localRunqs[event.ProcID] = []runqEntry{}
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
-			log.Printf("In %s, runq status on processor %d: runq (head %d, tail %d): %s, runnext: %s)",
-				r.interpretAndFmtPC(event.PC), event.ProcID, event.Runqhead, event.Runqtail, r.interpretAndFmtRunqEntries(r.localRunqs[event.ProcID]), r.interpretAndFmtRunqEntry(event.RunqEntry))
-			delete(r.localRunqs, event.ProcID)
+			interpretedPC := r.interpretPC(event.PC)
+			probeEvent := &proto.ProbeEvent{
+				ProbeEventOneof: &proto.ProbeEvent_RunqStatusEvent{
+					RunqStatusEvent: &proto.RunqStatusEvent{
+						ProcId:      event.ProcID,
+						CurrentPc:   interpretedPC,
+						RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
+					},
+				},
+			}
+			log.Printf("Local runq status event: %v", probeEvent)
+			r.ProbeEventCh <- probeEvent
 		} else {
 			r.localRunqs[event.ProcID] = append(r.localRunqs[event.ProcID], event.RunqEntry)
 		}
@@ -278,8 +286,8 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil || !r.shouldKeepEvent(event) {
 			break
 		}
-		log.Printf("Executing GoID: %d (function: %s) on processor %d",
-			event.GoID, r.interpretAndFmtPC(event.GoPC), event.ProcID)
+		log.Printf("Executing GoID: %d (function: %v) on processor %d",
+			event.GoID, r.interpretPC(event.GoPC), event.ProcID)
 	case EVENT_TYPE_GLOBAL_RUNQ_STATUS:
 		var event globalRunqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -287,7 +295,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		if event.RunqEntryIdx == uint64(event.Size) {
-			log.Printf("In %s, global runq status: %s", r.interpretAndFmtPC(event.PC), r.interpretAndFmtRunqEntries(r.globrunq))
+			log.Printf("In %v, global runq status: %v", r.interpretPC(event.PC), r.interpretRunqEntries(r.globrunq))
 			r.globrunq = []runqEntry{}
 		} else {
 			r.globrunq = append(r.globrunq, event.RunqEntry)
