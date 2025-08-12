@@ -25,9 +25,9 @@ all: proto $(instrumentor_bpf_prog) $(server_prog)
 # TODO: add libbpf as dependency.
 $(instrumentor_bpf_prog): $(instrumentor_bpf_src)
 	$(CC) $(CFLAGS) -o $(instrumentor_bpf_prog) -c $(instrumentor_bpf_src)
+	go generate -C $(instrumentation_dir)
 
 $(server_prog): $(instrumentor_bpf_prog) $(instrumentor_go_src) $(server_go_src) $(main_go_src)
-	go generate -C $(instrumentation_dir)
 ifeq ($(debug), on)
 	go build -gcflags="all=-N -l" -o $(server_prog)
 else

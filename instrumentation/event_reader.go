@@ -268,6 +268,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 					},
 				},
 			}
+			delete(r.localRunqs, event.ProcID)
 			log.Printf("Local runq status event: %v", probeEvent)
 			r.ProbeEventCh <- probeEvent
 		} else {
