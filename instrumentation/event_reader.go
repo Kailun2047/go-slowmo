@@ -259,12 +259,14 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
 			interpretedPC := r.interpretPC(event.PC)
+			runnext := r.interpretRunqEntries([]runqEntry{event.RunqEntry})[0]
 			probeEvent := &proto.ProbeEvent{
 				ProbeEventOneof: &proto.ProbeEvent_RunqStatusEvent{
 					RunqStatusEvent: &proto.RunqStatusEvent{
 						ProcId:      event.ProcID,
 						CurrentPc:   interpretedPC,
 						RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
+						Runnext:     runnext,
 					},
 				},
 			}
