@@ -134,7 +134,7 @@ func (ei *ELFInterpreter) GetDelayableOffsetsForPackage(pkgName string) SymbolOf
 				if !errors.As(err, &unknownLnErr) {
 					log.Fatalf("getInstrumentablePCsForFunc: error finding PC for line %d in file %s: %v", ln, file, err)
 				}
-			} else {
+			} else if curFn != nil && curFn.Name == fn.Name {
 				symOffsets[curFn.Name] = append(symOffsets[curFn.Name], pc-curFn.Entry)
 			}
 		}
