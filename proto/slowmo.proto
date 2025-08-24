@@ -3,7 +3,7 @@ package slowmo;
 option go_package = "github.com/kailun2047/slowmo/proto";
 
 message CompileAndRunRequest {
-    string source = 1; // Go source code from user.
+    optional string source = 1; // Go source code from user.
 }
 
 message CompileAndRunResponse {
@@ -16,11 +16,11 @@ message CompileAndRunResponse {
 }
 
 message CompilationError  {
-    string error_message = 1;
+    optional string error_message = 1;
 }
 
 message RuntimeError {
-    string error_message = 1;
+    optional string error_message = 1;
 }
 
 message ProbeEvent {
@@ -30,25 +30,25 @@ message ProbeEvent {
 }
 
 message RunqStatusEvent {
-    int64 proc_id = 1;
+    optional int64 proc_id = 1;
     InterpretedPC current_pc = 2;
     repeated RunqEntry runq_entries = 3;
     RunqEntry runnext = 4;
 }
 
 message InterpretedPC {
-    string file = 1;
-    int32 line = 2;
-    string func = 3;
+    optional string file = 1;
+    optional int32 line = 2;
+    optional string func = 3;
 }
 
 message RunqEntry {
-    int64 go_id = 1;
+    optional int64 go_id = 1;
     InterpretedPC execution_context = 2;
 }
 
 message RuntimeOutput {
-    string output = 1;
+    optional string output = 1;
 }
 
 service SlowmoService {

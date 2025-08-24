@@ -16,9 +16,9 @@ import { MessageType } from "@protobuf-ts/runtime";
  */
 export interface CompileAndRunRequest {
     /**
-     * @generated from protobuf field: string source = 1
+     * @generated from protobuf field: optional string source = 1
      */
-    source: string; // Go source code from user.
+    source?: string; // Go source code from user.
 }
 /**
  * @generated from protobuf message slowmo.CompileAndRunResponse
@@ -60,18 +60,18 @@ export interface CompileAndRunResponse {
  */
 export interface CompilationError {
     /**
-     * @generated from protobuf field: string error_message = 1
+     * @generated from protobuf field: optional string error_message = 1
      */
-    errorMessage: string;
+    errorMessage?: string;
 }
 /**
  * @generated from protobuf message slowmo.RuntimeError
  */
 export interface RuntimeError {
     /**
-     * @generated from protobuf field: string error_message = 1
+     * @generated from protobuf field: optional string error_message = 1
      */
-    errorMessage: string;
+    errorMessage?: string;
 }
 /**
  * @generated from protobuf message slowmo.ProbeEvent
@@ -95,9 +95,9 @@ export interface ProbeEvent {
  */
 export interface RunqStatusEvent {
     /**
-     * @generated from protobuf field: int64 proc_id = 1
+     * @generated from protobuf field: optional int64 proc_id = 1
      */
-    procId: bigint;
+    procId?: bigint;
     /**
      * @generated from protobuf field: slowmo.InterpretedPC current_pc = 2
      */
@@ -116,26 +116,26 @@ export interface RunqStatusEvent {
  */
 export interface InterpretedPC {
     /**
-     * @generated from protobuf field: string file = 1
+     * @generated from protobuf field: optional string file = 1
      */
-    file: string;
+    file?: string;
     /**
-     * @generated from protobuf field: int32 line = 2
+     * @generated from protobuf field: optional int32 line = 2
      */
-    line: number;
+    line?: number;
     /**
-     * @generated from protobuf field: string func = 3
+     * @generated from protobuf field: optional string func = 3
      */
-    func: string;
+    func?: string;
 }
 /**
  * @generated from protobuf message slowmo.RunqEntry
  */
 export interface RunqEntry {
     /**
-     * @generated from protobuf field: int64 go_id = 1
+     * @generated from protobuf field: optional int64 go_id = 1
      */
-    goId: bigint;
+    goId?: bigint;
     /**
      * @generated from protobuf field: slowmo.InterpretedPC execution_context = 2
      */
@@ -146,20 +146,19 @@ export interface RunqEntry {
  */
 export interface RuntimeOutput {
     /**
-     * @generated from protobuf field: string output = 1
+     * @generated from protobuf field: optional string output = 1
      */
-    output: string;
+    output?: string;
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
     constructor() {
         super("slowmo.CompileAndRunRequest", [
-            { no: 1, name: "source", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+            { no: 1, name: "source", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<CompileAndRunRequest>): CompileAndRunRequest {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.source = "";
         if (value !== undefined)
             reflectionMergePartial<CompileAndRunRequest>(this, message, value);
         return message;
@@ -169,7 +168,7 @@ class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* string source */ 1:
+                case /* optional string source */ 1:
                     message.source = reader.string();
                     break;
                 default:
@@ -184,8 +183,8 @@ class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
         return message;
     }
     internalBinaryWrite(message: CompileAndRunRequest, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* string source = 1; */
-        if (message.source !== "")
+        /* optional string source = 1; */
+        if (message.source !== undefined)
             writer.tag(1, WireType.LengthDelimited).string(message.source);
         let u = options.writeUnknownFields;
         if (u !== false)
@@ -281,12 +280,11 @@ export const CompileAndRunResponse = new CompileAndRunResponse$Type();
 class CompilationError$Type extends MessageType<CompilationError> {
     constructor() {
         super("slowmo.CompilationError", [
-            { no: 1, name: "error_message", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+            { no: 1, name: "error_message", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<CompilationError>): CompilationError {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.errorMessage = "";
         if (value !== undefined)
             reflectionMergePartial<CompilationError>(this, message, value);
         return message;
@@ -296,7 +294,7 @@ class CompilationError$Type extends MessageType<CompilationError> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* string error_message */ 1:
+                case /* optional string error_message */ 1:
                     message.errorMessage = reader.string();
                     break;
                 default:
@@ -311,8 +309,8 @@ class CompilationError$Type extends MessageType<CompilationError> {
         return message;
     }
     internalBinaryWrite(message: CompilationError, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* string error_message = 1; */
-        if (message.errorMessage !== "")
+        /* optional string error_message = 1; */
+        if (message.errorMessage !== undefined)
             writer.tag(1, WireType.LengthDelimited).string(message.errorMessage);
         let u = options.writeUnknownFields;
         if (u !== false)
@@ -328,12 +326,11 @@ export const CompilationError = new CompilationError$Type();
 class RuntimeError$Type extends MessageType<RuntimeError> {
     constructor() {
         super("slowmo.RuntimeError", [
-            { no: 1, name: "error_message", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+            { no: 1, name: "error_message", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<RuntimeError>): RuntimeError {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.errorMessage = "";
         if (value !== undefined)
             reflectionMergePartial<RuntimeError>(this, message, value);
         return message;
@@ -343,7 +340,7 @@ class RuntimeError$Type extends MessageType<RuntimeError> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* string error_message */ 1:
+                case /* optional string error_message */ 1:
                     message.errorMessage = reader.string();
                     break;
                 default:
@@ -358,8 +355,8 @@ class RuntimeError$Type extends MessageType<RuntimeError> {
         return message;
     }
     internalBinaryWrite(message: RuntimeError, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* string error_message = 1; */
-        if (message.errorMessage !== "")
+        /* optional string error_message = 1; */
+        if (message.errorMessage !== undefined)
             writer.tag(1, WireType.LengthDelimited).string(message.errorMessage);
         let u = options.writeUnknownFields;
         if (u !== false)
@@ -425,7 +422,7 @@ export const ProbeEvent = new ProbeEvent$Type();
 class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
     constructor() {
         super("slowmo.RunqStatusEvent", [
-            { no: 1, name: "proc_id", kind: "scalar", T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 1, name: "proc_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
             { no: 2, name: "current_pc", kind: "message", T: () => InterpretedPC },
             { no: 3, name: "runq_entries", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => RunqEntry },
             { no: 4, name: "runnext", kind: "message", T: () => RunqEntry }
@@ -433,7 +430,6 @@ class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
     }
     create(value?: PartialMessage<RunqStatusEvent>): RunqStatusEvent {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.procId = 0n;
         message.runqEntries = [];
         if (value !== undefined)
             reflectionMergePartial<RunqStatusEvent>(this, message, value);
@@ -444,7 +440,7 @@ class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* int64 proc_id */ 1:
+                case /* optional int64 proc_id */ 1:
                     message.procId = reader.int64().toBigInt();
                     break;
                 case /* slowmo.InterpretedPC current_pc */ 2:
@@ -468,8 +464,8 @@ class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
         return message;
     }
     internalBinaryWrite(message: RunqStatusEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* int64 proc_id = 1; */
-        if (message.procId !== 0n)
+        /* optional int64 proc_id = 1; */
+        if (message.procId !== undefined)
             writer.tag(1, WireType.Varint).int64(message.procId);
         /* slowmo.InterpretedPC current_pc = 2; */
         if (message.currentPc)
@@ -494,16 +490,13 @@ export const RunqStatusEvent = new RunqStatusEvent$Type();
 class InterpretedPC$Type extends MessageType<InterpretedPC> {
     constructor() {
         super("slowmo.InterpretedPC", [
-            { no: 1, name: "file", kind: "scalar", T: 9 /*ScalarType.STRING*/ },
-            { no: 2, name: "line", kind: "scalar", T: 5 /*ScalarType.INT32*/ },
-            { no: 3, name: "func", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+            { no: 1, name: "file", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ },
+            { no: 2, name: "line", kind: "scalar", opt: true, T: 5 /*ScalarType.INT32*/ },
+            { no: 3, name: "func", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<InterpretedPC>): InterpretedPC {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.file = "";
-        message.line = 0;
-        message.func = "";
         if (value !== undefined)
             reflectionMergePartial<InterpretedPC>(this, message, value);
         return message;
@@ -513,13 +506,13 @@ class InterpretedPC$Type extends MessageType<InterpretedPC> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* string file */ 1:
+                case /* optional string file */ 1:
                     message.file = reader.string();
                     break;
-                case /* int32 line */ 2:
+                case /* optional int32 line */ 2:
                     message.line = reader.int32();
                     break;
-                case /* string func */ 3:
+                case /* optional string func */ 3:
                     message.func = reader.string();
                     break;
                 default:
@@ -534,14 +527,14 @@ class InterpretedPC$Type extends MessageType<InterpretedPC> {
         return message;
     }
     internalBinaryWrite(message: InterpretedPC, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* string file = 1; */
-        if (message.file !== "")
+        /* optional string file = 1; */
+        if (message.file !== undefined)
             writer.tag(1, WireType.LengthDelimited).string(message.file);
-        /* int32 line = 2; */
-        if (message.line !== 0)
+        /* optional int32 line = 2; */
+        if (message.line !== undefined)
             writer.tag(2, WireType.Varint).int32(message.line);
-        /* string func = 3; */
-        if (message.func !== "")
+        /* optional string func = 3; */
+        if (message.func !== undefined)
             writer.tag(3, WireType.LengthDelimited).string(message.func);
         let u = options.writeUnknownFields;
         if (u !== false)
@@ -557,13 +550,12 @@ export const InterpretedPC = new InterpretedPC$Type();
 class RunqEntry$Type extends MessageType<RunqEntry> {
     constructor() {
         super("slowmo.RunqEntry", [
-            { no: 1, name: "go_id", kind: "scalar", T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 1, name: "go_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
             { no: 2, name: "execution_context", kind: "message", T: () => InterpretedPC }
         ]);
     }
     create(value?: PartialMessage<RunqEntry>): RunqEntry {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.goId = 0n;
         if (value !== undefined)
             reflectionMergePartial<RunqEntry>(this, message, value);
         return message;
@@ -573,7 +565,7 @@ class RunqEntry$Type extends MessageType<RunqEntry> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* int64 go_id */ 1:
+                case /* optional int64 go_id */ 1:
                     message.goId = reader.int64().toBigInt();
                     break;
                 case /* slowmo.InterpretedPC execution_context */ 2:
@@ -591,8 +583,8 @@ class RunqEntry$Type extends MessageType<RunqEntry> {
         return message;
     }
     internalBinaryWrite(message: RunqEntry, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* int64 go_id = 1; */
-        if (message.goId !== 0n)
+        /* optional int64 go_id = 1; */
+        if (message.goId !== undefined)
             writer.tag(1, WireType.Varint).int64(message.goId);
         /* slowmo.InterpretedPC execution_context = 2; */
         if (message.executionContext)
@@ -611,12 +603,11 @@ export const RunqEntry = new RunqEntry$Type();
 class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
     constructor() {
         super("slowmo.RuntimeOutput", [
-            { no: 1, name: "output", kind: "scalar", T: 9 /*ScalarType.STRING*/ }
+            { no: 1, name: "output", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<RuntimeOutput>): RuntimeOutput {
         const message = globalThis.Object.create((this.messagePrototype!));
-        message.output = "";
         if (value !== undefined)
             reflectionMergePartial<RuntimeOutput>(this, message, value);
         return message;
@@ -626,7 +617,7 @@ class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* string output */ 1:
+                case /* optional string output */ 1:
                     message.output = reader.string();
                     break;
                 default:
@@ -641,8 +632,8 @@ class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
         return message;
     }
     internalBinaryWrite(message: RuntimeOutput, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* string output = 1; */
-        if (message.output !== "")
+        /* optional string output = 1; */
+        if (message.output !== undefined)
             writer.tag(1, WireType.LengthDelimited).string(message.output);
         let u = options.writeUnknownFields;
         if (u !== false)

@@ -203,10 +203,11 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		if !errors.Is(err, errCompilation) {
 			internalErr = fmt.Errorf("internal error when building the program")
 		} else {
+			errMsg := err.Error()
 			stream.Send(&proto.CompileAndRunResponse{
 				CompileAndRunOneof: &proto.CompileAndRunResponse_CompileError{
 					CompileError: &proto.CompilationError{
-						ErrorMessage: err.Error(),
+						ErrorMessage: &errMsg,
 					},
 				},
 			})
@@ -250,10 +251,11 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 				for readErr == nil {
 					n, readErr = pipeReader.Read(buf)
 					if n > 0 {
+						out := string(buf)
 						stream.Send(&proto.CompileAndRunResponse{
 							CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeOutput{
 								RuntimeOutput: &proto.RuntimeOutput{
-									Output: string(buf),
+									Output: &out,
 								},
 							},
 						})

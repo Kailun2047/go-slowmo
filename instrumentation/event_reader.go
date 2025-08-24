@@ -54,16 +54,21 @@ type runqEntry struct {
 	Status uint64
 }
 
-func isEmptyEntry(entry runqEntry) bool {
+func isDummyEntry(entry runqEntry) bool {
 	return entry.PC == 0
 }
 
 func (r *EventReader) interpretRunqEntries(entries []runqEntry) []*proto.RunqEntry {
 	runqEntries := make([]*proto.RunqEntry, len(entries))
 	for i, entry := range entries {
-		runqEntries[i] = &proto.RunqEntry{
-			GoId:             int64(entry.GoID),
-			ExecutionContext: r.interpretPC(entry.PC),
+		if isDummyEntry(entry) {
+			runqEntries[i] = &proto.RunqEntry{}
+		} else {
+			goId := int64(entry.GoID)
+			runqEntries[i] = &proto.RunqEntry{
+				GoId:             &goId,
+				ExecutionContext: r.interpretPC(entry.PC),
+			}
 		}
 	}
 	return runqEntries
@@ -73,16 +78,13 @@ func (r *EventReader) interpretPC(pc uint64) *proto.InterpretedPC {
 	file, line, fn := r.interpreter.PCToLine(pc)
 	if fn == nil {
 		log.Printf("Cannot interpret PC %x", pc)
-		return &proto.InterpretedPC{
-			File: "",
-			Func: "",
-			Line: 0,
-		}
+		return &proto.InterpretedPC{}
 	}
+	ln := int32(line)
 	return &proto.InterpretedPC{
-		File: file,
-		Func: fn.Name,
-		Line: int32(line),
+		File: &file,
+		Func: &fn.Name,
+		Line: &ln,
 	}
 }
 
@@ -263,7 +265,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			probeEvent := &proto.ProbeEvent{
 				ProbeEventOneof: &proto.ProbeEvent_RunqStatusEvent{
 					RunqStatusEvent: &proto.RunqStatusEvent{
-						ProcId:      event.ProcID,
+						ProcId:      &event.ProcID,
 						CurrentPc:   interpretedPC,
 						RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
 						Runnext:     runnext,

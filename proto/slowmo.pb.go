@@ -23,7 +23,7 @@ const (
 
 type CompileAndRunRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"` // Go source code from user.
+	Source        *string                `protobuf:"bytes,1,opt,name=source,proto3,oneof" json:"source,omitempty"` // Go source code from user.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -59,8 +59,8 @@ func (*CompileAndRunRequest) Descriptor() ([]byte, []int) {
 }
 
 func (x *CompileAndRunRequest) GetSource() string {
-	if x != nil {
-		return x.Source
+	if x != nil && x.Source != nil {
+		return *x.Source
 	}
 	return ""
 }
@@ -181,7 +181,7 @@ func (*CompileAndRunResponse_RuntimeOutput) isCompileAndRunResponse_CompileAndRu
 
 type CompilationError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ErrorMessage  string                 `protobuf:"bytes,1,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ErrorMessage  *string                `protobuf:"bytes,1,opt,name=error_message,json=errorMessage,proto3,oneof" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -217,15 +217,15 @@ func (*CompilationError) Descriptor() ([]byte, []int) {
 }
 
 func (x *CompilationError) GetErrorMessage() string {
-	if x != nil {
-		return x.ErrorMessage
+	if x != nil && x.ErrorMessage != nil {
+		return *x.ErrorMessage
 	}
 	return ""
 }
 
 type RuntimeError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ErrorMessage  string                 `protobuf:"bytes,1,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ErrorMessage  *string                `protobuf:"bytes,1,opt,name=error_message,json=errorMessage,proto3,oneof" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -261,8 +261,8 @@ func (*RuntimeError) Descriptor() ([]byte, []int) {
 }
 
 func (x *RuntimeError) GetErrorMessage() string {
-	if x != nil {
-		return x.ErrorMessage
+	if x != nil && x.ErrorMessage != nil {
+		return *x.ErrorMessage
 	}
 	return ""
 }
@@ -335,7 +335,7 @@ func (*ProbeEvent_RunqStatusEvent) isProbeEvent_ProbeEventOneof() {}
 
 type RunqStatusEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProcId        int64                  `protobuf:"varint,1,opt,name=proc_id,json=procId,proto3" json:"proc_id,omitempty"`
+	ProcId        *int64                 `protobuf:"varint,1,opt,name=proc_id,json=procId,proto3,oneof" json:"proc_id,omitempty"`
 	CurrentPc     *InterpretedPC         `protobuf:"bytes,2,opt,name=current_pc,json=currentPc,proto3" json:"current_pc,omitempty"`
 	RunqEntries   []*RunqEntry           `protobuf:"bytes,3,rep,name=runq_entries,json=runqEntries,proto3" json:"runq_entries,omitempty"`
 	Runnext       *RunqEntry             `protobuf:"bytes,4,opt,name=runnext,proto3" json:"runnext,omitempty"`
@@ -374,8 +374,8 @@ func (*RunqStatusEvent) Descriptor() ([]byte, []int) {
 }
 
 func (x *RunqStatusEvent) GetProcId() int64 {
-	if x != nil {
-		return x.ProcId
+	if x != nil && x.ProcId != nil {
+		return *x.ProcId
 	}
 	return 0
 }
@@ -403,9 +403,9 @@ func (x *RunqStatusEvent) GetRunnext() *RunqEntry {
 
 type InterpretedPC struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	File          string                 `protobuf:"bytes,1,opt,name=file,proto3" json:"file,omitempty"`
-	Line          int32                  `protobuf:"varint,2,opt,name=line,proto3" json:"line,omitempty"`
-	Func          string                 `protobuf:"bytes,3,opt,name=func,proto3" json:"func,omitempty"`
+	File          *string                `protobuf:"bytes,1,opt,name=file,proto3,oneof" json:"file,omitempty"`
+	Line          *int32                 `protobuf:"varint,2,opt,name=line,proto3,oneof" json:"line,omitempty"`
+	Func          *string                `protobuf:"bytes,3,opt,name=func,proto3,oneof" json:"func,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -441,29 +441,29 @@ func (*InterpretedPC) Descriptor() ([]byte, []int) {
 }
 
 func (x *InterpretedPC) GetFile() string {
-	if x != nil {
-		return x.File
+	if x != nil && x.File != nil {
+		return *x.File
 	}
 	return ""
 }
 
 func (x *InterpretedPC) GetLine() int32 {
-	if x != nil {
-		return x.Line
+	if x != nil && x.Line != nil {
+		return *x.Line
 	}
 	return 0
 }
 
 func (x *InterpretedPC) GetFunc() string {
-	if x != nil {
-		return x.Func
+	if x != nil && x.Func != nil {
+		return *x.Func
 	}
 	return ""
 }
 
 type RunqEntry struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	GoId             int64                  `protobuf:"varint,1,opt,name=go_id,json=goId,proto3" json:"go_id,omitempty"`
+	GoId             *int64                 `protobuf:"varint,1,opt,name=go_id,json=goId,proto3,oneof" json:"go_id,omitempty"`
 	ExecutionContext *InterpretedPC         `protobuf:"bytes,2,opt,name=execution_context,json=executionContext,proto3" json:"execution_context,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
@@ -500,8 +500,8 @@ func (*RunqEntry) Descriptor() ([]byte, []int) {
 }
 
 func (x *RunqEntry) GetGoId() int64 {
-	if x != nil {
-		return x.GoId
+	if x != nil && x.GoId != nil {
+		return *x.GoId
 	}
 	return 0
 }
@@ -515,7 +515,7 @@ func (x *RunqEntry) GetExecutionContext() *InterpretedPC {
 
 type RuntimeOutput struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Output        string                 `protobuf:"bytes,1,opt,name=output,proto3" json:"output,omitempty"`
+	Output        *string                `protobuf:"bytes,1,opt,name=output,proto3,oneof" json:"output,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -551,8 +551,8 @@ func (*RuntimeOutput) Descriptor() ([]byte, []int) {
 }
 
 func (x *RuntimeOutput) GetOutput() string {
-	if x != nil {
-		return x.Output
+	if x != nil && x.Output != nil {
+		return *x.Output
 	}
 	return ""
 }
@@ -561,38 +561,48 @@ var File_slowmo_proto protoreflect.FileDescriptor
 
 const file_slowmo_proto_rawDesc = "" +
 	"\n" +
-	"\fslowmo.proto\x12\x06slowmo\".\n" +
-	"\x14CompileAndRunRequest\x12\x16\n" +
-	"\x06source\x18\x01 \x01(\tR\x06source\"\xa1\x02\n" +
+	"\fslowmo.proto\x12\x06slowmo\">\n" +
+	"\x14CompileAndRunRequest\x12\x1b\n" +
+	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
+	"\a_source\"\xa1\x02\n" +
 	"\x15CompileAndRunResponse\x12?\n" +
 	"\rcompile_error\x18\x01 \x01(\v2\x18.slowmo.CompilationErrorH\x00R\fcompileError\x12;\n" +
 	"\rruntime_error\x18\x02 \x01(\v2\x14.slowmo.RuntimeErrorH\x00R\fruntimeError\x121\n" +
 	"\trun_event\x18\x03 \x01(\v2\x12.slowmo.ProbeEventH\x00R\brunEvent\x12>\n" +
 	"\x0eruntime_output\x18\x04 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutputB\x17\n" +
-	"\x15compile_and_run_oneof\"7\n" +
-	"\x10CompilationError\x12#\n" +
-	"\rerror_message\x18\x01 \x01(\tR\ferrorMessage\"3\n" +
-	"\fRuntimeError\x12#\n" +
-	"\rerror_message\x18\x01 \x01(\tR\ferrorMessage\"h\n" +
+	"\x15compile_and_run_oneof\"N\n" +
+	"\x10CompilationError\x12(\n" +
+	"\rerror_message\x18\x01 \x01(\tH\x00R\ferrorMessage\x88\x01\x01B\x10\n" +
+	"\x0e_error_message\"J\n" +
+	"\fRuntimeError\x12(\n" +
+	"\rerror_message\x18\x01 \x01(\tH\x00R\ferrorMessage\x88\x01\x01B\x10\n" +
+	"\x0e_error_message\"h\n" +
 	"\n" +
 	"ProbeEvent\x12E\n" +
 	"\x11runq_status_event\x18\x01 \x01(\v2\x17.slowmo.RunqStatusEventH\x00R\x0frunqStatusEventB\x13\n" +
-	"\x11probe_event_oneof\"\xc3\x01\n" +
-	"\x0fRunqStatusEvent\x12\x17\n" +
-	"\aproc_id\x18\x01 \x01(\x03R\x06procId\x124\n" +
+	"\x11probe_event_oneof\"\xd4\x01\n" +
+	"\x0fRunqStatusEvent\x12\x1c\n" +
+	"\aproc_id\x18\x01 \x01(\x03H\x00R\x06procId\x88\x01\x01\x124\n" +
 	"\n" +
 	"current_pc\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\tcurrentPc\x124\n" +
 	"\frunq_entries\x18\x03 \x03(\v2\x11.slowmo.RunqEntryR\vrunqEntries\x12+\n" +
-	"\arunnext\x18\x04 \x01(\v2\x11.slowmo.RunqEntryR\arunnext\"K\n" +
-	"\rInterpretedPC\x12\x12\n" +
-	"\x04file\x18\x01 \x01(\tR\x04file\x12\x12\n" +
-	"\x04line\x18\x02 \x01(\x05R\x04line\x12\x12\n" +
-	"\x04func\x18\x03 \x01(\tR\x04func\"d\n" +
-	"\tRunqEntry\x12\x13\n" +
-	"\x05go_id\x18\x01 \x01(\x03R\x04goId\x12B\n" +
-	"\x11execution_context\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\x10executionContext\"'\n" +
-	"\rRuntimeOutput\x12\x16\n" +
-	"\x06output\x18\x01 \x01(\tR\x06output2_\n" +
+	"\arunnext\x18\x04 \x01(\v2\x11.slowmo.RunqEntryR\arunnextB\n" +
+	"\n" +
+	"\b_proc_id\"u\n" +
+	"\rInterpretedPC\x12\x17\n" +
+	"\x04file\x18\x01 \x01(\tH\x00R\x04file\x88\x01\x01\x12\x17\n" +
+	"\x04line\x18\x02 \x01(\x05H\x01R\x04line\x88\x01\x01\x12\x17\n" +
+	"\x04func\x18\x03 \x01(\tH\x02R\x04func\x88\x01\x01B\a\n" +
+	"\x05_fileB\a\n" +
+	"\x05_lineB\a\n" +
+	"\x05_func\"s\n" +
+	"\tRunqEntry\x12\x18\n" +
+	"\x05go_id\x18\x01 \x01(\x03H\x00R\x04goId\x88\x01\x01\x12B\n" +
+	"\x11execution_context\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\x10executionContextB\b\n" +
+	"\x06_go_id\"7\n" +
+	"\rRuntimeOutput\x12\x1b\n" +
+	"\x06output\x18\x01 \x01(\tH\x00R\x06output\x88\x01\x01B\t\n" +
+	"\a_output2_\n" +
 	"\rSlowmoService\x12N\n" +
 	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01B$Z\"github.com/kailun2047/slowmo/protob\x06proto3"
 
@@ -644,15 +654,22 @@ func file_slowmo_proto_init() {
 	if File_slowmo_proto != nil {
 		return
 	}
+	file_slowmo_proto_msgTypes[0].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[1].OneofWrappers = []any{
 		(*CompileAndRunResponse_CompileError)(nil),
 		(*CompileAndRunResponse_RuntimeError)(nil),
 		(*CompileAndRunResponse_RunEvent)(nil),
 		(*CompileAndRunResponse_RuntimeOutput)(nil),
 	}
+	file_slowmo_proto_msgTypes[2].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[3].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[4].OneofWrappers = []any{
 		(*ProbeEvent_RunqStatusEvent)(nil),
 	}
+	file_slowmo_proto_msgTypes[5].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[6].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[7].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

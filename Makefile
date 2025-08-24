@@ -35,10 +35,10 @@ else
 endif
 
 $(proto_server) $(grpc_server): $(proto_def)
-	protoc --proto_path=$(proto_dir) --go_out=$(proto_dir) --go_opt=paths=source_relative --go-grpc_out=$(proto_dir) --go-grpc_opt=paths=source_relative $(proto_file)
+	protoc --proto_path=$(proto_dir) --go_out=$(proto_dir) --go_opt=paths=source_relative --go-grpc_out=$(proto_dir) --go-grpc_opt=paths=source_relative --experimental_allow_proto3_optional $(proto_file)
 
 $(proto_client) $(grpc_client): $(proto_def)
-	npx protoc -I=$(proto_dir) --ts_out=$(client_proto_dir) slowmo.proto
+	npx protoc -I=$(proto_dir) --ts_out=$(client_proto_dir) --experimental_allow_proto3_optional slowmo.proto
 
 .PHONY: proto
 proto: $(proto_server) $(grpc_server) $(proto_client) $(grpc_client)
