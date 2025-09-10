@@ -3,6 +3,7 @@
 #include <bpf/bpf_tracing.h>
 #include <stdint.h>
 #include <asm/ptrace.h>
+#include <stdbool.h>
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
@@ -11,7 +12,8 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GO_PARAM3(x) ((x)->rcx)
 #define CURR_G_ADDR(x) ((x)->r14)
 #define CURR_PC(x) ((x)->rip)
-#define CURR_STACK_TOP(x) ((char *)((x)->rsp))
+#define CURR_STACK_POINTER(x) ((char *)((x)->rsp))
+#define CURR_FP(x) ((char *)((x)->rbp))
 #define MAX_LOOP_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
 #define DELAY_NS 1e9
 
@@ -24,6 +26,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define G_STATUS_OFFSET 144
 #define G_SCHEDLINK_OFFSET 160
 #define M_P_PTR_OFFSET 208
+#define M_ID_OFFSET 232
 #define P_LOCAL_RUNQ_MAX_LEN 256
 #define P_ID_OFFSET 0
 #define P_RUNQHEAD_OFFSET 400
@@ -31,11 +34,12 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define P_RUNQ_OFFSET 408
 #define P_RUNNEXT_OFFSET 2456
 #define GET_GOID_ADDR(g_addr) ((char *)(g_addr) + G_GOID_OFFSET)
-#define GET_M_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
+#define GET_M_PTR_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
 #define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_PC_OFFSET)
 #define GET_STATUS_ADDR(g_addr) ((char *)(g_addr) + G_STATUS_OFFSET)
 #define GET_SCHEDLINK_ADDR(g_addr) ((char *)(g_addr) + G_SCHEDLINK_OFFSET)
 #define GET_P_ADDR(m_addr) ((char *)(m_addr) + M_P_PTR_OFFSET)
+#define GET_M_ID_ADDR(m_addr) ((char *)(m_addr) + M_ID_OFFSET)
 #define GET_P_ID_ADDR(p_addr) ((char *)(p_addr) + P_ID_OFFSET)
 #define GET_P_RUNQHEAD_ADDR(p_addr) ((char *)(p_addr) + P_RUNQHEAD_OFFSET)
 #define GET_P_RUNQTAIL_ADDR(p_addr) ((char *)(p_addr) + P_RUNQTAIL_OFFSET)
@@ -46,6 +50,9 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx);
 static int report_semtable_status(int32_t procid);
 static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int32_t procid);
 static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
+static int64_t unwind_stack(char *curr_stack_addr, uint64_t pc, char *curr_fp, uint64_t callstack_pc_list[]);
+static long find_target_func(void *map, void *key, void *value, void *ctx);
+// static uint32_t readvarint(char **pctab_pp);
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -57,6 +64,7 @@ const uint64_t EVENT_TYPE_RUNQ_STEAL = 3;
 const uint64_t EVENT_TYPE_EXECUTE = 4;
 const uint64_t EVENT_TYPE_GLOBRUNQ_STATUS = 5;
 const uint64_t EVENT_TYPE_SEMTABLE_STATUS = 6;
+const uint64_t EVENT_TYPE_SCHEDULE = 7;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -72,6 +80,7 @@ struct newproc_event {
 struct delay_event {
     uint64_t etype;
     uint64_t pc;
+    uint64_t goid;
 };
 
 struct runq_entry {
@@ -179,13 +188,13 @@ int BPF_UPROBE(go_execute) {
         return 1;
     }
     e->etype = EVENT_TYPE_EXECUTE;
-    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
     bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
     bpf_probe_read_user(&e->gopc, sizeof(char *), GET_PC_ADDR(GO_PARAM1(ctx)));
     bpf_probe_read_user(&e->goid, sizeof(char *), GET_GOID_ADDR(GO_PARAM1(ctx)));
     e->pc = CURR_PC(ctx);
-    bpf_probe_read_user(&e->callerpc, sizeof(uint64_t), CURR_STACK_TOP(ctx));
+    bpf_probe_read_user(&e->callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
     bpf_ringbuf_submit(e, 0);
 
     return 0;
@@ -197,7 +206,7 @@ int BPF_UPROBE(go_runqsteal_ret_runq_status) {
     char *m_ptr;
     uint64_t stealing_p_ptr, *stolen_p_ptr_ptr;
 
-    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&stealing_p_ptr, sizeof(uint64_t), GET_P_ADDR(m_ptr));
 
     // Retrieve the pointer to stolen processor.
@@ -221,7 +230,7 @@ int BPF_UPROBE(go_runtime_func_ret_runq_status) {
     uint32_t runq_i, local_runq_entry_i;
     char *m_ptr, *p_ptr;
 
-    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
     // BCC treats p_ptr as scalar (because it is calculated by adding scalar to
     // memory reference) so we need to make report_local_runq_status accept p's
@@ -238,7 +247,7 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) 
     int32_t procid;
 
     pc = CURR_PC(ctx);
-    bpf_probe_read_user(&callerpc, sizeof(uint64_t), CURR_STACK_TOP(ctx));
+    bpf_probe_read_user(&callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
     bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
     bpf_probe_read_user(&runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
     bpf_probe_read_user(&runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
@@ -286,7 +295,8 @@ int BPF_UPROBE(delay) {
         return 1;
     }
     e->etype = EVENT_TYPE_DELAY;
-    e->pc = ctx->rip;
+    e->pc = CURR_PC(ctx);
+    bpf_probe_read_user(&e->goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
     bpf_ringbuf_submit(e, 0);
 
     ns_start = bpf_ktime_get_ns();
@@ -330,7 +340,7 @@ int BPF_UPROBE(globrunq_status) {
     struct globrunq_status_event *e;
 
     pc = CURR_PC(ctx);
-    bpf_probe_read_user(&callerpc, sizeof(uint64_t), CURR_STACK_TOP(ctx));
+    bpf_probe_read_user(&callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
     bpf_probe_read_user(&g_ptr, sizeof(char *), SCHED_GET_RUNQ_HEAD_ADDR(runtime_sched_addr));
     bpf_probe_read_user(&runq_size, sizeof(int32_t), SCHED_GET_RUNQ_SIZE_ADDR(runtime_sched_addr));
 
@@ -378,7 +388,7 @@ int BPF_UPROBE(gopark) {
 
     waitreason = GO_PARAM3(ctx);
     if (waitreason == WAITREASON_SYNC_MUTEX_LOCK) {
-        bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_ADDR(CURR_G_ADDR(ctx)));
+        bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
         bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
         bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
         return report_semtable_status(procid);
@@ -564,16 +574,17 @@ static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
     return 0;
 }
 
-struct go_pctab {
-    uint64_t size;
-    uint64_t data_addr;
-};
+// struct go_pctab {
+//     uint64_t size;
+//     uint64_t data_addr;
+// };
 
-volatile const struct go_pctab pctab;
+// volatile const struct go_pctab pctab;
 
 struct go_func_info {
     uint64_t entry_pc;
     uint32_t pcsp; // pcsp table (offset to pc-value table)
+    uint8_t flag; // abi.FuncFlag (can be used to determine if function is at stack root)
 };
 
 struct {
@@ -582,3 +593,141 @@ struct {
     __type(value, struct go_func_info);
     __uint(max_entries, 8 * 1024);
 } go_functab SEC(".maps");
+
+#define MAX_STACK_TRACE_DEPTH 32
+#define MAX_PCSP_TABLE_SIZE_PER_FUNC 8 // a typical function should have 2 pcsp entries per function (before and after opening its stack frame), but assign the macro a large enough value in case of special scenarios
+#define GO_FUNC_FLAG_TOP_FRAME 1
+#define MAX_VARINT_SIZE_IN_BYTE 4 // the pc and value delta are variable-size encoded and decoding should iterate until 0x80 bit is 0, but hardcode a limit here since such a while loop is not viable in ebpf program
+
+struct schedule_event {
+    uint64_t etype;
+    int64_t m_id;
+    uint64_t callstack[MAX_STACK_TRACE_DEPTH];
+    int64_t callstack_depth;
+};
+
+SEC("uprobe/schedule")
+int BPF_UPROBE(schedule) {
+    struct schedule_event *e;
+    char *m_ptr;
+    uint64_t pc_list[MAX_STACK_TRACE_DEPTH];
+    int i;
+
+    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct schedule_event), 0))) {
+        bpf_printk("bpf_ringbuf_reserve failed in schedule");
+        return 1;
+    }
+    e->etype = EVENT_TYPE_SCHEDULE;
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&e->m_id, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    e->callstack_depth = unwind_stack(CURR_STACK_POINTER(ctx), CURR_PC(ctx), CURR_FP(ctx), pc_list);
+    if (e->callstack_depth < 0) {
+        bpf_printk("error unwinding callstack for pc %d", CURR_PC(ctx));
+        bpf_ringbuf_discard(e, 0);
+        return 1;
+    }
+    bpf_for(i, 0, MAX_STACK_TRACE_DEPTH) {
+        e->callstack[i] = pc_list[i];
+    }
+    bpf_ringbuf_submit(e, 0);
+    return 0;
+}
+
+static int64_t unwind_stack(char *curr_stack_addr, uint64_t curr_pc, char *fp, uint64_t *callstack_pc_list) {
+    int i;
+    long go_functab_idx;
+    struct go_func_info *func_info;
+    // char *pctab_p, *fp = NULL; // fp represents the frame pointer (RBP) of caller.
+    // uint64_t pc;
+    // uint32_t uvdelta, pcdelta;
+    // int32_t vdelta, val = -1;
+
+    bpf_for(i, 0, MAX_STACK_TRACE_DEPTH) {
+        go_functab_idx = bpf_for_each_map_elem(&go_functab, &find_target_func, &curr_pc, 0) - 2;
+        func_info = bpf_map_lookup_elem(&go_functab, &go_functab_idx);
+        if (!func_info) {
+            bpf_printk("pc %d not covered by any func in functab", curr_pc);
+            return -1;
+        }
+        callstack_pc_list[i] = curr_pc;
+        if (func_info->flag&GO_FUNC_FLAG_TOP_FRAME) {
+            break;
+        }
+        // if (!fp) {
+        //     // Decoding according to
+        //     // https://github.com/golang/go/blob/go1.22.5/src/debug/gosym/pclntab.go#L504.
+        //     // TODO: for amd64 we can probably retrieve the frame pointer of
+        //     // current function by reading rbp register direclty.
+        //     pctab_p = (char *)(pctab.data_addr + func_info->pcsp);
+        //     pc = func_info->entry_pc;
+        //     bpf_for(j, 0, MAX_PCSP_TABLE_SIZE_PER_FUNC) {
+        //         uvdelta = readvarint(&pctab_p);
+        //         if (uvdelta == 0 && pc != func_info->entry_pc) {
+        //             bpf_printk("pcsp entry for pc %d not found in pcsp table", curr_pc);
+        //             return -1;
+        //         }
+        //         // Zig-zag decode into signed value delta.
+        //         if ((uvdelta&1) != 0) {
+        //             vdelta = (int32_t)(~(uvdelta>>1));
+        //         } else {
+        //             vdelta = (int32_t)(uvdelta>>1);
+        //         }
+        //         val += vdelta;
+        //         // pc delta is always non-negative.
+        //         pcdelta = readvarint(&pctab_p);
+        //         pc += pcdelta;
+        //         // The pc-value pair declares the given value to hold up to but not
+        //         // including the given program counter, so we're looking for the
+        //         // first pair in which pc is greater than the target pc.
+        //         if (pc > curr_pc) {
+        //             break;
+        //         }
+        //     }
+        //     // Return pc is pushed by call instruction by the caller (if there
+        //     // is one).
+        //     fp = curr_stack_addr + val + sizeof(char *);
+        // }
+
+        // Frame pointer points to the stack address where the caller(if any)'s
+        // RBP is pushed on. The return address is pushed before the caller's
+        // RBP is pushed onto stack.
+        bpf_probe_read_user(&curr_pc, sizeof(char *), fp + sizeof(char *));
+        bpf_probe_read_user(&fp, sizeof(uint64_t), fp);
+        if (curr_pc == 0) {
+            break;
+        }
+    }
+    return i + 1;
+}
+
+// static uint32_t readvarint(char **pctab_pp) {
+//     int i;
+//     uint32_t v = 0, shift = 0;
+//     char *pctab_p = *pctab_pp;
+//     uint8_t curr_byte;
+
+//     bpf_for(i, 0, MAX_VARINT_SIZE_IN_BYTE) {
+//         bpf_probe_read_user(&curr_byte, sizeof(uint8_t), pctab_p);
+//         pctab_p++;
+//         // Variable-size int is encoded in little-endian.
+//         v |= (((uint32_t)curr_byte) & 0x7f) << shift;
+//         // Non-zero 0x80 bit indicates there are more bytes to read.
+//         if (curr_byte & 0x80) {
+//             break;
+//         }
+//         shift += 7;
+//     }
+//     *pctab_pp = pctab_p;
+//     return v;
+// }
+
+static long find_target_func(void *map, void *key, void *value, void *ctx) {
+    struct go_func_info *go_func_info_value = (struct go_func_info *)value;
+    uint64_t target_pc = *(uint64_t *)ctx;
+
+    if (go_func_info_value && go_func_info_value->entry_pc > target_pc) {
+        return 1;
+    } else {
+        return 0;
+    }
+}

@@ -19,10 +19,8 @@ type Instrumentor struct {
 
 type InstrumentorOption func(*ELFInterpreter, *ebpf.CollectionSpec)
 
-type InstrumentorGoPctab = instrumentorGoPctab
-
 type GlobalVariableValue interface {
-	uint64 | InstrumentorGoPctab
+	uint64
 }
 
 type GlobalVariable[T GlobalVariableValue] struct {

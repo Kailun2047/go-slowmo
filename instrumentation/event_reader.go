@@ -29,6 +29,7 @@ const (
 	EVENT_TYPE_EXECUTE
 	EVENT_TYPE_GLOBAL_RUNQ_STATUS
 	EVENT_TYPE_SEMTABLE_STATUS
+	EVENT_TYPE_SCHEDULE
 )
 
 type newprocEvent struct {
@@ -91,6 +92,14 @@ func (r *EventReader) interpretPC(pc uint64) *proto.InterpretedPC {
 type delayEvent struct {
 	EType eventType
 	PC    uint64
+	GoID  uint64
+}
+
+type scheduleEvent struct {
+	EType          eventType
+	MID            int64
+	Callstack      [32]uint64
+	CallstackDepth int64
 }
 
 type runqStealEvent struct {
@@ -246,10 +255,22 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil {
 			break
 		}
-		_, _, fn := r.interpreter.PCToLine(event.PC)
-		if fn == nil {
+		interpretedPC := r.interpretPC(event.PC)
+		if interpretedPC.Func == nil {
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
+		log.Printf("Delaying %v for GoID %d", interpretedPC, event.GoID)
+	case EVENT_TYPE_SCHEDULE:
+		var event scheduleEvent
+		err = binary.Read(readSeeker, r.byteOrder, &event)
+		if err != nil {
+			break
+		}
+		callstk := make([]*proto.InterpretedPC, event.CallstackDepth)
+		for i, pc := range event.Callstack[:event.CallstackDepth] {
+			callstk[i] = r.interpretPC(pc)
+		}
+		log.Printf("Schedule called for MID %d, callstack: %+v", event.MID, callstk)
 	case EVENT_TYPE_RUNQ_STATUS:
 		var event runqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)

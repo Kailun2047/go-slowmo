@@ -9,9 +9,9 @@ import (
 func determineByteOrder() binary.ByteOrder {
 	num := math.MaxUint8 + 1
 	firstByte := *(*uint8)(unsafe.Pointer(&num))
-	if firstByte == 1 {
-		return binary.BigEndian
-	} else {
+	if firstByte == 0 {
 		return binary.LittleEndian
+	} else {
+		return binary.BigEndian
 	}
 }

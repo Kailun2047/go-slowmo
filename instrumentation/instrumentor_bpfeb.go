@@ -15,12 +15,8 @@ import (
 type instrumentorGoFuncInfo struct {
 	EntryPc uint64
 	Pcsp    uint32
-	_       [4]byte
-}
-
-type instrumentorGoPctab struct {
-	Size     uint64
-	DataAddr uint64
+	Flag    uint8
+	_       [3]byte
 }
 
 // loadInstrumentor returns the embedded CollectionSpec for instrumentor.
@@ -73,6 +69,7 @@ type instrumentorProgramSpecs struct {
 	GoRunqstealRetRunqStatus   *ebpf.ProgramSpec `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.ProgramSpec `ebpf:"go_runtime_func_ret_runq_status"`
 	Gopark                     *ebpf.ProgramSpec `ebpf:"gopark"`
+	Schedule                   *ebpf.ProgramSpec `ebpf:"schedule"`
 }
 
 // instrumentorMapSpecs contains maps before they are loaded into the kernel.
@@ -95,8 +92,8 @@ type instrumentorVariableSpecs struct {
 	EVENT_TYPE_NEWPROC         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
+	EVENT_TYPE_SCHEDULE        *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SCHEDULE"`
 	EVENT_TYPE_SEMTABLE_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
-	Pctab                      *ebpf.VariableSpec `ebpf:"pctab"`
 	RuntimeSchedAddr           *ebpf.VariableSpec `ebpf:"runtime_sched_addr"`
 	SemtabAddr                 *ebpf.VariableSpec `ebpf:"semtab_addr"`
 	SemtabVersion              *ebpf.VariableSpec `ebpf:"semtab_version"`
@@ -147,8 +144,8 @@ type instrumentorVariables struct {
 	EVENT_TYPE_NEWPROC         *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
+	EVENT_TYPE_SCHEDULE        *ebpf.Variable `ebpf:"EVENT_TYPE_SCHEDULE"`
 	EVENT_TYPE_SEMTABLE_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
-	Pctab                      *ebpf.Variable `ebpf:"pctab"`
 	RuntimeSchedAddr           *ebpf.Variable `ebpf:"runtime_sched_addr"`
 	SemtabAddr                 *ebpf.Variable `ebpf:"semtab_addr"`
 	SemtabVersion              *ebpf.Variable `ebpf:"semtab_version"`
@@ -166,6 +163,7 @@ type instrumentorPrograms struct {
 	GoRunqstealRetRunqStatus   *ebpf.Program `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.Program `ebpf:"go_runtime_func_ret_runq_status"`
 	Gopark                     *ebpf.Program `ebpf:"gopark"`
+	Schedule                   *ebpf.Program `ebpf:"schedule"`
 }
 
 func (p *instrumentorPrograms) Close() error {
@@ -178,6 +176,7 @@ func (p *instrumentorPrograms) Close() error {
 		p.GoRunqstealRetRunqStatus,
 		p.GoRuntimeFuncRetRunqStatus,
 		p.Gopark,
+		p.Schedule,
 	)
 }
 

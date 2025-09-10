@@ -25,7 +25,8 @@ const (
 	lnTabFieldNameFuncTab  = "functab"
 	lnTabFieldNameFuncData = "funcdata"
 
-	funcInfoFieldIdxPCSP = 4
+	funcInfoFieldOffsetPCSP = 16
+	funcInfoFieldOffsetFlag = 41
 )
 
 type ELFInterpreter struct {
@@ -229,11 +230,11 @@ func (ei *ELFInterpreter) GetGlobalVariableAddr(varName string) uint64 {
 	return targetSym.Value
 }
 
-func (ei *ELFInterpreter) GetPCTab() []byte {
-	lnTabV := reflect.ValueOf(ei.goLnTab).Elem()
-	pcTabV := lnTabV.FieldByName(lnTabFieldNamePCTab)
-	return *(*[]byte)(unsafe.Pointer(pcTabV.UnsafeAddr()))
-}
+// func (ei *ELFInterpreter) GetPCTab() []byte {
+// 	lnTabV := reflect.ValueOf(ei.goLnTab).Elem()
+// 	pcTabV := lnTabV.FieldByName(lnTabFieldNamePCTab)
+// 	return *(*[]byte)(unsafe.Pointer(pcTabV.UnsafeAddr()))
+// }
 
 func (ei *ELFInterpreter) ParseFuncTab() []instrumentorGoFuncInfo {
 	var (
@@ -256,13 +257,15 @@ func (ei *ELFInterpreter) ParseFuncTab() []instrumentorGoFuncInfo {
 		funcOff := uint64(ei.byteOrder.Uint32(funcTab[(2*i+1)*uint32(funcTabFieldSize):]))
 		funcInfoData := funcData[funcOff:] // The byte chunk of _func struct
 
-		// In Go 1.18, the first field of _func changed from a uintptr entry PC
-		// to a uint32 entry offset. All other fields are also 4 byte each.
+		// Collect data from per-function information
+		// (https://github.com/golang/go/blob/go1.22.5/src/runtime/runtime2.go#L936).
 		entryOff := uint64(ei.byteOrder.Uint32(funcInfoData))
-		pcsp := ei.byteOrder.Uint32(funcInfoData[4*funcInfoFieldIdxPCSP:])
+		pcsp := ei.byteOrder.Uint32(funcInfoData[funcInfoFieldOffsetPCSP:])
+		flag := funcInfoData[funcInfoFieldOffsetFlag]
 		res = append(res, instrumentorGoFuncInfo{
 			EntryPc: textStart + entryOff,
 			Pcsp:    pcsp,
+			Flag:    flag,
 		})
 	}
 

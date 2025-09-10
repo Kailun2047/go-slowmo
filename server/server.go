@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/kailun2047/slowmo/instrumentation"
@@ -36,7 +35,7 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 
 	runtimeSchedAddr := interpreter.GetGlobalVariableAddr("runtime.sched")
 	semTableAddr := interpreter.GetGlobalVariableAddr("runtime.semtable")
-	pctab := interpreter.GetPCTab()
+	// pctab := interpreter.GetPCTab()
 	instrumentor := instrumentation.NewInstrumentor(
 		interpreter,
 		bpfProg,
@@ -45,10 +44,10 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 			NameInBPFProg: "runtime_sched_addr",
 			Value:         runtimeSchedAddr,
 		}),
-		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[instrumentation.InstrumentorGoPctab]{
-			NameInBPFProg: "pctab",
-			Value:         instrumentation.InstrumentorGoPctab{Size: uint64(len(pctab)), DataAddr: *(*uint64)(unsafe.Pointer(&pctab[0]))},
-		}),
+		// instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[instrumentation.InstrumentorGoPctab]{
+		// 	NameInBPFProg: "pctab",
+		// 	Value:         instrumentation.InstrumentorGoPctab{Size: uint64(len(pctab)), DataAddr: *(*uint64)(unsafe.Pointer(&pctab[0]))},
+		// }),
 		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
 			NameInBPFProg: "semtab_addr",
 			Value:         semTableAddr,
@@ -141,17 +140,20 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		TargetFn:  "globrunqput",
 		BpfFn:     "globrunq_status",
 	})
-	instrumentor.InstrumentEntry((instrumentation.UprobeAttachSpec{
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
 		TargetFn:  "gopark",
 		BpfFn:     "gopark",
-	}))
-	// Temporarily disable the delay probe to avoid triggering preemption.
-	// TODO: handle preemption properly or disable preemption.
-	// instrumentor.Delay(instrumentation.UprobeAttachSpec{
-	// 	TargetPkg: "main",
-	// 	TpfFn:     "delay",
-	// }
+	})
+	instrumentor.Delay(instrumentation.UprobeAttachSpec{
+		TargetPkg: "main",
+		BpfFn:     "delay",
+	})
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "schedule",
+		BpfFn:     "schedule",
+	})
 
 	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
 	eventReader.Start()
@@ -307,10 +309,12 @@ func sandboxedBuild(source string) (string, error) {
 	return outName, nil
 }
 
+// TODO: prevent filesystem and network access in the sandbox.
 func sandboxedRun(targetName string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
 	log.Printf("Start sandbox run of program %s", targetName)
-	// TODO: prevent filesystem and network access in the sandbox.
 	runTargetCmd := exec.Command(targetName)
+	// Turn off asynchronous preemption to make slowing down go program easier.
+	runTargetCmd.Env = append(runTargetCmd.Env, "GODEBUG=asyncpreemptoff=1")
 	runTargetCmd.Stdout, runTargetCmd.Stderr = writer, writer
 	runTargetCmd.WaitDelay = executionTimeLimit
 	err = runTargetCmd.Start()
