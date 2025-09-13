@@ -61,7 +61,9 @@ type instrumentorSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type instrumentorProgramSpecs struct {
+	AvoidPreempt               *ebpf.ProgramSpec `ebpf:"avoid_preempt"`
 	Delay                      *ebpf.ProgramSpec `ebpf:"delay"`
+	GetCallstack               *ebpf.ProgramSpec `ebpf:"get_callstack"`
 	GlobrunqStatus             *ebpf.ProgramSpec `ebpf:"globrunq_status"`
 	GoExecute                  *ebpf.ProgramSpec `ebpf:"go_execute"`
 	GoNewproc                  *ebpf.ProgramSpec `ebpf:"go_newproc"`
@@ -69,7 +71,6 @@ type instrumentorProgramSpecs struct {
 	GoRunqstealRetRunqStatus   *ebpf.ProgramSpec `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.ProgramSpec `ebpf:"go_runtime_func_ret_runq_status"`
 	Gopark                     *ebpf.ProgramSpec `ebpf:"gopark"`
-	Schedule                   *ebpf.ProgramSpec `ebpf:"schedule"`
 }
 
 // instrumentorMapSpecs contains maps before they are loaded into the kernel.
@@ -86,14 +87,15 @@ type instrumentorMapSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type instrumentorVariableSpecs struct {
+	EVENT_TYPE_CALLSTACK       *ebpf.VariableSpec `ebpf:"EVENT_TYPE_CALLSTACK"`
 	EVENT_TYPE_DELAY           *ebpf.VariableSpec `ebpf:"EVENT_TYPE_DELAY"`
 	EVENT_TYPE_EXECUTE         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_EXECUTE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
 	EVENT_TYPE_NEWPROC         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
-	EVENT_TYPE_SCHEDULE        *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SCHEDULE"`
 	EVENT_TYPE_SEMTABLE_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
+	AllpSliceAddr              *ebpf.VariableSpec `ebpf:"allp_slice_addr"`
 	RuntimeSchedAddr           *ebpf.VariableSpec `ebpf:"runtime_sched_addr"`
 	SemtabAddr                 *ebpf.VariableSpec `ebpf:"semtab_addr"`
 	SemtabVersion              *ebpf.VariableSpec `ebpf:"semtab_version"`
@@ -138,14 +140,15 @@ func (m *instrumentorMaps) Close() error {
 //
 // It can be passed to loadInstrumentorObjects or ebpf.CollectionSpec.LoadAndAssign.
 type instrumentorVariables struct {
+	EVENT_TYPE_CALLSTACK       *ebpf.Variable `ebpf:"EVENT_TYPE_CALLSTACK"`
 	EVENT_TYPE_DELAY           *ebpf.Variable `ebpf:"EVENT_TYPE_DELAY"`
 	EVENT_TYPE_EXECUTE         *ebpf.Variable `ebpf:"EVENT_TYPE_EXECUTE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
 	EVENT_TYPE_NEWPROC         *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
-	EVENT_TYPE_SCHEDULE        *ebpf.Variable `ebpf:"EVENT_TYPE_SCHEDULE"`
 	EVENT_TYPE_SEMTABLE_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
+	AllpSliceAddr              *ebpf.Variable `ebpf:"allp_slice_addr"`
 	RuntimeSchedAddr           *ebpf.Variable `ebpf:"runtime_sched_addr"`
 	SemtabAddr                 *ebpf.Variable `ebpf:"semtab_addr"`
 	SemtabVersion              *ebpf.Variable `ebpf:"semtab_version"`
@@ -155,7 +158,9 @@ type instrumentorVariables struct {
 //
 // It can be passed to loadInstrumentorObjects or ebpf.CollectionSpec.LoadAndAssign.
 type instrumentorPrograms struct {
+	AvoidPreempt               *ebpf.Program `ebpf:"avoid_preempt"`
 	Delay                      *ebpf.Program `ebpf:"delay"`
+	GetCallstack               *ebpf.Program `ebpf:"get_callstack"`
 	GlobrunqStatus             *ebpf.Program `ebpf:"globrunq_status"`
 	GoExecute                  *ebpf.Program `ebpf:"go_execute"`
 	GoNewproc                  *ebpf.Program `ebpf:"go_newproc"`
@@ -163,12 +168,13 @@ type instrumentorPrograms struct {
 	GoRunqstealRetRunqStatus   *ebpf.Program `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.Program `ebpf:"go_runtime_func_ret_runq_status"`
 	Gopark                     *ebpf.Program `ebpf:"gopark"`
-	Schedule                   *ebpf.Program `ebpf:"schedule"`
 }
 
 func (p *instrumentorPrograms) Close() error {
 	return _InstrumentorClose(
+		p.AvoidPreempt,
 		p.Delay,
+		p.GetCallstack,
 		p.GlobrunqStatus,
 		p.GoExecute,
 		p.GoNewproc,
@@ -176,7 +182,6 @@ func (p *instrumentorPrograms) Close() error {
 		p.GoRunqstealRetRunqStatus,
 		p.GoRuntimeFuncRetRunqStatus,
 		p.Gopark,
-		p.Schedule,
 	)
 }
 

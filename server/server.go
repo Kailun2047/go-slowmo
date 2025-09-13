@@ -35,6 +35,7 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 
 	runtimeSchedAddr := interpreter.GetGlobalVariableAddr("runtime.sched")
 	semTableAddr := interpreter.GetGlobalVariableAddr("runtime.semtable")
+	allpSliceAddr := interpreter.GetGlobalVariableAddr("runtime.allp")
 	// pctab := interpreter.GetPCTab()
 	instrumentor := instrumentation.NewInstrumentor(
 		interpreter,
@@ -51,6 +52,10 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
 			NameInBPFProg: "semtab_addr",
 			Value:         semTableAddr,
+		}),
+		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
+			NameInBPFProg: "allp_slice_addr",
+			Value:         allpSliceAddr,
 		}),
 	)
 
@@ -152,7 +157,12 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
 		TargetFn:  "schedule",
-		BpfFn:     "schedule",
+		BpfFn:     "get_callstack",
+	})
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "retake",
+		BpfFn:     "avoid_preempt",
 	})
 
 	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))

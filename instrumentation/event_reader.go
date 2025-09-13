@@ -29,7 +29,7 @@ const (
 	EVENT_TYPE_EXECUTE
 	EVENT_TYPE_GLOBAL_RUNQ_STATUS
 	EVENT_TYPE_SEMTABLE_STATUS
-	EVENT_TYPE_SCHEDULE
+	EVENT_TYPE_CALLSTACK
 )
 
 type newprocEvent struct {
@@ -95,7 +95,7 @@ type delayEvent struct {
 	GoID  uint64
 }
 
-type scheduleEvent struct {
+type callstackEvent struct {
 	EType          eventType
 	MID            int64
 	Callstack      [32]uint64
@@ -260,17 +260,22 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
 		log.Printf("Delaying %v for GoID %d", interpretedPC, event.GoID)
-	case EVENT_TYPE_SCHEDULE:
-		var event scheduleEvent
+	case EVENT_TYPE_CALLSTACK:
+		var event callstackEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
 		if err != nil {
 			break
 		}
-		callstk := make([]*proto.InterpretedPC, event.CallstackDepth)
-		for i, pc := range event.Callstack[:event.CallstackDepth] {
-			callstk[i] = r.interpretPC(pc)
+		callstack := event.Callstack[:event.CallstackDepth]
+		interpretedCallstack := make([]*proto.InterpretedPC, len(callstack))
+		for i, pc := range callstack {
+			interpretedCallstack[i] = r.interpretPC(pc)
 		}
-		log.Printf("Schedule called for MID %d, callstack: %+v", event.MID, callstk)
+		triggerFunc := r.interpretPC(callstack[0]).Func
+		if triggerFunc == nil {
+			log.Fatalf("Cannot find trigger func for PC %x", callstack[0])
+		}
+		log.Printf("%s called for MID %d, callstack: %+v, pc list: %v", *triggerFunc, event.MID, interpretedCallstack, callstack)
 	case EVENT_TYPE_RUNQ_STATUS:
 		var event runqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)

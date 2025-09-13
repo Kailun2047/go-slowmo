@@ -64,7 +64,7 @@ const uint64_t EVENT_TYPE_RUNQ_STEAL = 3;
 const uint64_t EVENT_TYPE_EXECUTE = 4;
 const uint64_t EVENT_TYPE_GLOBRUNQ_STATUS = 5;
 const uint64_t EVENT_TYPE_SEMTABLE_STATUS = 6;
-const uint64_t EVENT_TYPE_SCHEDULE = 7;
+const uint64_t EVENT_TYPE_CALLSTACK = 7;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -309,10 +309,31 @@ int BPF_UPROBE(delay) {
     return 0;
 }
 
+volatile const uint64_t allp_slice_addr;
+
+#define SLICE_LEN_OFFSET 8
+#define P_SCHEDWHEN_OFFSET 32
+
+SEC("uprobe/avoid_preempt")
+int BPF_UPROBE(avoid_preempt) {
+    char *allp_arr_addr, *p;
+    int64_t allp_len, now = GO_PARAM1(ctx);
+    int i;
+
+    bpf_probe_read_user(&allp_arr_addr, sizeof(char *), (char *)allp_slice_addr);
+    bpf_probe_read_user(&allp_len, sizeof(int64_t), (char *)(allp_slice_addr + SLICE_LEN_OFFSET));
+    bpf_for(i, 0, allp_len) {
+        bpf_probe_read_user(&p, sizeof(char *), allp_arr_addr + sizeof(char *) * i);
+        bpf_probe_write_user(p + P_SCHEDWHEN_OFFSET, &now, sizeof(int64_t));
+    }
+
+    return 0;
+}
+
 // The compiler doesn't know runtime_sched_addr is assigned in userspace. Use
 // "volatile" to avoid having runtime_sched_addr treated as an ununsed variable
 // and optimized away by compiler.
-volatile const __u64 runtime_sched_addr;
+volatile const uint64_t runtime_sched_addr;
 
 #define SCHED_RUNQ_HEAD_OFFSET 104
 #define SCHED_RUNQ_SIZE_OFFSET 120
@@ -398,8 +419,8 @@ int BPF_UPROBE(gopark) {
     return 0;
 }
 
-volatile const __u64 semtab_addr;
-__u64 semtab_version = 0;
+volatile const uint64_t semtab_addr;
+uint64_t semtab_version = 0;
 
 #define SEMTAB_ENTRY_NUM 251
 #define SEMTAB_ENTRY_SIZE 64 // size of a Go sem table entry (padding included, different under different arch)
@@ -599,25 +620,25 @@ struct {
 #define GO_FUNC_FLAG_TOP_FRAME 1
 #define MAX_VARINT_SIZE_IN_BYTE 4 // the pc and value delta are variable-size encoded and decoding should iterate until 0x80 bit is 0, but hardcode a limit here since such a while loop is not viable in ebpf program
 
-struct schedule_event {
+struct callstack_event {
     uint64_t etype;
     int64_t m_id;
     uint64_t callstack[MAX_STACK_TRACE_DEPTH];
     int64_t callstack_depth;
 };
 
-SEC("uprobe/schedule")
-int BPF_UPROBE(schedule) {
-    struct schedule_event *e;
+SEC("uprobe/get_callstack")
+int BPF_UPROBE(get_callstack) {
+    struct callstack_event *e;
     char *m_ptr;
     uint64_t pc_list[MAX_STACK_TRACE_DEPTH];
     int i;
 
-    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct schedule_event), 0))) {
-        bpf_printk("bpf_ringbuf_reserve failed in schedule");
+    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct callstack_event), 0))) {
+        bpf_printk("bpf_ringbuf_reserve failed in get_callstack");
         return 1;
     }
-    e->etype = EVENT_TYPE_SCHEDULE;
+    e->etype = EVENT_TYPE_CALLSTACK;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&e->m_id, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     e->callstack_depth = unwind_stack(CURR_STACK_POINTER(ctx), CURR_PC(ctx), CURR_FP(ctx), pc_list);
