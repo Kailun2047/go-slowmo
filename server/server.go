@@ -36,7 +36,6 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 	runtimeSchedAddr := interpreter.GetGlobalVariableAddr("runtime.sched")
 	semTableAddr := interpreter.GetGlobalVariableAddr("runtime.semtable")
 	allpSliceAddr := interpreter.GetGlobalVariableAddr("runtime.allp")
-	// pctab := interpreter.GetPCTab()
 	instrumentor := instrumentation.NewInstrumentor(
 		interpreter,
 		bpfProg,
@@ -45,10 +44,6 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 			NameInBPFProg: "runtime_sched_addr",
 			Value:         runtimeSchedAddr,
 		}),
-		// instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[instrumentation.InstrumentorGoPctab]{
-		// 	NameInBPFProg: "pctab",
-		// 	Value:         instrumentation.InstrumentorGoPctab{Size: uint64(len(pctab)), DataAddr: *(*uint64)(unsafe.Pointer(&pctab[0]))},
-		// }),
 		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
 			NameInBPFProg: "semtab_addr",
 			Value:         semTableAddr,

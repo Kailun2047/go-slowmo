@@ -52,7 +52,6 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
 static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
 static int64_t unwind_stack(char *curr_stack_addr, uint64_t pc, char *curr_fp, uint64_t callstack_pc_list[]);
 static long find_target_func(void *map, void *key, void *value, void *ctx);
-// static uint32_t readvarint(char **pctab_pp);
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -599,13 +598,6 @@ static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
     return 0;
 }
 
-// struct go_pctab {
-//     uint64_t size;
-//     uint64_t data_addr;
-// };
-
-// volatile const struct go_pctab pctab;
-
 struct go_func_info {
     uint64_t entry_pc;
     uint32_t pcsp; // pcsp table (offset to pc-value table)
@@ -662,10 +654,6 @@ static int64_t unwind_stack(char *curr_stack_addr, uint64_t curr_pc, char *fp, u
     int i;
     long go_functab_idx;
     struct go_func_info *func_info;
-    // char *pctab_p, *fp = NULL; // fp represents the frame pointer (RBP) of caller.
-    // uint64_t pc;
-    // uint32_t uvdelta, pcdelta;
-    // int32_t vdelta, val = -1;
 
     bpf_for(i, 0, MAX_STACK_TRACE_DEPTH) {
         go_functab_idx = bpf_for_each_map_elem(&go_functab, &find_target_func, &curr_pc, 0) - 2;
@@ -678,40 +666,6 @@ static int64_t unwind_stack(char *curr_stack_addr, uint64_t curr_pc, char *fp, u
         if (func_info->flag&GO_FUNC_FLAG_TOP_FRAME) {
             break;
         }
-        // if (!fp) {
-        //     // Decoding according to
-        //     // https://github.com/golang/go/blob/go1.22.5/src/debug/gosym/pclntab.go#L504.
-        //     // TODO: for amd64 we can probably retrieve the frame pointer of
-        //     // current function by reading rbp register direclty.
-        //     pctab_p = (char *)(pctab.data_addr + func_info->pcsp);
-        //     pc = func_info->entry_pc;
-        //     bpf_for(j, 0, MAX_PCSP_TABLE_SIZE_PER_FUNC) {
-        //         uvdelta = readvarint(&pctab_p);
-        //         if (uvdelta == 0 && pc != func_info->entry_pc) {
-        //             bpf_printk("pcsp entry for pc %d not found in pcsp table", curr_pc);
-        //             return -1;
-        //         }
-        //         // Zig-zag decode into signed value delta.
-        //         if ((uvdelta&1) != 0) {
-        //             vdelta = (int32_t)(~(uvdelta>>1));
-        //         } else {
-        //             vdelta = (int32_t)(uvdelta>>1);
-        //         }
-        //         val += vdelta;
-        //         // pc delta is always non-negative.
-        //         pcdelta = readvarint(&pctab_p);
-        //         pc += pcdelta;
-        //         // The pc-value pair declares the given value to hold up to but not
-        //         // including the given program counter, so we're looking for the
-        //         // first pair in which pc is greater than the target pc.
-        //         if (pc > curr_pc) {
-        //             break;
-        //         }
-        //     }
-        //     // Return pc is pushed by call instruction by the caller (if there
-        //     // is one).
-        //     fp = curr_stack_addr + val + sizeof(char *);
-        // }
 
         // Frame pointer points to the stack address where the caller(if any)'s
         // RBP is pushed on. The return address is pushed before the caller's
@@ -724,27 +678,6 @@ static int64_t unwind_stack(char *curr_stack_addr, uint64_t curr_pc, char *fp, u
     }
     return i + 1;
 }
-
-// static uint32_t readvarint(char **pctab_pp) {
-//     int i;
-//     uint32_t v = 0, shift = 0;
-//     char *pctab_p = *pctab_pp;
-//     uint8_t curr_byte;
-
-//     bpf_for(i, 0, MAX_VARINT_SIZE_IN_BYTE) {
-//         bpf_probe_read_user(&curr_byte, sizeof(uint8_t), pctab_p);
-//         pctab_p++;
-//         // Variable-size int is encoded in little-endian.
-//         v |= (((uint32_t)curr_byte) & 0x7f) << shift;
-//         // Non-zero 0x80 bit indicates there are more bytes to read.
-//         if (curr_byte & 0x80) {
-//             break;
-//         }
-//         shift += 7;
-//     }
-//     *pctab_pp = pctab_p;
-//     return v;
-// }
 
 static long find_target_func(void *map, void *key, void *value, void *ctx) {
     struct go_func_info *go_func_info_value = (struct go_func_info *)value;

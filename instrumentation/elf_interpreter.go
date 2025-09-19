@@ -16,7 +16,6 @@ import (
 
 const (
 	symTabFieldNameGo12Line = "go12line"
-	lnTabFieldNamePCTab     = "pctab"
 	lnTabFieldNameFuncTabN  = "nfunctab"
 	lnTabFieldNameTextStart = "textStart"
 
@@ -229,12 +228,6 @@ func (ei *ELFInterpreter) GetGlobalVariableAddr(varName string) uint64 {
 	}
 	return targetSym.Value
 }
-
-// func (ei *ELFInterpreter) GetPCTab() []byte {
-// 	lnTabV := reflect.ValueOf(ei.goLnTab).Elem()
-// 	pcTabV := lnTabV.FieldByName(lnTabFieldNamePCTab)
-// 	return *(*[]byte)(unsafe.Pointer(pcTabV.UnsafeAddr()))
-// }
 
 func (ei *ELFInterpreter) ParseFuncTab() []instrumentorGoFuncInfo {
 	var (
