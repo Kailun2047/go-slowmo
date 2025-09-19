@@ -66,7 +66,6 @@ type instrumentorProgramSpecs struct {
 	GetCallstack               *ebpf.ProgramSpec `ebpf:"get_callstack"`
 	GlobrunqStatus             *ebpf.ProgramSpec `ebpf:"globrunq_status"`
 	GoExecute                  *ebpf.ProgramSpec `ebpf:"go_execute"`
-	GoNewproc                  *ebpf.ProgramSpec `ebpf:"go_newproc"`
 	GoRunqsteal                *ebpf.ProgramSpec `ebpf:"go_runqsteal"`
 	GoRunqstealRetRunqStatus   *ebpf.ProgramSpec `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.ProgramSpec `ebpf:"go_runtime_func_ret_runq_status"`
@@ -91,7 +90,6 @@ type instrumentorVariableSpecs struct {
 	EVENT_TYPE_DELAY           *ebpf.VariableSpec `ebpf:"EVENT_TYPE_DELAY"`
 	EVENT_TYPE_EXECUTE         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_EXECUTE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
-	EVENT_TYPE_NEWPROC         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
 	EVENT_TYPE_SEMTABLE_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
@@ -144,7 +142,6 @@ type instrumentorVariables struct {
 	EVENT_TYPE_DELAY           *ebpf.Variable `ebpf:"EVENT_TYPE_DELAY"`
 	EVENT_TYPE_EXECUTE         *ebpf.Variable `ebpf:"EVENT_TYPE_EXECUTE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
-	EVENT_TYPE_NEWPROC         *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_RUNQ_STEAL      *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STEAL"`
 	EVENT_TYPE_SEMTABLE_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
@@ -163,7 +160,6 @@ type instrumentorPrograms struct {
 	GetCallstack               *ebpf.Program `ebpf:"get_callstack"`
 	GlobrunqStatus             *ebpf.Program `ebpf:"globrunq_status"`
 	GoExecute                  *ebpf.Program `ebpf:"go_execute"`
-	GoNewproc                  *ebpf.Program `ebpf:"go_newproc"`
 	GoRunqsteal                *ebpf.Program `ebpf:"go_runqsteal"`
 	GoRunqstealRetRunqStatus   *ebpf.Program `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.Program `ebpf:"go_runtime_func_ret_runq_status"`
@@ -177,7 +173,6 @@ func (p *instrumentorPrograms) Close() error {
 		p.GetCallstack,
 		p.GlobrunqStatus,
 		p.GoExecute,
-		p.GoNewproc,
 		p.GoRunqsteal,
 		p.GoRunqstealRetRunqStatus,
 		p.GoRuntimeFuncRetRunqStatus,

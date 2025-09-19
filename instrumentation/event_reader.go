@@ -22,8 +22,8 @@ Go equivalents of instrumentor events.
 type eventType uint64
 
 const (
-	EVENT_TYPE_NEWPROC eventType = iota
-	EVENT_TYPE_DELAY
+	// EVENT_TYPE_NEWPROC eventType = iota
+	EVENT_TYPE_DELAY eventType = iota + 1
 	EVENT_TYPE_RUNQ_STATUS
 	EVENT_TYPE_RUNQ_STEAL
 	EVENT_TYPE_EXECUTE
@@ -32,11 +32,11 @@ const (
 	EVENT_TYPE_CALLSTACK
 )
 
-type newprocEvent struct {
-	EType       eventType
-	PC          uint64
-	CreatorGoID uint64
-}
+//	type newprocEvent struct {
+//		EType       eventType
+//		PC          uint64
+//		CreatorGoID uint64
+//	}
 type runqStatusEvent struct {
 	EType  eventType
 	ProcID int64
@@ -93,6 +93,7 @@ type delayEvent struct {
 	EType eventType
 	PC    uint64
 	GoID  uint64
+	MID   int64
 }
 
 type callstackEvent struct {
@@ -238,17 +239,17 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 	}
 
 	switch etype {
-	case EVENT_TYPE_NEWPROC:
-		var event newprocEvent
-		err = binary.Read(readSeeker, r.byteOrder, &event)
-		if err != nil {
-			break
-		}
-		file, line, fn := r.interpreter.PCToLine(event.PC)
-		if fn == nil {
-			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
-		}
-		log.Printf("newproc invoked in GoID: %d (function: %s, file: %s, line: %d)", event.CreatorGoID, fn.Name, file, line)
+	// case EVENT_TYPE_NEWPROC:
+	// 	var event newprocEvent
+	// 	err = binary.Read(readSeeker, r.byteOrder, &event)
+	// 	if err != nil {
+	// 		break
+	// 	}
+	// 	file, line, fn := r.interpreter.PCToLine(event.PC)
+	// 	if fn == nil {
+	// 		log.Fatalf("Read newproc event: invalid PC %x", event.PC)
+	// 	}
+	// 	log.Printf("newproc invoked in GoID: %d (function: %s, file: %s, line: %d)", event.CreatorGoID, fn.Name, file, line)
 	case EVENT_TYPE_DELAY:
 		var event delayEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -259,7 +260,18 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if interpretedPC.Func == nil {
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
-		log.Printf("Delaying %v for GoID %d", interpretedPC, event.GoID)
+		goId := int64(event.GoID)
+		probeEvent := &proto.ProbeEvent{
+			ProbeEventOneof: &proto.ProbeEvent_DelayEvent{
+				DelayEvent: &proto.DelayEvent{
+					GoId:      &goId,
+					MId:       &event.MID,
+					CurrentPc: interpretedPC,
+				},
+			},
+		}
+		log.Printf("Delay event: %v", probeEvent)
+		r.ProbeEventCh <- probeEvent
 	case EVENT_TYPE_CALLSTACK:
 		var event callstackEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)

@@ -272,6 +272,7 @@ type ProbeEvent struct {
 	// Types that are valid to be assigned to ProbeEventOneof:
 	//
 	//	*ProbeEvent_RunqStatusEvent
+	//	*ProbeEvent_DelayEvent
 	ProbeEventOneof isProbeEvent_ProbeEventOneof `protobuf_oneof:"probe_event_oneof"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -323,6 +324,15 @@ func (x *ProbeEvent) GetRunqStatusEvent() *RunqStatusEvent {
 	return nil
 }
 
+func (x *ProbeEvent) GetDelayEvent() *DelayEvent {
+	if x != nil {
+		if x, ok := x.ProbeEventOneof.(*ProbeEvent_DelayEvent); ok {
+			return x.DelayEvent
+		}
+	}
+	return nil
+}
+
 type isProbeEvent_ProbeEventOneof interface {
 	isProbeEvent_ProbeEventOneof()
 }
@@ -331,7 +341,13 @@ type ProbeEvent_RunqStatusEvent struct {
 	RunqStatusEvent *RunqStatusEvent `protobuf:"bytes,1,opt,name=runq_status_event,json=runqStatusEvent,proto3,oneof"`
 }
 
+type ProbeEvent_DelayEvent struct {
+	DelayEvent *DelayEvent `protobuf:"bytes,2,opt,name=delay_event,json=delayEvent,proto3,oneof"`
+}
+
 func (*ProbeEvent_RunqStatusEvent) isProbeEvent_ProbeEventOneof() {}
+
+func (*ProbeEvent_DelayEvent) isProbeEvent_ProbeEventOneof() {}
 
 type RunqStatusEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -513,6 +529,66 @@ func (x *RunqEntry) GetExecutionContext() *InterpretedPC {
 	return nil
 }
 
+type DelayEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MId           *int64                 `protobuf:"varint,1,opt,name=m_id,json=mId,proto3,oneof" json:"m_id,omitempty"`
+	GoId          *int64                 `protobuf:"varint,2,opt,name=go_id,json=goId,proto3,oneof" json:"go_id,omitempty"`
+	CurrentPc     *InterpretedPC         `protobuf:"bytes,3,opt,name=current_pc,json=currentPc,proto3" json:"current_pc,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DelayEvent) Reset() {
+	*x = DelayEvent{}
+	mi := &file_slowmo_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DelayEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DelayEvent) ProtoMessage() {}
+
+func (x *DelayEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DelayEvent.ProtoReflect.Descriptor instead.
+func (*DelayEvent) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *DelayEvent) GetMId() int64 {
+	if x != nil && x.MId != nil {
+		return *x.MId
+	}
+	return 0
+}
+
+func (x *DelayEvent) GetGoId() int64 {
+	if x != nil && x.GoId != nil {
+		return *x.GoId
+	}
+	return 0
+}
+
+func (x *DelayEvent) GetCurrentPc() *InterpretedPC {
+	if x != nil {
+		return x.CurrentPc
+	}
+	return nil
+}
+
 type RuntimeOutput struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Output        *string                `protobuf:"bytes,1,opt,name=output,proto3,oneof" json:"output,omitempty"`
@@ -522,7 +598,7 @@ type RuntimeOutput struct {
 
 func (x *RuntimeOutput) Reset() {
 	*x = RuntimeOutput{}
-	mi := &file_slowmo_proto_msgTypes[8]
+	mi := &file_slowmo_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -534,7 +610,7 @@ func (x *RuntimeOutput) String() string {
 func (*RuntimeOutput) ProtoMessage() {}
 
 func (x *RuntimeOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_slowmo_proto_msgTypes[8]
+	mi := &file_slowmo_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -547,7 +623,7 @@ func (x *RuntimeOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeOutput.ProtoReflect.Descriptor instead.
 func (*RuntimeOutput) Descriptor() ([]byte, []int) {
-	return file_slowmo_proto_rawDescGZIP(), []int{8}
+	return file_slowmo_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RuntimeOutput) GetOutput() string {
@@ -576,10 +652,12 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x0e_error_message\"J\n" +
 	"\fRuntimeError\x12(\n" +
 	"\rerror_message\x18\x01 \x01(\tH\x00R\ferrorMessage\x88\x01\x01B\x10\n" +
-	"\x0e_error_message\"h\n" +
+	"\x0e_error_message\"\x9f\x01\n" +
 	"\n" +
 	"ProbeEvent\x12E\n" +
-	"\x11runq_status_event\x18\x01 \x01(\v2\x17.slowmo.RunqStatusEventH\x00R\x0frunqStatusEventB\x13\n" +
+	"\x11runq_status_event\x18\x01 \x01(\v2\x17.slowmo.RunqStatusEventH\x00R\x0frunqStatusEvent\x125\n" +
+	"\vdelay_event\x18\x02 \x01(\v2\x12.slowmo.DelayEventH\x00R\n" +
+	"delayEventB\x13\n" +
 	"\x11probe_event_oneof\"\xd4\x01\n" +
 	"\x0fRunqStatusEvent\x12\x1c\n" +
 	"\aproc_id\x18\x01 \x01(\x03H\x00R\x06procId\x88\x01\x01\x124\n" +
@@ -599,6 +677,14 @@ const file_slowmo_proto_rawDesc = "" +
 	"\tRunqEntry\x12\x18\n" +
 	"\x05go_id\x18\x01 \x01(\x03H\x00R\x04goId\x88\x01\x01\x12B\n" +
 	"\x11execution_context\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\x10executionContextB\b\n" +
+	"\x06_go_id\"\x87\x01\n" +
+	"\n" +
+	"DelayEvent\x12\x16\n" +
+	"\x04m_id\x18\x01 \x01(\x03H\x00R\x03mId\x88\x01\x01\x12\x18\n" +
+	"\x05go_id\x18\x02 \x01(\x03H\x01R\x04goId\x88\x01\x01\x124\n" +
+	"\n" +
+	"current_pc\x18\x03 \x01(\v2\x15.slowmo.InterpretedPCR\tcurrentPcB\a\n" +
+	"\x05_m_idB\b\n" +
 	"\x06_go_id\"7\n" +
 	"\rRuntimeOutput\x12\x1b\n" +
 	"\x06output\x18\x01 \x01(\tH\x00R\x06output\x88\x01\x01B\t\n" +
@@ -618,7 +704,7 @@ func file_slowmo_proto_rawDescGZIP() []byte {
 	return file_slowmo_proto_rawDescData
 }
 
-var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_slowmo_proto_goTypes = []any{
 	(*CompileAndRunRequest)(nil),  // 0: slowmo.CompileAndRunRequest
 	(*CompileAndRunResponse)(nil), // 1: slowmo.CompileAndRunResponse
@@ -628,25 +714,28 @@ var file_slowmo_proto_goTypes = []any{
 	(*RunqStatusEvent)(nil),       // 5: slowmo.RunqStatusEvent
 	(*InterpretedPC)(nil),         // 6: slowmo.InterpretedPC
 	(*RunqEntry)(nil),             // 7: slowmo.RunqEntry
-	(*RuntimeOutput)(nil),         // 8: slowmo.RuntimeOutput
+	(*DelayEvent)(nil),            // 8: slowmo.DelayEvent
+	(*RuntimeOutput)(nil),         // 9: slowmo.RuntimeOutput
 }
 var file_slowmo_proto_depIdxs = []int32{
 	2,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
 	3,  // 1: slowmo.CompileAndRunResponse.runtime_error:type_name -> slowmo.RuntimeError
 	4,  // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
-	8,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
+	9,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
 	5,  // 4: slowmo.ProbeEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
-	6,  // 5: slowmo.RunqStatusEvent.current_pc:type_name -> slowmo.InterpretedPC
-	7,  // 6: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
-	7,  // 7: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
-	6,  // 8: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
-	0,  // 9: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
-	1,  // 10: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
-	10, // [10:11] is the sub-list for method output_type
-	9,  // [9:10] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	8,  // 5: slowmo.ProbeEvent.delay_event:type_name -> slowmo.DelayEvent
+	6,  // 6: slowmo.RunqStatusEvent.current_pc:type_name -> slowmo.InterpretedPC
+	7,  // 7: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
+	7,  // 8: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
+	6,  // 9: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
+	6,  // 10: slowmo.DelayEvent.current_pc:type_name -> slowmo.InterpretedPC
+	0,  // 11: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
+	1,  // 12: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
+	12, // [12:13] is the sub-list for method output_type
+	11, // [11:12] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_slowmo_proto_init() }
@@ -665,18 +754,20 @@ func file_slowmo_proto_init() {
 	file_slowmo_proto_msgTypes[3].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[4].OneofWrappers = []any{
 		(*ProbeEvent_RunqStatusEvent)(nil),
+		(*ProbeEvent_DelayEvent)(nil),
 	}
 	file_slowmo_proto_msgTypes[5].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[6].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[7].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[8].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[9].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_slowmo_proto_rawDesc), len(file_slowmo_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

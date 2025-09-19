@@ -87,6 +87,12 @@ export interface ProbeEvent {
          */
         runqStatusEvent: RunqStatusEvent;
     } | {
+        oneofKind: "delayEvent";
+        /**
+         * @generated from protobuf field: slowmo.DelayEvent delay_event = 2
+         */
+        delayEvent: DelayEvent;
+    } | {
         oneofKind: undefined;
     };
 }
@@ -140,6 +146,23 @@ export interface RunqEntry {
      * @generated from protobuf field: slowmo.InterpretedPC execution_context = 2
      */
     executionContext?: InterpretedPC;
+}
+/**
+ * @generated from protobuf message slowmo.DelayEvent
+ */
+export interface DelayEvent {
+    /**
+     * @generated from protobuf field: optional int64 m_id = 1
+     */
+    mId?: bigint;
+    /**
+     * @generated from protobuf field: optional int64 go_id = 2
+     */
+    goId?: bigint;
+    /**
+     * @generated from protobuf field: slowmo.InterpretedPC current_pc = 3
+     */
+    currentPc?: InterpretedPC;
 }
 /**
  * @generated from protobuf message slowmo.RuntimeOutput
@@ -372,7 +395,8 @@ export const RuntimeError = new RuntimeError$Type();
 class ProbeEvent$Type extends MessageType<ProbeEvent> {
     constructor() {
         super("slowmo.ProbeEvent", [
-            { no: 1, name: "runq_status_event", kind: "message", oneof: "probeEventOneof", T: () => RunqStatusEvent }
+            { no: 1, name: "runq_status_event", kind: "message", oneof: "probeEventOneof", T: () => RunqStatusEvent },
+            { no: 2, name: "delay_event", kind: "message", oneof: "probeEventOneof", T: () => DelayEvent }
         ]);
     }
     create(value?: PartialMessage<ProbeEvent>): ProbeEvent {
@@ -393,6 +417,12 @@ class ProbeEvent$Type extends MessageType<ProbeEvent> {
                         runqStatusEvent: RunqStatusEvent.internalBinaryRead(reader, reader.uint32(), options, (message.probeEventOneof as any).runqStatusEvent)
                     };
                     break;
+                case /* slowmo.DelayEvent delay_event */ 2:
+                    message.probeEventOneof = {
+                        oneofKind: "delayEvent",
+                        delayEvent: DelayEvent.internalBinaryRead(reader, reader.uint32(), options, (message.probeEventOneof as any).delayEvent)
+                    };
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -408,6 +438,9 @@ class ProbeEvent$Type extends MessageType<ProbeEvent> {
         /* slowmo.RunqStatusEvent runq_status_event = 1; */
         if (message.probeEventOneof.oneofKind === "runqStatusEvent")
             RunqStatusEvent.internalBinaryWrite(message.probeEventOneof.runqStatusEvent, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
+        /* slowmo.DelayEvent delay_event = 2; */
+        if (message.probeEventOneof.oneofKind === "delayEvent")
+            DelayEvent.internalBinaryWrite(message.probeEventOneof.delayEvent, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -599,6 +632,66 @@ class RunqEntry$Type extends MessageType<RunqEntry> {
  * @generated MessageType for protobuf message slowmo.RunqEntry
  */
 export const RunqEntry = new RunqEntry$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class DelayEvent$Type extends MessageType<DelayEvent> {
+    constructor() {
+        super("slowmo.DelayEvent", [
+            { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 2, name: "go_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 3, name: "current_pc", kind: "message", T: () => InterpretedPC }
+        ]);
+    }
+    create(value?: PartialMessage<DelayEvent>): DelayEvent {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        if (value !== undefined)
+            reflectionMergePartial<DelayEvent>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: DelayEvent): DelayEvent {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* optional int64 m_id */ 1:
+                    message.mId = reader.int64().toBigInt();
+                    break;
+                case /* optional int64 go_id */ 2:
+                    message.goId = reader.int64().toBigInt();
+                    break;
+                case /* slowmo.InterpretedPC current_pc */ 3:
+                    message.currentPc = InterpretedPC.internalBinaryRead(reader, reader.uint32(), options, message.currentPc);
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: DelayEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional int64 m_id = 1; */
+        if (message.mId !== undefined)
+            writer.tag(1, WireType.Varint).int64(message.mId);
+        /* optional int64 go_id = 2; */
+        if (message.goId !== undefined)
+            writer.tag(2, WireType.Varint).int64(message.goId);
+        /* slowmo.InterpretedPC current_pc = 3; */
+        if (message.currentPc)
+            InterpretedPC.internalBinaryWrite(message.currentPc, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message slowmo.DelayEvent
+ */
+export const DelayEvent = new DelayEvent$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
     constructor() {

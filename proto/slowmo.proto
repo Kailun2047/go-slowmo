@@ -26,6 +26,7 @@ message RuntimeError {
 message ProbeEvent {
     oneof probe_event_oneof {
         RunqStatusEvent runq_status_event = 1;
+        DelayEvent delay_event = 2;
     };
 }
 
@@ -45,6 +46,12 @@ message InterpretedPC {
 message RunqEntry {
     optional int64 go_id = 1;
     InterpretedPC execution_context = 2;
+}
+
+message DelayEvent {
+    optional int64 m_id = 1;
+    optional int64 go_id = 2;
+    InterpretedPC current_pc = 3;
 }
 
 message RuntimeOutput {

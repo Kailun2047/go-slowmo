@@ -105,15 +105,36 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		}
 	}
 
+	// Start of schedule round.
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
-		TargetFn:  "newproc",
-		BpfFn:     "go_newproc",
+		TargetFn:  "schedule",
+		BpfFn:     "get_callstack",
+	})
+	// Adding goroutine to some queue.
+	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		// Ideally we should probe runqput, but for things like newproc the
+		// runqput is executed on system stack and can't be conveniently tracked
+		// by the instrumentor.
+		TargetFn: "newproc",
+		BpfFn:    "go_runtime_func_ret_runq_status",
 	})
 	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
-		TargetFn:  "newproc",
-		BpfFn:     "go_runtime_func_ret_runq_status",
+		TargetFn:  "globrunqput",
+		BpfFn:     "globrunq_status",
+	})
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "gopark",
+		BpfFn:     "gopark",
+	})
+	// Finding a runnable goroutine.
+	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "globrunqget",
+		BpfFn:     "globrunq_status",
 	})
 	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
@@ -135,29 +156,10 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		TargetFn:  "execute",
 		BpfFn:     "go_execute",
 	})
-	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "globrunqget",
-		BpfFn:     "globrunq_status",
-	})
-	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "globrunqput",
-		BpfFn:     "globrunq_status",
-	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "gopark",
-		BpfFn:     "gopark",
-	})
+	// Helpers.
 	instrumentor.Delay(instrumentation.UprobeAttachSpec{
 		TargetPkg: "main",
 		BpfFn:     "delay",
-	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "schedule",
-		BpfFn:     "get_callstack",
 	})
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
@@ -323,8 +325,6 @@ func sandboxedBuild(source string) (string, error) {
 func sandboxedRun(targetName string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
 	log.Printf("Start sandbox run of program %s", targetName)
 	runTargetCmd := exec.Command(targetName)
-	// Turn off asynchronous preemption to make slowing down go program easier.
-	runTargetCmd.Env = append(runTargetCmd.Env, "GODEBUG=asyncpreemptoff=1")
 	runTargetCmd.Stdout, runTargetCmd.Stderr = writer, writer
 	runTargetCmd.WaitDelay = executionTimeLimit
 	err = runTargetCmd.Start()

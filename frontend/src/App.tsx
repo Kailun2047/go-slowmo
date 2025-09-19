@@ -1,10 +1,10 @@
 import './App.css'
-import AceEditorWrapper from './components/ace-editor'
+import CodePanel from './components/code-panel'
 
 function App() {
   return (
     <>
-      <AceEditorWrapper />
+      <CodePanel />
     </>
   )
 }
