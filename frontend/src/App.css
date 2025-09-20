@@ -23,10 +23,11 @@
 #instrumented-code {
   background: #fdf6e3;
   position: absolute;
-  top: 50px;
   left: 48px;
-  width: 100%;
-  height: 80%;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre;
 }
 
 #banner {
@@ -102,6 +103,32 @@
     box-shadow: rgba(20, 70, 32, .2) 0 1px 0 inset;
 }
 
+.instrumented-editor {
+  position: absolute;
+  top: 50px;
+  height: 80%;
+  width: 100%;
+  overflow: auto;
+}
+
 .instrumented-code-line {
+  display: block;
+}
+
+.instrumented-code-line:empty {
+  height: 16px;
+}
+
+#instrumented-code-linenums {
+  position: absolute;
+  width: 48px;
+  text-align: right;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 16px;
+  background: #fbf1d3;
+}
+
+.line-number {
   display: block;
 }

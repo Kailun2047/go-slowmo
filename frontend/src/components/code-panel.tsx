@@ -162,7 +162,7 @@ function InstrumentedCode({codeLines, runningCodeLines}: InstrumentedCodeProps) 
         }
     });
 
-    const spans = [];
+    const spans = [], lineNums = [];
     for (let i = 0; i < codeLines.length; i++) {
         const codeLine = codeLines[i];
         const bgColor = lineNumToBgColor.get(i + 1);
@@ -171,6 +171,7 @@ function InstrumentedCode({codeLines, runningCodeLines}: InstrumentedCodeProps) 
         } else {
             spans.push(<span key={i} className='instrumented-code-line'>{codeLine}</span>);
         }
+        lineNums.push(<span key={'line-'+i} className='line-number'>{i + 1}</span>);
     }
     return (
         <div className='code-panel'>
@@ -178,8 +179,13 @@ function InstrumentedCode({codeLines, runningCodeLines}: InstrumentedCodeProps) 
                 <div id='head'>Go Runtime in Slowmo</div>
                 <Button id='button-run'>Run</Button>
             </div>
-            <div id='instrumented-code'>
-                {spans}
+            <div className='instrumented-editor'>
+                <div id='instrumented-code-linenums'>
+                    {lineNums}
+                </div>
+                <div id='instrumented-code'>
+                    {spans}
+                </div>
             </div>
         </div>
     );
