@@ -52,6 +52,7 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
 static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
 static int64_t unwind_stack(char *curr_stack_addr, uint64_t pc, char *curr_fp, uint64_t callstack_pc_list[]);
 static long find_target_func(void *map, void *key, void *value, void *ctx);
+static bool check_delay_done(uint64_t ns_start);
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -287,7 +288,7 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx) 
 SEC("uprobe/delay")
 int BPF_UPROBE(delay) {
     struct delay_event *e;
-    uint64_t i, ns, ns_start;
+    uint64_t i, j, ns, ns_start;
     char *m_ptr;
     
     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct delay_event), 0);
@@ -303,13 +304,25 @@ int BPF_UPROBE(delay) {
     bpf_ringbuf_submit(e, 0);
 
     ns_start = bpf_ktime_get_ns();
+    // Nested loops suffice for introducing a delay as long as 1s.
     bpf_for(i, 0, MAX_LOOP_ITERS) {
-        ns = bpf_ktime_get_ns();
-        if (ns - ns_start >= DELAY_NS) {
+        if (check_delay_done(ns_start)) {
             break;
         }
     }
     return 0;
+}
+
+static bool check_delay_done(uint64_t ns_start) {
+    uint64_t ns, j;
+
+    bpf_for(j, 0, MAX_LOOP_ITERS) {
+        ns = bpf_ktime_get_ns();
+        if (ns - ns_start >= DELAY_NS) {
+            return true;
+        }
+    }
+    return false;
 }
 
 volatile const uint64_t allp_slice_addr;
