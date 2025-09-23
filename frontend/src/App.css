@@ -13,11 +13,12 @@
 }
 
 /* The ace editor is bound to element id, so we need an id selector */
-#golang-editor {
+.golang-editor {
   position: absolute;
-  top: 50px;
+  top: 6%;
   width: 100%;
-  height: 80%;
+  height: 94%;
+  overflow: auto;
 }
 
 #instrumented-code {
@@ -36,7 +37,7 @@
   left: 0;
   right: 0;
   top: 0;
-  height: 50px;
+  height: 6%;
 }
 
 #banner > * {
@@ -103,14 +104,6 @@
     box-shadow: rgba(20, 70, 32, .2) 0 1px 0 inset;
 }
 
-.instrumented-editor {
-  position: absolute;
-  top: 50px;
-  height: 80%;
-  width: 100%;
-  overflow: auto;
-}
-
 .instrumented-code-line {
   display: block;
 }
@@ -121,12 +114,13 @@
 
 #instrumented-code-linenums {
   position: absolute;
-  width: 48px;
+  width: 35px;
   text-align: right;
   font-family: monospace;
   font-size: 12px;
   line-height: 16px;
   background: #fbf1d3;
+  padding-right: 13px;
 }
 
 .line-number {

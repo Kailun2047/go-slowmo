@@ -278,16 +278,9 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil {
 			break
 		}
-		callstack := event.Callstack[:event.CallstackDepth]
-		interpretedCallstack := make([]*proto.InterpretedPC, len(callstack))
-		for i, pc := range callstack {
-			interpretedCallstack[i] = r.interpretPC(pc)
+		if probeEvent := r.interpretCallstack(event); probeEvent != nil {
+			r.ProbeEventCh <- probeEvent
 		}
-		triggerFunc := r.interpretPC(callstack[0]).Func
-		if triggerFunc == nil {
-			log.Fatalf("Cannot find trigger func for PC %x", callstack[0])
-		}
-		log.Printf("%s called for MID %d, callstack: %+v, pc list: %v", *triggerFunc, event.MID, interpretedCallstack, callstack)
 	case EVENT_TYPE_RUNQ_STATUS:
 		var event runqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -376,6 +369,50 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 	}
 
 	return err
+}
+
+func (r *EventReader) interpretCallstack(event callstackEvent) (probeEvent *proto.ProbeEvent) {
+	callstack := event.Callstack[:event.CallstackDepth]
+	interpretedCallstack := make([]*proto.InterpretedPC, len(callstack))
+	for i, pc := range callstack {
+		interpretedCallstack[i] = r.interpretPC(pc)
+	}
+	triggerFunc := interpretedCallstack[0].Func
+	if triggerFunc == nil {
+		log.Fatalf("Cannot find trigger func for PC %x", callstack[0])
+	}
+	log.Printf("%s called for MID %d, callstack: %+v, pc list: %v", *triggerFunc, event.MID, interpretedCallstack, callstack)
+
+	switch *triggerFunc {
+	case "runtime.schedule":
+		probeEvent = &proto.ProbeEvent{
+			ProbeEventOneof: &proto.ProbeEvent_ScheduleEvent{
+				ScheduleEvent: &proto.ScheduleEvent{
+					MId:    &event.MID,
+					Reason: findScheduleReason(interpretedCallstack),
+				},
+			},
+		}
+	default:
+	}
+	return
+}
+
+var runtimeFuncToScheduleReason = map[string]proto.ScheduleReason{
+	"runtime.goexit": proto.ScheduleReason_GOEXIT,
+	"runtime.gopark": proto.ScheduleReason_GOPARK,
+}
+
+func findScheduleReason(callstack []*proto.InterpretedPC) proto.ScheduleReason {
+	reason := proto.ScheduleReason_OTHER
+	for i := 1; i < len(callstack); i++ {
+		currFunc := callstack[i].Func
+		if r, ok := runtimeFuncToScheduleReason[*currFunc]; ok {
+			reason = r
+			break
+		}
+	}
+	return reason
 }
 
 func (r *EventReader) shouldKeepEvent(event eventWithCallStack) bool {

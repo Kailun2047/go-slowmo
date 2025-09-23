@@ -9,12 +9,25 @@ export function asStyleStr(hsl: HSL): string {
     return `hsl(${h}, ${s}%, ${l}%)`;
 }
 
-export function pickPastelColor(): HSL {
-    return {
-        h: Math.floor(Math.random() * 360),
-        s: Math.floor(60 + Math.random() * 20),
-        l: Math.floor(70 + Math.random() * 10),
-    };
+const usedColors = new Map<number, HSL>();
+
+export function pickPastelColor(targetId: number): HSL {
+    let pickedColor = usedColors.get(targetId);
+    if (pickedColor !== undefined) {
+        return usedColors.get(targetId)!;
+    } else {
+        pickedColor = {
+            h: Math.floor(Math.random() * 360),
+            s: Math.floor(60 + Math.random() * 20),
+            l: Math.floor(70 + Math.random() * 10),
+        };
+        usedColors.set(targetId, pickedColor);
+    }
+    return pickedColor;
+}
+
+export function clearUsedColors() {
+    usedColors.clear();
 }
 
 const mixRatio = 0.5;

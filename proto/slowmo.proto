@@ -23,10 +23,15 @@ message RuntimeError {
     optional string error_message = 1;
 }
 
+message RuntimeOutput {
+    optional string output = 1;
+}
+
 message ProbeEvent {
     oneof probe_event_oneof {
         RunqStatusEvent runq_status_event = 1;
         DelayEvent delay_event = 2;
+        ScheduleEvent schedule_event = 3;
     };
 }
 
@@ -54,8 +59,15 @@ message DelayEvent {
     InterpretedPC current_pc = 3;
 }
 
-message RuntimeOutput {
-    optional string output = 1;
+message ScheduleEvent {
+    optional int64 m_id = 1;
+    ScheduleReason reason = 2;
+}
+
+enum ScheduleReason {
+    GOEXIT = 0;
+    GOPARK = 1;
+    OTHER = 20;
 }
 
 service SlowmoService {

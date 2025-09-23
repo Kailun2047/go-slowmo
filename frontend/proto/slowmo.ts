@@ -74,6 +74,15 @@ export interface RuntimeError {
     errorMessage?: string;
 }
 /**
+ * @generated from protobuf message slowmo.RuntimeOutput
+ */
+export interface RuntimeOutput {
+    /**
+     * @generated from protobuf field: optional string output = 1
+     */
+    output?: string;
+}
+/**
  * @generated from protobuf message slowmo.ProbeEvent
  */
 export interface ProbeEvent {
@@ -92,6 +101,12 @@ export interface ProbeEvent {
          * @generated from protobuf field: slowmo.DelayEvent delay_event = 2
          */
         delayEvent: DelayEvent;
+    } | {
+        oneofKind: "scheduleEvent";
+        /**
+         * @generated from protobuf field: slowmo.ScheduleEvent schedule_event = 3
+         */
+        scheduleEvent: ScheduleEvent;
     } | {
         oneofKind: undefined;
     };
@@ -165,13 +180,34 @@ export interface DelayEvent {
     currentPc?: InterpretedPC;
 }
 /**
- * @generated from protobuf message slowmo.RuntimeOutput
+ * @generated from protobuf message slowmo.ScheduleEvent
  */
-export interface RuntimeOutput {
+export interface ScheduleEvent {
     /**
-     * @generated from protobuf field: optional string output = 1
+     * @generated from protobuf field: optional int64 m_id = 1
      */
-    output?: string;
+    mId?: bigint;
+    /**
+     * @generated from protobuf field: slowmo.ScheduleReason reason = 2
+     */
+    reason: ScheduleReason;
+}
+/**
+ * @generated from protobuf enum slowmo.ScheduleReason
+ */
+export enum ScheduleReason {
+    /**
+     * @generated from protobuf enum value: GOEXIT = 0;
+     */
+    GOEXIT = 0,
+    /**
+     * @generated from protobuf enum value: GOPARK = 1;
+     */
+    GOPARK = 1,
+    /**
+     * @generated from protobuf enum value: OTHER = 20;
+     */
+    OTHER = 20
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
@@ -392,11 +428,58 @@ class RuntimeError$Type extends MessageType<RuntimeError> {
  */
 export const RuntimeError = new RuntimeError$Type();
 // @generated message type with reflection information, may provide speed optimized methods
+class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
+    constructor() {
+        super("slowmo.RuntimeOutput", [
+            { no: 1, name: "output", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<RuntimeOutput>): RuntimeOutput {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        if (value !== undefined)
+            reflectionMergePartial<RuntimeOutput>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RuntimeOutput): RuntimeOutput {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* optional string output */ 1:
+                    message.output = reader.string();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: RuntimeOutput, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional string output = 1; */
+        if (message.output !== undefined)
+            writer.tag(1, WireType.LengthDelimited).string(message.output);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message slowmo.RuntimeOutput
+ */
+export const RuntimeOutput = new RuntimeOutput$Type();
+// @generated message type with reflection information, may provide speed optimized methods
 class ProbeEvent$Type extends MessageType<ProbeEvent> {
     constructor() {
         super("slowmo.ProbeEvent", [
             { no: 1, name: "runq_status_event", kind: "message", oneof: "probeEventOneof", T: () => RunqStatusEvent },
-            { no: 2, name: "delay_event", kind: "message", oneof: "probeEventOneof", T: () => DelayEvent }
+            { no: 2, name: "delay_event", kind: "message", oneof: "probeEventOneof", T: () => DelayEvent },
+            { no: 3, name: "schedule_event", kind: "message", oneof: "probeEventOneof", T: () => ScheduleEvent }
         ]);
     }
     create(value?: PartialMessage<ProbeEvent>): ProbeEvent {
@@ -423,6 +506,12 @@ class ProbeEvent$Type extends MessageType<ProbeEvent> {
                         delayEvent: DelayEvent.internalBinaryRead(reader, reader.uint32(), options, (message.probeEventOneof as any).delayEvent)
                     };
                     break;
+                case /* slowmo.ScheduleEvent schedule_event */ 3:
+                    message.probeEventOneof = {
+                        oneofKind: "scheduleEvent",
+                        scheduleEvent: ScheduleEvent.internalBinaryRead(reader, reader.uint32(), options, (message.probeEventOneof as any).scheduleEvent)
+                    };
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -441,6 +530,9 @@ class ProbeEvent$Type extends MessageType<ProbeEvent> {
         /* slowmo.DelayEvent delay_event = 2; */
         if (message.probeEventOneof.oneofKind === "delayEvent")
             DelayEvent.internalBinaryWrite(message.probeEventOneof.delayEvent, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
+        /* slowmo.ScheduleEvent schedule_event = 3; */
+        if (message.probeEventOneof.oneofKind === "scheduleEvent")
+            ScheduleEvent.internalBinaryWrite(message.probeEventOneof.scheduleEvent, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -693,25 +785,30 @@ class DelayEvent$Type extends MessageType<DelayEvent> {
  */
 export const DelayEvent = new DelayEvent$Type();
 // @generated message type with reflection information, may provide speed optimized methods
-class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
+class ScheduleEvent$Type extends MessageType<ScheduleEvent> {
     constructor() {
-        super("slowmo.RuntimeOutput", [
-            { no: 1, name: "output", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
+        super("slowmo.ScheduleEvent", [
+            { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 2, name: "reason", kind: "enum", T: () => ["slowmo.ScheduleReason", ScheduleReason] }
         ]);
     }
-    create(value?: PartialMessage<RuntimeOutput>): RuntimeOutput {
+    create(value?: PartialMessage<ScheduleEvent>): ScheduleEvent {
         const message = globalThis.Object.create((this.messagePrototype!));
+        message.reason = 0;
         if (value !== undefined)
-            reflectionMergePartial<RuntimeOutput>(this, message, value);
+            reflectionMergePartial<ScheduleEvent>(this, message, value);
         return message;
     }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RuntimeOutput): RuntimeOutput {
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: ScheduleEvent): ScheduleEvent {
         let message = target ?? this.create(), end = reader.pos + length;
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* optional string output */ 1:
-                    message.output = reader.string();
+                case /* optional int64 m_id */ 1:
+                    message.mId = reader.int64().toBigInt();
+                    break;
+                case /* slowmo.ScheduleReason reason */ 2:
+                    message.reason = reader.int32();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -724,10 +821,13 @@ class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
         }
         return message;
     }
-    internalBinaryWrite(message: RuntimeOutput, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* optional string output = 1; */
-        if (message.output !== undefined)
-            writer.tag(1, WireType.LengthDelimited).string(message.output);
+    internalBinaryWrite(message: ScheduleEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional int64 m_id = 1; */
+        if (message.mId !== undefined)
+            writer.tag(1, WireType.Varint).int64(message.mId);
+        /* slowmo.ScheduleReason reason = 2; */
+        if (message.reason !== 0)
+            writer.tag(2, WireType.Varint).int32(message.reason);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -735,9 +835,9 @@ class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
     }
 }
 /**
- * @generated MessageType for protobuf message slowmo.RuntimeOutput
+ * @generated MessageType for protobuf message slowmo.ScheduleEvent
  */
-export const RuntimeOutput = new RuntimeOutput$Type();
+export const ScheduleEvent = new ScheduleEvent$Type();
 /**
  * @generated ServiceType for protobuf service slowmo.SlowmoService
  */

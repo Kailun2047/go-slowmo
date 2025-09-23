@@ -6,12 +6,13 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState, type MouseEventHandler } from 'react';
 import { CompileAndRunRequest } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
-import { asStyleStr, mixPastelColor, pickPastelColor, type HSL } from '../lib/color-picker';
+import { asStyleStr, clearUsedColors, mixPastelColor, pickPastelColor, type HSL } from '../lib/color-picker';
 import { flushSync } from 'react-dom';
 
 
 interface RunningCodeLinePerThread {
     lineNumber: number;
+    goId: number;
     backgroundColor: HSL;
 }
 
@@ -88,50 +89,69 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
             source,
         };
 
-        const stream = client.compileAndRun(request);
-        setCodeLines(source.split('\n'));
-        setIsRunning(true);
-        // TODO: pull response stream processing logic out of this module, and
-        // probably emit custom event instead of directly updating state here.
-        for await (const msg of stream.responses) {
-            switch (msg.compileAndRunOneof.oneofKind) {
-                case 'compileError':
-                    console.log('compilation returns error: ', msg.compileAndRunOneof.compileError.errorMessage);
-                    break;
-                case 'runEvent':
-                    const runEvent = msg.compileAndRunOneof.runEvent;
-                    console.log('run event of type ', runEvent.probeEventOneof.oneofKind);
-                    if (runEvent.probeEventOneof.oneofKind === 'delayEvent') {
-                        const {mId, currentPc} = runEvent.probeEventOneof.delayEvent;
-                        if (mId === undefined || currentPc === undefined || !currentPc.func?.startsWith('main') || currentPc.line === undefined) {
-                            throw new Error(`invalid delay event (mId: ${mId}, line: ${currentPc?.line})`);
+        try {
+            const stream = client.compileAndRun(request);
+            setCodeLines(source.split('\n'));
+            setIsRunning(true);
+            // TODO: pull response stream processing logic out of this module, and
+            // probably emit custom event instead of directly updating state here.
+            for await (const msg of stream.responses) {
+                switch (msg.compileAndRunOneof.oneofKind) {
+                    case 'compileError':
+                        console.log('compilation returns error: ', msg.compileAndRunOneof.compileError.errorMessage);
+                        break;
+                    case 'runtimeError':
+                        console.log('runtime error: ', msg.compileAndRunOneof.runtimeError.errorMessage);
+                        break;
+                    case 'runtimeOutput':
+                        console.log('runtime output: ', msg.compileAndRunOneof.runtimeOutput.output)
+                        break
+                    case 'runEvent':
+                        const runEvent = msg.compileAndRunOneof.runEvent;
+                        console.log('run event of type ', runEvent.probeEventOneof.oneofKind);
+                        switch (runEvent.probeEventOneof.oneofKind) {
+                            case 'delayEvent': {
+                                const {mId, currentPc, goId} = runEvent.probeEventOneof.delayEvent;
+                                if (mId === undefined || goId === undefined || currentPc === undefined || !currentPc.func?.startsWith('main') || currentPc.line === undefined) {
+                                    throw new Error(`invalid delay event (mId: ${mId}, line: ${currentPc?.line})`);
+                                }
+                                const runningCodeLinesPerThread = runningCodeLines.get(Number(mId));
+                                if (!runningCodeLinesPerThread) {
+                                    runningCodeLines.set(Number(mId), {
+                                        lineNumber: currentPc.line,
+                                        backgroundColor: pickPastelColor(Number(goId)),
+                                        goId: Number(goId),
+                                    });
+                                } else {
+                                    runningCodeLinesPerThread.lineNumber = currentPc.line;
+                                }
+                                flushSync(() => {
+                                    setRunningCodeLines(new Map(runningCodeLines));
+                                });
+                                break;
+                            }
+                            case 'scheduleEvent': {
+                                const {mId} = runEvent.probeEventOneof.scheduleEvent;
+                                if (mId === undefined) {
+                                    throw new Error(`invalid schedule event (mId: ${mId})`);
+                                }
+                                runningCodeLines.delete(Number(mId));
+                                flushSync(() => {
+                                    setRunningCodeLines(new Map(runningCodeLines));
+                                });
+                                break;
+                            }
                         }
-                        const runningCodeLinesPerThread = runningCodeLines.get(Number(mId));
-                        if (!runningCodeLinesPerThread) {
-                            runningCodeLines.set(Number(mId), {
-                                lineNumber: currentPc.line,
-                                backgroundColor: pickPastelColor(),
-                            });
-                        } else {
-                            runningCodeLinesPerThread.lineNumber = currentPc.line;
-                        }
-                        flushSync(() => {
-                            setRunningCodeLines(new Map(runningCodeLines));
-                        });
-                    }
-                    break;
-                case 'runtimeError':
-                    console.log('runtime error: ', msg.compileAndRunOneof.runtimeError.errorMessage);
-                    break;
-                case 'runtimeOutput':
-                    console.log('runtime output: ', msg.compileAndRunOneof.runtimeOutput.output)
-                    break
-                default:
-                    console.log('unexpected stream message type: ', msg.compileAndRunOneof.oneofKind);
+                        break;
+                    default:
+                        console.log('unexpected stream message type: ', msg.compileAndRunOneof.oneofKind);
+                }
             }
+        } finally {
+            setRunningCodeLines(new Map());
+            setIsRunning(false);
+            clearUsedColors();
         }
-        setRunningCodeLines(new Map());
-        setIsRunning(false);
     }
 
     return (
@@ -140,7 +160,7 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
                 <div id='head'>Go Runtime in Slowmo</div>
                 <Button id='button-run' onClick={handleClickRun}>Run</Button>
             </div>
-            <div ref={elemRef} id='golang-editor'></div>
+            <div ref={elemRef} className='golang-editor' id='ace-editor-wrapper'></div>
         </div>
     );
 }
@@ -179,7 +199,7 @@ function InstrumentedCode({codeLines, runningCodeLines}: InstrumentedCodeProps) 
                 <div id='head'>Go Runtime in Slowmo</div>
                 <Button id='button-run'>Run</Button>
             </div>
-            <div className='instrumented-editor'>
+            <div className='golang-editor'>
                 <div id='instrumented-code-linenums'>
                     {lineNums}
                 </div>
