@@ -6,7 +6,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useEffect, useRef, useState, type MouseEventHandler } from 'react';
 import { CompileAndRunRequest } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
-import { asStyleStr, clearUsedColors, mixPastelColor, pickPastelColor, type HSL } from '../lib/color-picker';
+import { asStyleStr, clearUsedColors, mixPastelColors, pickPastelColor, type HSL } from '../lib/color-picker';
 import { flushSync } from 'react-dom';
 
 
@@ -33,10 +33,10 @@ export default function CodePanel() {
         );
     } else {
         return (
-            <InstrumentedCode
+            <InstrumentedEditor
                 codeLines={codeLines}
                 runningCodeLines={runningCodeLines}
-            ></InstrumentedCode>
+            ></InstrumentedEditor>
         );
     };
 }
@@ -157,7 +157,7 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
     return (
         <div className='code-panel'>
             <div id="banner">
-                <div id='head'>Go Runtime in Slowmo</div>
+                <div id='head'>Go Slowmo</div>
                 <Button id='button-run' onClick={handleClickRun}>Run</Button>
             </div>
             <div ref={elemRef} className='golang-editor' id='ace-editor-wrapper'></div>
@@ -170,33 +170,43 @@ interface InstrumentedCodeProps {
     runningCodeLines: Map<number, RunningCodeLinePerThread>;
 }
 
-function InstrumentedCode({codeLines, runningCodeLines}: InstrumentedCodeProps) {
-    const lineNumToBgColor = new Map<number, HSL>();
-    runningCodeLines.forEach((val) => {
-        const {lineNumber, backgroundColor} = val;
-        const currBgColor = lineNumToBgColor.get(lineNumber);
-        if (!currBgColor) {
-            lineNumToBgColor.set(lineNumber, backgroundColor);
+function InstrumentedEditor({codeLines, runningCodeLines}: InstrumentedCodeProps) {
+    const lineNumToThreads = new Map<number, (Pick<RunningCodeLinePerThread, 'backgroundColor' | 'goId'> & {mId: number})[]>();
+    runningCodeLines.forEach((val, mId) => {
+        const {lineNumber, backgroundColor, goId} = val;
+        const currThreads = lineNumToThreads.get(lineNumber);
+        if (currThreads === undefined) {
+            lineNumToThreads.set(lineNumber, [{backgroundColor, goId, mId}]);
         } else {
-            lineNumToBgColor.set(lineNumber, mixPastelColor(currBgColor, backgroundColor));
+            lineNumToThreads.set(lineNumber, [...currThreads, {backgroundColor, goId, mId}]);
         }
     });
 
-    const spans = [], lineNums = [];
+    const spans = [], lineNums = [], cursors = [];
     for (let i = 0; i < codeLines.length; i++) {
         const codeLine = codeLines[i];
-        const bgColor = lineNumToBgColor.get(i + 1);
-        if (bgColor) {
-            spans.push(<span key={i} className='instrumented-code-line' style={{background: asStyleStr(bgColor)}}>{codeLine}</span>);
+        const threads = lineNumToThreads.get(i + 1);
+        const execs = [];
+        if (threads !== undefined && threads.length > 0) {
+            const {mId: firstMid, backgroundColor: firstBgColor, goId: firstGoId} = threads[0];
+            let bgColor = firstBgColor;
+            execs.push(<em style={{color: asStyleStr(firstBgColor)}}>{'m' + firstMid + ':g' + firstGoId}</em>);
+            for (let j = 1; j < threads.length; j++) {
+                const {mId, goId, backgroundColor} = threads[j];
+                bgColor = mixPastelColors(bgColor, backgroundColor);
+                execs.push(<em style={{color: asStyleStr(backgroundColor)}}>{'m' + mId + ':g' + goId}</em>);
+            }
+            spans.push(<span key={i} className='instrumented-line' style={{background: asStyleStr(bgColor)}}>{codeLine}</span>);
         } else {
-            spans.push(<span key={i} className='instrumented-code-line'>{codeLine}</span>);
+            spans.push(<span key={i} className='instrumented-line'>{codeLine}</span>);
         }
-        lineNums.push(<span key={'line-'+i} className='line-number'>{i + 1}</span>);
+        lineNums.push(<span key={'line-'+i} className='instrumented-line'>{i + 1}</span>);
+        cursors.push(<span key={'cursor-'+i} className='instrumented-line'>{execs}</span>);
     }
     return (
         <div className='code-panel'>
             <div id="banner">
-                <div id='head'>Go Runtime in Slowmo</div>
+                <div id='head'>Go Slowmo</div>
                 <Button id='button-run'>Run</Button>
             </div>
             <div className='golang-editor'>
@@ -205,6 +215,9 @@ function InstrumentedCode({codeLines, runningCodeLines}: InstrumentedCodeProps) 
                 </div>
                 <div id='instrumented-code'>
                     {spans}
+                </div>
+                <div id='instrumented-cursors'>
+                    {cursors}
                 </div>
             </div>
         </div>

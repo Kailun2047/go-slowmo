@@ -8,27 +8,16 @@
 
 .code-panel {
   position: absolute;
-  width: 50%;
+  width: 40%;
   height: 80%;
 }
 
-/* The ace editor is bound to element id, so we need an id selector */
 .golang-editor {
   position: absolute;
   top: 6%;
   width: 100%;
   height: 94%;
-  overflow: auto;
-}
-
-#instrumented-code {
-  background: #fdf6e3;
-  position: absolute;
-  left: 48px;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 16px;
-  white-space: pre;
+  overflow-y: auto;
 }
 
 #banner {
@@ -59,7 +48,7 @@
 #button-run {
   position: absolute;
   display: inline;
-  right: 0;
+  right: 10%;
   padding-top: 5px;
   padding-bottom: 5px;
   appearance: none;
@@ -104,25 +93,41 @@
     box-shadow: rgba(20, 70, 32, .2) 0 1px 0 inset;
 }
 
-.instrumented-code-line {
-  display: block;
+#instrumented-code {
+  background: #fdf6e3;
+  position: absolute;
+  left: 6%;
+  width: 85%;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre;
+  overflow-x: auto;
 }
 
-.instrumented-code-line:empty {
+.instrumented-line {
+  display: block;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.instrumented-line:empty {
   height: 16px;
 }
 
 #instrumented-code-linenums {
   position: absolute;
-  width: 35px;
+  width: 5%;
   text-align: right;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 16px;
   background: #fbf1d3;
-  padding-right: 13px;
+  padding-right: 1%;
 }
 
-.line-number {
-  display: block;
+#instrumented-cursors {
+  position: absolute;
+  left: 91%;
+  width: 8%;
+  padding-left: 1%;
+  text-align: left;
 }

@@ -32,7 +32,7 @@ export function clearUsedColors() {
 
 const mixRatio = 0.5;
 
-export function mixPastelColor(a: HSL, b: HSL): HSL {
+export function mixPastelColors(a: HSL, b: HSL): HSL {
     return {
         h: Math.floor(a.h + (b.h - a.h) * mixRatio),
         s: Math.floor(a.s + (b.s - a.s) * mixRatio),
