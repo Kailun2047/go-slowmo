@@ -2,12 +2,11 @@ import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
-import type { Dispatch, SetStateAction } from 'react';
-import { useEffect, useRef, useState, type MouseEventHandler } from 'react';
+import { useEffect, useRef, type MouseEventHandler } from 'react';
 import { CompileAndRunRequest } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
-import { asStyleStr, clearUsedColors, mixPastelColors, pickPastelColor, type HSL } from '../lib/color-picker';
-import { flushSync } from 'react-dom';
+import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
+import { resetAllStores, useAceEditorWrapperStore, useBoundStore } from './store';
 
 
 interface RunningCodeLinePerThread {
@@ -17,39 +16,26 @@ interface RunningCodeLinePerThread {
 }
 
 export default function CodePanel() {
-    const [isRunning, setIsRunning] = useState(false);
-    const [codeLines, setCodeLines] = useState<string[]>(['// Your Go code']);
-    const [runningCodeLines, setRunningCodeLines] = useState<Map<number, RunningCodeLinePerThread>>(new Map());
+    const isRunning = useBoundStore((state) => state.isRunning);
 
     if (!isRunning) {
         return (
-            <AceEditorWrapper
-                codeLines={codeLines}
-                setCodeLines={setCodeLines}
-                setIsRunning={setIsRunning}
-                runningCodeLines={runningCodeLines}
-                setRunningCodeLines={setRunningCodeLines}
-            ></AceEditorWrapper>
+            <AceEditorWrapper></AceEditorWrapper>
         );
     } else {
         return (
-            <InstrumentedEditor
-                codeLines={codeLines}
-                runningCodeLines={runningCodeLines}
-            ></InstrumentedEditor>
+            <InstrumentedEditor></InstrumentedEditor>
         );
     };
 }
 
-interface AceEditorWrapperProps {
-    codeLines: string[];
-    setCodeLines: Dispatch<SetStateAction<string[]>>;
-    setIsRunning: Dispatch<SetStateAction<boolean>>;
-    runningCodeLines: Map<number, RunningCodeLinePerThread>;
-    setRunningCodeLines: Dispatch<SetStateAction<Map<number, RunningCodeLinePerThread>>>;
-}
+function AceEditorWrapper() {
+    const codeLines = useAceEditorWrapperStore((state) => state.codeLines);
+    const setCodeLines = useAceEditorWrapperStore((state) => state.setCodeLines);
+    const setIsRunning = useBoundStore((state) => state.setIsRunning);
+    const handleDelayEvent = useBoundStore((state) => state.handleDelayEvent);
+    const handleScheduleEvent = useBoundStore((state) => state.handleScheduleEvent);
 
-function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLines, setRunningCodeLines}: AceEditorWrapperProps) {
     const elemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
         slowmo?: {
@@ -69,7 +55,7 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
         editor.setValue(codeLines.join('\n'));
         editor.clearSelection();
         elemRef.current.editor = editor;
-    })
+    }, [])
 
     async function handleClickRun() {
         if (!elemRef.current?.editor) {
@@ -93,8 +79,6 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
             const stream = client.compileAndRun(request);
             setCodeLines(source.split('\n'));
             setIsRunning(true);
-            // TODO: pull response stream processing logic out of this module, and
-            // probably emit custom event instead of directly updating state here.
             for await (const msg of stream.responses) {
                 switch (msg.compileAndRunOneof.oneofKind) {
                     case 'compileError':
@@ -115,30 +99,15 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
                                 if (mId === undefined || goId === undefined || currentPc === undefined || !currentPc.func?.startsWith('main') || currentPc.line === undefined) {
                                     throw new Error(`invalid delay event (mId: ${mId}, line: ${currentPc?.line})`);
                                 }
-                                const runningCodeLinesPerThread = runningCodeLines.get(Number(mId));
-                                if (!runningCodeLinesPerThread) {
-                                    runningCodeLines.set(Number(mId), {
-                                        lineNumber: currentPc.line,
-                                        backgroundColor: pickPastelColor(Number(goId)),
-                                        goId: Number(goId),
-                                    });
-                                } else {
-                                    runningCodeLinesPerThread.lineNumber = currentPc.line;
-                                }
-                                flushSync(() => {
-                                    setRunningCodeLines(new Map(runningCodeLines));
-                                });
+                                handleDelayEvent(Number(mId), currentPc.line, Number(goId));
                                 break;
                             }
                             case 'scheduleEvent': {
-                                const {mId} = runEvent.probeEventOneof.scheduleEvent;
+                                const {mId, reason} = runEvent.probeEventOneof.scheduleEvent;
                                 if (mId === undefined) {
                                     throw new Error(`invalid schedule event (mId: ${mId})`);
                                 }
-                                runningCodeLines.delete(Number(mId));
-                                flushSync(() => {
-                                    setRunningCodeLines(new Map(runningCodeLines));
-                                });
+                                handleScheduleEvent(Number(mId), reason);
                                 break;
                             }
                         }
@@ -148,8 +117,7 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
                 }
             }
         } finally {
-            setRunningCodeLines(new Map());
-            setIsRunning(false);
+            resetAllStores();
             clearUsedColors();
         }
     }
@@ -165,12 +133,10 @@ function AceEditorWrapper({codeLines, setCodeLines, setIsRunning, runningCodeLin
     );
 }
 
-interface InstrumentedCodeProps {
-    codeLines: string[];
-    runningCodeLines: Map<number, RunningCodeLinePerThread>;
-}
+function InstrumentedEditor() {
+    const codeLines = useAceEditorWrapperStore((state) => state.codeLines);
+    const runningCodeLines = useBoundStore((state) => state.runningCodeLines);
 
-function InstrumentedEditor({codeLines, runningCodeLines}: InstrumentedCodeProps) {
     const lineNumToThreads = new Map<number, (Pick<RunningCodeLinePerThread, 'backgroundColor' | 'goId'> & {mId: number})[]>();
     runningCodeLines.forEach((val, mId) => {
         const {lineNumber, backgroundColor, goId} = val;
@@ -190,11 +156,11 @@ function InstrumentedEditor({codeLines, runningCodeLines}: InstrumentedCodeProps
         if (threads !== undefined && threads.length > 0) {
             const {mId: firstMid, backgroundColor: firstBgColor, goId: firstGoId} = threads[0];
             let bgColor = firstBgColor;
-            execs.push(<em style={{color: asStyleStr(firstBgColor)}}>{'m' + firstMid + ':g' + firstGoId}</em>);
+            execs.push(<em key='exec-0' style={{color: asStyleStr(firstBgColor)}}>{'m' + firstMid + ':g' + firstGoId}</em>);
             for (let j = 1; j < threads.length; j++) {
                 const {mId, goId, backgroundColor} = threads[j];
                 bgColor = mixPastelColors(bgColor, backgroundColor);
-                execs.push(<em style={{color: asStyleStr(backgroundColor)}}>{'m' + mId + ':g' + goId}</em>);
+                execs.push(<em key={'exec-'+j} style={{color: asStyleStr(backgroundColor)}}>{'m' + mId + ':g' + goId}</em>);
             }
             spans.push(<span key={i} className='instrumented-line' style={{background: asStyleStr(bgColor)}}>{codeLine}</span>);
         } else {
@@ -241,3 +207,4 @@ function Button({id, onClick, children}: RunButtonProps) {
         </button>
     );
 }
+

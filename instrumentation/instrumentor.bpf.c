@@ -57,7 +57,7 @@ static bool check_delay_done(uint64_t ns_start);
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
 // of binary data even though event type can be fit into type of smaller size.
-// const uint64_t EVENT_TYPE_NEWPROC = 0;
+const uint64_t EVENT_TYPE_NEWPROC = 0;
 const uint64_t EVENT_TYPE_DELAY = 1;
 const uint64_t EVENT_TYPE_RUNQ_STATUS = 2;
 const uint64_t EVENT_TYPE_RUNQ_STEAL = 3;
@@ -71,11 +71,11 @@ struct funcval {
     uint64_t fn;
 };
 
-// struct newproc_event {
-//     uint64_t etype;
-//     uint64_t newproc_pc;
-//     uint64_t creator_goid;
-// };
+struct newproc_event {
+    uint64_t etype;
+    uint64_t newproc_pc;
+    uint64_t creator_goid;
+};
 
 struct delay_event {
     uint64_t etype;
@@ -127,23 +127,23 @@ struct {
     __uint(max_entries, 256 * 1024);
 } instrumentor_event SEC(".maps");
 
-// SEC("uprobe/go_newproc")
-// int BPF_UPROBE(go_newproc) {
-//     struct newproc_event *e;
+SEC("uprobe/go_newproc")
+int BPF_UPROBE(go_newproc) {
+    struct newproc_event *e;
 
-//     // Retrieve PC value of callee fn and publish to ringbuf.
-//     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct newproc_event), 0);
-//     if (!e) {
-//         bpf_printk("bpf_ringbuf_reserve failed in go_newproc");
-//         return 1;
-//     }
-//     e->etype = EVENT_TYPE_NEWPROC;
-//     bpf_probe_read_user(&e->newproc_pc, sizeof(uint64_t), &((struct funcval *)GO_PARAM1(ctx))->fn);
-//     bpf_probe_read_user(&e->creator_goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
-//     bpf_ringbuf_submit(e, 0);
+    // Retrieve PC value of callee fn and publish to ringbuf.
+    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct newproc_event), 0);
+    if (!e) {
+        bpf_printk("bpf_ringbuf_reserve failed in go_newproc");
+        return 1;
+    }
+    e->etype = EVENT_TYPE_NEWPROC;
+    bpf_probe_read_user(&e->newproc_pc, sizeof(uint64_t), &((struct funcval *)GO_PARAM1(ctx))->fn);
+    bpf_probe_read_user(&e->creator_goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
+    bpf_ringbuf_submit(e, 0);
     
-//     return 0;
-// }
+    return 0;
+}
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
@@ -467,8 +467,8 @@ struct semtable_status_event {
     // reported ones.
     uint64_t version;
     struct sudog sudog;
-    // Marks the end of semtable status event stream (sudog field holds no
-    // meaningful value when is_last is 1).
+    // is_last marks the end of semtable status event stream (sudog field holds
+    // no meaningful value when is_last is 1).
     uint64_t is_last;
 };
 

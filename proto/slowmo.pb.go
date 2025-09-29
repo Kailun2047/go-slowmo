@@ -26,6 +26,7 @@ type ScheduleReason int32
 const (
 	ScheduleReason_GOEXIT ScheduleReason = 0
 	ScheduleReason_GOPARK ScheduleReason = 1
+	ScheduleReason_MSTART ScheduleReason = 2
 	ScheduleReason_OTHER  ScheduleReason = 20
 )
 
@@ -34,11 +35,13 @@ var (
 	ScheduleReason_name = map[int32]string{
 		0:  "GOEXIT",
 		1:  "GOPARK",
+		2:  "MSTART",
 		20: "OTHER",
 	}
 	ScheduleReason_value = map[string]int32{
 		"GOEXIT": 0,
 		"GOPARK": 1,
+		"MSTART": 2,
 		"OTHER":  20,
 	}
 )
@@ -810,12 +813,14 @@ const file_slowmo_proto_rawDesc = "" +
 	"\rScheduleEvent\x12\x16\n" +
 	"\x04m_id\x18\x01 \x01(\x03H\x00R\x03mId\x88\x01\x01\x12.\n" +
 	"\x06reason\x18\x02 \x01(\x0e2\x16.slowmo.ScheduleReasonR\x06reasonB\a\n" +
-	"\x05_m_id*3\n" +
+	"\x05_m_id*?\n" +
 	"\x0eScheduleReason\x12\n" +
 	"\n" +
 	"\x06GOEXIT\x10\x00\x12\n" +
 	"\n" +
-	"\x06GOPARK\x10\x01\x12\t\n" +
+	"\x06GOPARK\x10\x01\x12\n" +
+	"\n" +
+	"\x06MSTART\x10\x02\x12\t\n" +
 	"\x05OTHER\x10\x142_\n" +
 	"\rSlowmoService\x12N\n" +
 	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01B$Z\"github.com/kailun2047/slowmo/protob\x06proto3"

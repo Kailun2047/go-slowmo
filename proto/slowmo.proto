@@ -67,6 +67,7 @@ message ScheduleEvent {
 enum ScheduleReason {
     GOEXIT = 0;
     GOPARK = 1;
+    MSTART = 2;
     OTHER = 20;
 }
 

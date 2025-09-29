@@ -205,6 +205,10 @@ export enum ScheduleReason {
      */
     GOPARK = 1,
     /**
+     * @generated from protobuf enum value: MSTART = 2;
+     */
+    MSTART = 2,
+    /**
      * @generated from protobuf enum value: OTHER = 20;
      */
     OTHER = 20

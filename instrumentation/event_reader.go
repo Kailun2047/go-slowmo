@@ -22,8 +22,8 @@ Go equivalents of instrumentor events.
 type eventType uint64
 
 const (
-	// EVENT_TYPE_NEWPROC eventType = iota
-	EVENT_TYPE_DELAY eventType = iota + 1
+	EVENT_TYPE_NEWPROC eventType = iota
+	EVENT_TYPE_DELAY
 	EVENT_TYPE_RUNQ_STATUS
 	EVENT_TYPE_RUNQ_STEAL
 	EVENT_TYPE_EXECUTE
@@ -129,6 +129,7 @@ type callStack struct {
 	CallerPC uint64
 }
 
+// Deprecated: Use callStack probe event instead.
 type eventWithCallStack interface {
 	getPC() uint64
 	getCallerPC() uint64
@@ -401,6 +402,7 @@ func (r *EventReader) interpretCallstack(event callstackEvent) (probeEvent *prot
 var runtimeFuncToScheduleReason = map[string]proto.ScheduleReason{
 	"runtime.goexit": proto.ScheduleReason_GOEXIT,
 	"runtime.gopark": proto.ScheduleReason_GOPARK,
+	"runtime.mstart": proto.ScheduleReason_MSTART,
 }
 
 func findScheduleReason(callstack []*proto.InterpretedPC) proto.ScheduleReason {
