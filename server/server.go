@@ -28,6 +28,8 @@ const (
 	executionTimeLimit = 10 * time.Second
 )
 
+var numCPU = runtime.NumCPU()
+
 func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrumentor, *instrumentation.EventReader) {
 	flag.Parse()
 
@@ -104,7 +106,7 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
 		TargetFn:  "schedule",
-		BpfFn:     "get_callstack",
+		BpfFn:     "schedule",
 	})
 	// Adding goroutine to some queue.
 	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
@@ -112,6 +114,7 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		// Ideally we should probe runqput, but for things like newproc the
 		// runqput is executed on system stack and can't be conveniently tracked
 		// by the instrumentor.
+		// TODO: visualize newproc from g0 properly.
 		TargetFn: "newproc",
 		BpfFn:    "go_runtime_func_ret_runq_status",
 	})
@@ -152,6 +155,7 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		BpfFn:     "go_execute",
 	})
 	// Helpers.
+	// TODO: attach delay probe to every probed runtime function.
 	instrumentor.Delay(instrumentation.UprobeAttachSpec{
 		TargetPkg: "main",
 		BpfFn:     "delay",
@@ -204,6 +208,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		}
 		if internalErr != nil {
 			log.Printf("unexpected error during CompileAndRun (error: %v, program: %s)", internalErr, req.GetSource())
+			compileAndRunErr = internalErr
 		}
 	}()
 
@@ -228,7 +233,11 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 				log.Printf("Failed to remove temp built output file %s: %v", outName, err)
 			}
 		}()
-
+		stream.Send(&proto.CompileAndRunResponse{
+			CompileAndRunOneof: &proto.CompileAndRunResponse_NumCpu{
+				NumCpu: int32(numCPU),
+			},
+		})
 		instrumentor, probeEventReader := startInstrumentation(instrumentorProgPath, outName)
 		log.Printf("Instrumentor started for program %s", outName)
 		defer instrumentor.Close()

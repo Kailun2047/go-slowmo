@@ -29,7 +29,7 @@ const (
 	EVENT_TYPE_EXECUTE
 	EVENT_TYPE_GLOBAL_RUNQ_STATUS
 	EVENT_TYPE_SEMTABLE_STATUS
-	EVENT_TYPE_CALLSTACK
+	EVENT_TYPE_SCHEDULE
 )
 
 //	type newprocEvent struct {
@@ -96,11 +96,12 @@ type delayEvent struct {
 	MID   int64
 }
 
-type callstackEvent struct {
+type scheduleEvent struct {
 	EType          eventType
 	MID            int64
 	Callstack      [32]uint64
 	CallstackDepth int64
+	ProcID         int64 // -1 if not applicable
 }
 
 type runqStealEvent struct {
@@ -273,13 +274,13 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		log.Printf("Delay event: %v", probeEvent)
 		r.ProbeEventCh <- probeEvent
-	case EVENT_TYPE_CALLSTACK:
-		var event callstackEvent
+	case EVENT_TYPE_SCHEDULE:
+		var event scheduleEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
 		if err != nil {
 			break
 		}
-		if probeEvent := r.interpretCallstack(event); probeEvent != nil {
+		if probeEvent := r.interpretScheduleCallstack(event); probeEvent != nil {
 			r.ProbeEventCh <- probeEvent
 		}
 	case EVENT_TYPE_RUNQ_STATUS:
@@ -372,29 +373,28 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 	return err
 }
 
-func (r *EventReader) interpretCallstack(event callstackEvent) (probeEvent *proto.ProbeEvent) {
+func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEvent *proto.ProbeEvent) {
 	callstack := event.Callstack[:event.CallstackDepth]
 	interpretedCallstack := make([]*proto.InterpretedPC, len(callstack))
 	for i, pc := range callstack {
 		interpretedCallstack[i] = r.interpretPC(pc)
 	}
 	triggerFunc := interpretedCallstack[0].Func
-	if triggerFunc == nil {
-		log.Fatalf("Cannot find trigger func for PC %x", callstack[0])
+	if triggerFunc == nil || *triggerFunc != "runtime.schedule" {
+		log.Fatalf("Invalid trigger func for PC %x", callstack[0])
 	}
 	log.Printf("%s called for MID %d, callstack: %+v, pc list: %v", *triggerFunc, event.MID, interpretedCallstack, callstack)
 
-	switch *triggerFunc {
-	case "runtime.schedule":
-		probeEvent = &proto.ProbeEvent{
-			ProbeEventOneof: &proto.ProbeEvent_ScheduleEvent{
-				ScheduleEvent: &proto.ScheduleEvent{
-					MId:    &event.MID,
-					Reason: findScheduleReason(interpretedCallstack),
-				},
+	probeEvent = &proto.ProbeEvent{
+		ProbeEventOneof: &proto.ProbeEvent_ScheduleEvent{
+			ScheduleEvent: &proto.ScheduleEvent{
+				MId:    &event.MID,
+				Reason: findScheduleReason(interpretedCallstack),
 			},
-		}
-	default:
+		},
+	}
+	if event.ProcID != -1 {
+		probeEvent.GetScheduleEvent().ProcId = &event.ProcID
 	}
 	return
 }

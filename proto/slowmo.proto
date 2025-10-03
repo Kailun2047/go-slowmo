@@ -12,6 +12,7 @@ message CompileAndRunResponse {
         RuntimeError runtime_error = 2;
         ProbeEvent run_event = 3;
         RuntimeOutput runtime_output = 4;
+        int32 num_cpu = 5;
     };
 }
 
@@ -62,6 +63,7 @@ message DelayEvent {
 message ScheduleEvent {
     optional int64 m_id = 1;
     ScheduleReason reason = 2;
+    optional int64  proc_id = 3;
 }
 
 enum ScheduleReason {

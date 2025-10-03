@@ -81,7 +81,7 @@ struct delay_event {
     uint64_t etype;
     uint64_t pc;
     uint64_t goid;
-    int64_t m_id;
+    int64_t mid;
 };
 
 struct runq_entry {
@@ -300,7 +300,7 @@ int BPF_UPROBE(delay) {
     e->pc = CURR_PC(ctx);
     bpf_probe_read_user(&e->goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&e->m_id, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     bpf_ringbuf_submit(e, 0);
 
     ns_start = bpf_ktime_get_ns();
@@ -629,27 +629,34 @@ struct {
 #define GO_FUNC_FLAG_TOP_FRAME 1
 #define MAX_VARINT_SIZE_IN_BYTE 4 // the pc and value delta are variable-size encoded and decoding should iterate until 0x80 bit is 0, but hardcode a limit here since such a while loop is not viable in ebpf program
 
-struct callstack_event {
+struct schedule_event {
     uint64_t etype;
-    int64_t m_id;
+    int64_t mid;
     uint64_t callstack[MAX_STACK_TRACE_DEPTH];
     int64_t callstack_depth;
+    int64_t procid;
 };
 
-SEC("uprobe/get_callstack")
-int BPF_UPROBE(get_callstack) {
-    struct callstack_event *e;
-    char *m_ptr;
+SEC("uprobe/schedule")
+int BPF_UPROBE(schedule) {
+    struct schedule_event *e;
+    char *m_ptr, *p_ptr;
     uint64_t pc_list[MAX_STACK_TRACE_DEPTH];
     int i;
 
-    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct callstack_event), 0))) {
-        bpf_printk("bpf_ringbuf_reserve failed in get_callstack");
+    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct schedule_event), 0))) {
+        bpf_printk("bpf_ringbuf_reserve failed in schedule");
         return 1;
     }
     e->etype = EVENT_TYPE_CALLSTACK;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&e->m_id, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
+    if (!p_ptr) {
+        e->procid = -1;
+    } else {
+        bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
+    }
     e->callstack_depth = unwind_stack(CURR_STACK_POINTER(ctx), CURR_PC(ctx), CURR_FP(ctx), pc_list);
     if (e->callstack_depth < 0) {
         bpf_printk("error unwinding callstack for pc %d", CURR_PC(ctx));

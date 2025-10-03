@@ -41,18 +41,37 @@ interface CodePanelSlice {
     handleDelayEvent: (mId: number, lineNumber: number, goId: number) => void;
 }
 
-interface Thread {
-    mId: number;
+// Thread is the hybrid of M and its associated P (if any). When mId is
+// undefined, it represents the state where P is created but not yet bounded to
+// an M. When mId has a value but p is undefined, it represents the state where
+// the P originally bounded to this M has been scheduled away to another M. When
+// both mId and p have values, it represents the normal state where M is running
+// with its bounded P.
+export interface Thread {
+    mId?: number; // mId is undefined when the thread is not yet started by mstart (in such case there's no drawing for m structure)
     isScheduling: boolean;
+    p?: Proc;
+}
+
+interface Proc {
+    id: number;
+    runnext?: Goroutine;
+    runq: Goroutine[];
+}
+
+interface Goroutine {
+    id: number;
+    entryFunc: string;
 }
 
 interface ThreadsSlice {
     threads: Thread[];
-    addThread: (mId: number) => void;
+    initThreads: (numCpu: number) => void;
+    assignM: (mId: number, procId?: number) => void;
 }
 
 interface SharedSlice {
-    handleScheduleEvent: (mId: number, reason: ScheduleReason) => void;
+    handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => void;
 }
 
 const createCodePanelSlice: StateCreator<
@@ -81,19 +100,60 @@ const createCodePanelSlice: StateCreator<
 
 const createThreadsSlice: StateCreator<
     CodePanelSlice & ThreadsSlice, [], [], ThreadsSlice
-> = (set) => ({
+> = (set, get) => ({
     threads: [],
-    addThread: (mId: number) => set((state) => ({
-        threads: [...state.threads, {mId, isScheduling: false}]
-    })),
+    // initThreads is called once upon receiving num_cpu from server.
+    initThreads: (numCpu: number) => {
+        const threads: Thread[] = [];
+        for (let i = 0; i < numCpu; i++) {
+            threads.push({
+                isScheduling: false,
+                p: {
+                    id: i,
+                    runq: [],
+                }
+            })
+        }
+        set(() => ({
+            threads,
+        }))
+    },
+    // assignM sets mId for thread on mstart.
+    assignM: (mId: number, procId?: number) => {
+        const threads = get().threads;
+        if (procId === undefined) {
+            console.warn('unexpected new M without procId, skipping assignment');
+            return;
+        }
+        const threadIdx = threads.findIndex((thread) => thread.p?.id === procId);
+        if (threadIdx === -1) {
+            console.warn(`no existing thread found for procId ${procId}, skipping assignment`);
+            return;
+        }
+        if (threads[threadIdx].mId !== undefined) {
+            // If p is already assigned to an M, transfer the p to the new M and leave the old M with no p.
+            const p = threads[threadIdx].p;
+            threads[threadIdx].p = undefined;
+            threads.push({
+                mId,
+                isScheduling: false,
+                p,
+            });
+        } else {
+            threads[threadIdx].mId = mId;
+        }
+        set(() => ({
+            threads,
+        }));
+    },
 })
 
 const sharedSlice: StateCreator<
     CodePanelSlice & ThreadsSlice, [], [], SharedSlice
 > = (set, get) => ({
-    handleScheduleEvent: (mId: number, reason: ScheduleReason) => {
+    handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => {
         if (reason === ScheduleReason.MSTART) {
-            get().addThread(mId);
+            get().assignM(mId, procId);
         } else {
             set((state) => ({
                 threads: state.threads.map((thread) => thread.mId === mId? {...thread, isScheduling: true}: thread),

@@ -63,7 +63,6 @@ type instrumentorSpecs struct {
 type instrumentorProgramSpecs struct {
 	AvoidPreempt               *ebpf.ProgramSpec `ebpf:"avoid_preempt"`
 	Delay                      *ebpf.ProgramSpec `ebpf:"delay"`
-	GetCallstack               *ebpf.ProgramSpec `ebpf:"get_callstack"`
 	GlobrunqStatus             *ebpf.ProgramSpec `ebpf:"globrunq_status"`
 	GoExecute                  *ebpf.ProgramSpec `ebpf:"go_execute"`
 	GoNewproc                  *ebpf.ProgramSpec `ebpf:"go_newproc"`
@@ -71,6 +70,7 @@ type instrumentorProgramSpecs struct {
 	GoRunqstealRetRunqStatus   *ebpf.ProgramSpec `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.ProgramSpec `ebpf:"go_runtime_func_ret_runq_status"`
 	Gopark                     *ebpf.ProgramSpec `ebpf:"gopark"`
+	Schedule                   *ebpf.ProgramSpec `ebpf:"schedule"`
 }
 
 // instrumentorMapSpecs contains maps before they are loaded into the kernel.
@@ -160,7 +160,6 @@ type instrumentorVariables struct {
 type instrumentorPrograms struct {
 	AvoidPreempt               *ebpf.Program `ebpf:"avoid_preempt"`
 	Delay                      *ebpf.Program `ebpf:"delay"`
-	GetCallstack               *ebpf.Program `ebpf:"get_callstack"`
 	GlobrunqStatus             *ebpf.Program `ebpf:"globrunq_status"`
 	GoExecute                  *ebpf.Program `ebpf:"go_execute"`
 	GoNewproc                  *ebpf.Program `ebpf:"go_newproc"`
@@ -168,13 +167,13 @@ type instrumentorPrograms struct {
 	GoRunqstealRetRunqStatus   *ebpf.Program `ebpf:"go_runqsteal_ret_runq_status"`
 	GoRuntimeFuncRetRunqStatus *ebpf.Program `ebpf:"go_runtime_func_ret_runq_status"`
 	Gopark                     *ebpf.Program `ebpf:"gopark"`
+	Schedule                   *ebpf.Program `ebpf:"schedule"`
 }
 
 func (p *instrumentorPrograms) Close() error {
 	return _InstrumentorClose(
 		p.AvoidPreempt,
 		p.Delay,
-		p.GetCallstack,
 		p.GlobrunqStatus,
 		p.GoExecute,
 		p.GoNewproc,
@@ -182,6 +181,7 @@ func (p *instrumentorPrograms) Close() error {
 		p.GoRunqstealRetRunqStatus,
 		p.GoRuntimeFuncRetRunqStatus,
 		p.Gopark,
+		p.Schedule,
 	)
 }
 

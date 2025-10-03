@@ -35,6 +35,7 @@ function AceEditorWrapper() {
     const setIsRunning = useBoundStore((state) => state.setIsRunning);
     const handleDelayEvent = useBoundStore((state) => state.handleDelayEvent);
     const handleScheduleEvent = useBoundStore((state) => state.handleScheduleEvent);
+    const initThreads = useBoundStore((state) => state.initThreads);
 
     const elemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
@@ -90,6 +91,9 @@ function AceEditorWrapper() {
                     case 'runtimeOutput':
                         console.log('runtime output: ', msg.compileAndRunOneof.runtimeOutput.output)
                         break
+                    case 'numCpu':
+                        initThreads(msg.compileAndRunOneof.numCpu);
+                        break;
                     case 'runEvent':
                         const runEvent = msg.compileAndRunOneof.runEvent;
                         console.log('run event of type ', runEvent.probeEventOneof.oneofKind);
@@ -103,17 +107,17 @@ function AceEditorWrapper() {
                                 break;
                             }
                             case 'scheduleEvent': {
-                                const {mId, reason} = runEvent.probeEventOneof.scheduleEvent;
+                                const {mId, reason, procId} = runEvent.probeEventOneof.scheduleEvent;
                                 if (mId === undefined) {
                                     throw new Error(`invalid schedule event (mId: ${mId})`);
                                 }
-                                handleScheduleEvent(Number(mId), reason);
+                                handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
                                 break;
                             }
                         }
                         break;
                     default:
-                        console.log('unexpected stream message type: ', msg.compileAndRunOneof.oneofKind);
+                        console.log('stream message type: ', msg.compileAndRunOneof.oneofKind);
                 }
             }
         } finally {

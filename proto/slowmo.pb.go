@@ -125,6 +125,7 @@ type CompileAndRunResponse struct {
 	//	*CompileAndRunResponse_RuntimeError
 	//	*CompileAndRunResponse_RunEvent
 	//	*CompileAndRunResponse_RuntimeOutput
+	//	*CompileAndRunResponse_NumCpu
 	CompileAndRunOneof isCompileAndRunResponse_CompileAndRunOneof `protobuf_oneof:"compile_and_run_oneof"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -203,6 +204,15 @@ func (x *CompileAndRunResponse) GetRuntimeOutput() *RuntimeOutput {
 	return nil
 }
 
+func (x *CompileAndRunResponse) GetNumCpu() int32 {
+	if x != nil {
+		if x, ok := x.CompileAndRunOneof.(*CompileAndRunResponse_NumCpu); ok {
+			return x.NumCpu
+		}
+	}
+	return 0
+}
+
 type isCompileAndRunResponse_CompileAndRunOneof interface {
 	isCompileAndRunResponse_CompileAndRunOneof()
 }
@@ -223,6 +233,10 @@ type CompileAndRunResponse_RuntimeOutput struct {
 	RuntimeOutput *RuntimeOutput `protobuf:"bytes,4,opt,name=runtime_output,json=runtimeOutput,proto3,oneof"`
 }
 
+type CompileAndRunResponse_NumCpu struct {
+	NumCpu int32 `protobuf:"varint,5,opt,name=num_cpu,json=numCpu,proto3,oneof"`
+}
+
 func (*CompileAndRunResponse_CompileError) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 func (*CompileAndRunResponse_RuntimeError) isCompileAndRunResponse_CompileAndRunOneof() {}
@@ -230,6 +244,8 @@ func (*CompileAndRunResponse_RuntimeError) isCompileAndRunResponse_CompileAndRun
 func (*CompileAndRunResponse_RunEvent) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 func (*CompileAndRunResponse_RuntimeOutput) isCompileAndRunResponse_CompileAndRunOneof() {}
+
+func (*CompileAndRunResponse_NumCpu) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 type CompilationError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -705,6 +721,7 @@ type ScheduleEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MId           *int64                 `protobuf:"varint,1,opt,name=m_id,json=mId,proto3,oneof" json:"m_id,omitempty"`
 	Reason        ScheduleReason         `protobuf:"varint,2,opt,name=reason,proto3,enum=slowmo.ScheduleReason" json:"reason,omitempty"`
+	ProcId        *int64                 `protobuf:"varint,3,opt,name=proc_id,json=procId,proto3,oneof" json:"proc_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -753,6 +770,13 @@ func (x *ScheduleEvent) GetReason() ScheduleReason {
 	return ScheduleReason_GOEXIT
 }
 
+func (x *ScheduleEvent) GetProcId() int64 {
+	if x != nil && x.ProcId != nil {
+		return *x.ProcId
+	}
+	return 0
+}
+
 var File_slowmo_proto protoreflect.FileDescriptor
 
 const file_slowmo_proto_rawDesc = "" +
@@ -760,12 +784,13 @@ const file_slowmo_proto_rawDesc = "" +
 	"\fslowmo.proto\x12\x06slowmo\">\n" +
 	"\x14CompileAndRunRequest\x12\x1b\n" +
 	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
-	"\a_source\"\xa1\x02\n" +
+	"\a_source\"\xbc\x02\n" +
 	"\x15CompileAndRunResponse\x12?\n" +
 	"\rcompile_error\x18\x01 \x01(\v2\x18.slowmo.CompilationErrorH\x00R\fcompileError\x12;\n" +
 	"\rruntime_error\x18\x02 \x01(\v2\x14.slowmo.RuntimeErrorH\x00R\fruntimeError\x121\n" +
 	"\trun_event\x18\x03 \x01(\v2\x12.slowmo.ProbeEventH\x00R\brunEvent\x12>\n" +
-	"\x0eruntime_output\x18\x04 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutputB\x17\n" +
+	"\x0eruntime_output\x18\x04 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutput\x12\x19\n" +
+	"\anum_cpu\x18\x05 \x01(\x05H\x00R\x06numCpuB\x17\n" +
 	"\x15compile_and_run_oneof\"N\n" +
 	"\x10CompilationError\x12(\n" +
 	"\rerror_message\x18\x01 \x01(\tH\x00R\ferrorMessage\x88\x01\x01B\x10\n" +
@@ -809,11 +834,14 @@ const file_slowmo_proto_rawDesc = "" +
 	"\n" +
 	"current_pc\x18\x03 \x01(\v2\x15.slowmo.InterpretedPCR\tcurrentPcB\a\n" +
 	"\x05_m_idB\b\n" +
-	"\x06_go_id\"`\n" +
+	"\x06_go_id\"\x8a\x01\n" +
 	"\rScheduleEvent\x12\x16\n" +
 	"\x04m_id\x18\x01 \x01(\x03H\x00R\x03mId\x88\x01\x01\x12.\n" +
-	"\x06reason\x18\x02 \x01(\x0e2\x16.slowmo.ScheduleReasonR\x06reasonB\a\n" +
-	"\x05_m_id*?\n" +
+	"\x06reason\x18\x02 \x01(\x0e2\x16.slowmo.ScheduleReasonR\x06reason\x12\x1c\n" +
+	"\aproc_id\x18\x03 \x01(\x03H\x01R\x06procId\x88\x01\x01B\a\n" +
+	"\x05_m_idB\n" +
+	"\n" +
+	"\b_proc_id*?\n" +
 	"\x0eScheduleReason\x12\n" +
 	"\n" +
 	"\x06GOEXIT\x10\x00\x12\n" +
@@ -887,6 +915,7 @@ func file_slowmo_proto_init() {
 		(*CompileAndRunResponse_RuntimeError)(nil),
 		(*CompileAndRunResponse_RunEvent)(nil),
 		(*CompileAndRunResponse_RuntimeOutput)(nil),
+		(*CompileAndRunResponse_NumCpu)(nil),
 	}
 	file_slowmo_proto_msgTypes[2].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[3].OneofWrappers = []any{}

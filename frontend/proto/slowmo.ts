@@ -52,6 +52,12 @@ export interface CompileAndRunResponse {
          */
         runtimeOutput: RuntimeOutput;
     } | {
+        oneofKind: "numCpu";
+        /**
+         * @generated from protobuf field: int32 num_cpu = 5
+         */
+        numCpu: number;
+    } | {
         oneofKind: undefined;
     };
 }
@@ -191,6 +197,10 @@ export interface ScheduleEvent {
      * @generated from protobuf field: slowmo.ScheduleReason reason = 2
      */
     reason: ScheduleReason;
+    /**
+     * @generated from protobuf field: optional int64 proc_id = 3
+     */
+    procId?: bigint;
 }
 /**
  * @generated from protobuf enum slowmo.ScheduleReason
@@ -266,7 +276,8 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
             { no: 1, name: "compile_error", kind: "message", oneof: "compileAndRunOneof", T: () => CompilationError },
             { no: 2, name: "runtime_error", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeError },
             { no: 3, name: "run_event", kind: "message", oneof: "compileAndRunOneof", T: () => ProbeEvent },
-            { no: 4, name: "runtime_output", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeOutput }
+            { no: 4, name: "runtime_output", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeOutput },
+            { no: 5, name: "num_cpu", kind: "scalar", oneof: "compileAndRunOneof", T: 5 /*ScalarType.INT32*/ }
         ]);
     }
     create(value?: PartialMessage<CompileAndRunResponse>): CompileAndRunResponse {
@@ -305,6 +316,12 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
                         runtimeOutput: RuntimeOutput.internalBinaryRead(reader, reader.uint32(), options, (message.compileAndRunOneof as any).runtimeOutput)
                     };
                     break;
+                case /* int32 num_cpu */ 5:
+                    message.compileAndRunOneof = {
+                        oneofKind: "numCpu",
+                        numCpu: reader.int32()
+                    };
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -329,6 +346,9 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
         /* slowmo.RuntimeOutput runtime_output = 4; */
         if (message.compileAndRunOneof.oneofKind === "runtimeOutput")
             RuntimeOutput.internalBinaryWrite(message.compileAndRunOneof.runtimeOutput, writer.tag(4, WireType.LengthDelimited).fork(), options).join();
+        /* int32 num_cpu = 5; */
+        if (message.compileAndRunOneof.oneofKind === "numCpu")
+            writer.tag(5, WireType.Varint).int32(message.compileAndRunOneof.numCpu);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -793,7 +813,8 @@ class ScheduleEvent$Type extends MessageType<ScheduleEvent> {
     constructor() {
         super("slowmo.ScheduleEvent", [
             { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
-            { no: 2, name: "reason", kind: "enum", T: () => ["slowmo.ScheduleReason", ScheduleReason] }
+            { no: 2, name: "reason", kind: "enum", T: () => ["slowmo.ScheduleReason", ScheduleReason] },
+            { no: 3, name: "proc_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ }
         ]);
     }
     create(value?: PartialMessage<ScheduleEvent>): ScheduleEvent {
@@ -814,6 +835,9 @@ class ScheduleEvent$Type extends MessageType<ScheduleEvent> {
                 case /* slowmo.ScheduleReason reason */ 2:
                     message.reason = reader.int32();
                     break;
+                case /* optional int64 proc_id */ 3:
+                    message.procId = reader.int64().toBigInt();
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -832,6 +856,9 @@ class ScheduleEvent$Type extends MessageType<ScheduleEvent> {
         /* slowmo.ScheduleReason reason = 2; */
         if (message.reason !== 0)
             writer.tag(2, WireType.Varint).int32(message.reason);
+        /* optional int64 proc_id = 3; */
+        if (message.procId !== undefined)
+            writer.tag(3, WireType.Varint).int64(message.procId);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);

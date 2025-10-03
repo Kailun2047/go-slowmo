@@ -89,7 +89,7 @@ func (in *Instrumentor) InstrumentEntry(spec UprobeAttachSpec) {
 		Offset: startOffset,
 	})
 	if err != nil {
-		log.Fatal("Attach uprobe to entry: ", err)
+		log.Fatalf("Attach uprobe to entry for spec %+v: %v", spec, err)
 	}
 }
 
