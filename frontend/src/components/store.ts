@@ -159,7 +159,7 @@ const sharedSlice: StateCreator<
         } else {
             set((state) => ({
                 threads: state.threads.map((thread) => thread.mId === mId? {...thread, isScheduling: true}: thread),
-                runningCodeLines: new Map([...state.runningCodeLines].filter(([k, _]) => k === mId)),
+                runningCodeLines: new Map([...state.runningCodeLines].filter(([k, _]) => k !== mId)),
             }))
         }
     }
