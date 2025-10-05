@@ -172,7 +172,7 @@
   border-width: 0px 6px 6px 6px;
   border-style: solid;
   border-color: transparent transparent coral transparent;
-  margin-left: -6px;
+  margin-left: -6px; /* ::after pseudo element is inline but we need to stack it onto the originating element */
   margin-top: 2px;
 }
 

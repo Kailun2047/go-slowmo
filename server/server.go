@@ -102,62 +102,40 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		}
 	}
 
-	// Start of schedule round.
+	/* Capturing key events. */
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "newproc",
+		BpfFn:     "go_newproc",
+	})
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
 		TargetFn:  "schedule",
-		BpfFn:     "schedule",
-	})
-	// Adding goroutine to some queue.
-	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		// Ideally we should probe runqput, but for things like newproc the
-		// runqput is executed on system stack and can't be conveniently tracked
-		// by the instrumentor.
-		// TODO: visualize newproc from g0 properly.
-		TargetFn: "newproc",
-		BpfFn:    "go_runtime_func_ret_runq_status",
-	})
-	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "globrunqput",
-		BpfFn:     "globrunq_status",
+		BpfFn:     "go_schedule",
 	})
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
 		TargetFn:  "gopark",
-		BpfFn:     "gopark",
+		BpfFn:     "go_gopark",
 	})
-	// Finding a runnable goroutine.
+	// TODO: instrument ready (which pairs with gopark).
+
+	/* Inspecting goroutine-storing structures. */
 	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
 		TargetPkg: "runtime",
-		TargetFn:  "globrunqget",
-		BpfFn:     "globrunq_status",
+		TargetFn:  "newproc",
+		BpfFn:     "go_runq_status",
 	})
-	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "runqget",
-		BpfFn:     "go_runtime_func_ret_runq_status",
-	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "runqsteal",
-		BpfFn:     "go_runqsteal",
-	})
-	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "runqsteal",
-		BpfFn:     "go_runqsteal_ret_runq_status",
-	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		TargetPkg: "runtime",
-		TargetFn:  "execute",
-		BpfFn:     "go_execute",
-	})
-	// Helpers.
-	// TODO: attach delay probe to every probed runtime function.
+	// TODO: inspect globrunq and all runqs when exiting findrunnable.
+
+	/* Helpers. */
 	instrumentor.Delay(instrumentation.UprobeAttachSpec{
 		TargetPkg: "main",
+		BpfFn:     "delay",
+	})
+	instrumentor.Delay(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "newproc",
 		BpfFn:     "delay",
 	})
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
@@ -326,6 +304,7 @@ func sandboxedBuild(source string) (string, error) {
 }
 
 // TODO: prevent filesystem and network access in the sandbox.
+// TODO: detect long-running or deadlocked programs.
 func sandboxedRun(targetName string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
 	log.Printf("Start sandbox run of program %s", targetName)
 	runTargetCmd := exec.Command(targetName)

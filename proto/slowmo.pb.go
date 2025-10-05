@@ -73,6 +73,55 @@ func (ScheduleReason) EnumDescriptor() ([]byte, []int) {
 	return file_slowmo_proto_rawDescGZIP(), []int{0}
 }
 
+type StructureType int32
+
+const (
+	StructureType_LocalRunq  StructureType = 0
+	StructureType_GlobalRunq StructureType = 1
+	StructureType_Semtable   StructureType = 2
+)
+
+// Enum value maps for StructureType.
+var (
+	StructureType_name = map[int32]string{
+		0: "LocalRunq",
+		1: "GlobalRunq",
+		2: "Semtable",
+	}
+	StructureType_value = map[string]int32{
+		"LocalRunq":  0,
+		"GlobalRunq": 1,
+		"Semtable":   2,
+	}
+)
+
+func (x StructureType) Enum() *StructureType {
+	p := new(StructureType)
+	*p = x
+	return p
+}
+
+func (x StructureType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (StructureType) Descriptor() protoreflect.EnumDescriptor {
+	return file_slowmo_proto_enumTypes[1].Descriptor()
+}
+
+func (StructureType) Type() protoreflect.EnumType {
+	return &file_slowmo_proto_enumTypes[1]
+}
+
+func (x StructureType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use StructureType.Descriptor instead.
+func (StructureType) EnumDescriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{1}
+}
+
 type CompileAndRunRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        *string                `protobuf:"bytes,1,opt,name=source,proto3,oneof" json:"source,omitempty"` // Go source code from user.
@@ -386,6 +435,8 @@ type ProbeEvent struct {
 	//	*ProbeEvent_RunqStatusEvent
 	//	*ProbeEvent_DelayEvent
 	//	*ProbeEvent_ScheduleEvent
+	//	*ProbeEvent_NotificationEvent
+	//	*ProbeEvent_StructureStateEvent
 	ProbeEventOneof isProbeEvent_ProbeEventOneof `protobuf_oneof:"probe_event_oneof"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -428,6 +479,7 @@ func (x *ProbeEvent) GetProbeEventOneof() isProbeEvent_ProbeEventOneof {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in slowmo.proto.
 func (x *ProbeEvent) GetRunqStatusEvent() *RunqStatusEvent {
 	if x != nil {
 		if x, ok := x.ProbeEventOneof.(*ProbeEvent_RunqStatusEvent); ok {
@@ -437,6 +489,7 @@ func (x *ProbeEvent) GetRunqStatusEvent() *RunqStatusEvent {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in slowmo.proto.
 func (x *ProbeEvent) GetDelayEvent() *DelayEvent {
 	if x != nil {
 		if x, ok := x.ProbeEventOneof.(*ProbeEvent_DelayEvent); ok {
@@ -446,10 +499,29 @@ func (x *ProbeEvent) GetDelayEvent() *DelayEvent {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in slowmo.proto.
 func (x *ProbeEvent) GetScheduleEvent() *ScheduleEvent {
 	if x != nil {
 		if x, ok := x.ProbeEventOneof.(*ProbeEvent_ScheduleEvent); ok {
 			return x.ScheduleEvent
+		}
+	}
+	return nil
+}
+
+func (x *ProbeEvent) GetNotificationEvent() *NotificationEvent {
+	if x != nil {
+		if x, ok := x.ProbeEventOneof.(*ProbeEvent_NotificationEvent); ok {
+			return x.NotificationEvent
+		}
+	}
+	return nil
+}
+
+func (x *ProbeEvent) GetStructureStateEvent() *StructureStateEvent {
+	if x != nil {
+		if x, ok := x.ProbeEventOneof.(*ProbeEvent_StructureStateEvent); ok {
+			return x.StructureStateEvent
 		}
 	}
 	return nil
@@ -460,15 +532,26 @@ type isProbeEvent_ProbeEventOneof interface {
 }
 
 type ProbeEvent_RunqStatusEvent struct {
+	// Deprecated: Marked as deprecated in slowmo.proto.
 	RunqStatusEvent *RunqStatusEvent `protobuf:"bytes,1,opt,name=runq_status_event,json=runqStatusEvent,proto3,oneof"`
 }
 
 type ProbeEvent_DelayEvent struct {
+	// Deprecated: Marked as deprecated in slowmo.proto.
 	DelayEvent *DelayEvent `protobuf:"bytes,2,opt,name=delay_event,json=delayEvent,proto3,oneof"`
 }
 
 type ProbeEvent_ScheduleEvent struct {
+	// Deprecated: Marked as deprecated in slowmo.proto.
 	ScheduleEvent *ScheduleEvent `protobuf:"bytes,3,opt,name=schedule_event,json=scheduleEvent,proto3,oneof"`
+}
+
+type ProbeEvent_NotificationEvent struct {
+	NotificationEvent *NotificationEvent `protobuf:"bytes,4,opt,name=notification_event,json=notificationEvent,proto3,oneof"`
+}
+
+type ProbeEvent_StructureStateEvent struct {
+	StructureStateEvent *StructureStateEvent `protobuf:"bytes,5,opt,name=structure_state_event,json=structureStateEvent,proto3,oneof"`
 }
 
 func (*ProbeEvent_RunqStatusEvent) isProbeEvent_ProbeEventOneof() {}
@@ -477,10 +560,199 @@ func (*ProbeEvent_DelayEvent) isProbeEvent_ProbeEventOneof() {}
 
 func (*ProbeEvent_ScheduleEvent) isProbeEvent_ProbeEventOneof() {}
 
+func (*ProbeEvent_NotificationEvent) isProbeEvent_ProbeEventOneof() {}
+
+func (*ProbeEvent_StructureStateEvent) isProbeEvent_ProbeEventOneof() {}
+
+type NotificationEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to NotificationOneof:
+	//
+	//	*NotificationEvent_DelayEvent
+	//	*NotificationEvent_ScheduleEvent
+	//	*NotificationEvent_NewProcEvent
+	NotificationOneof isNotificationEvent_NotificationOneof `protobuf_oneof:"notification_oneof"`
+	// One NotificationEvent may involve multiple structures.
+	InvolvedStructures []*StructureId `protobuf:"bytes,20,rep,name=involved_structures,json=involvedStructures,proto3" json:"involved_structures,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *NotificationEvent) Reset() {
+	*x = NotificationEvent{}
+	mi := &file_slowmo_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationEvent) ProtoMessage() {}
+
+func (x *NotificationEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationEvent.ProtoReflect.Descriptor instead.
+func (*NotificationEvent) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *NotificationEvent) GetNotificationOneof() isNotificationEvent_NotificationOneof {
+	if x != nil {
+		return x.NotificationOneof
+	}
+	return nil
+}
+
+func (x *NotificationEvent) GetDelayEvent() *DelayEvent {
+	if x != nil {
+		if x, ok := x.NotificationOneof.(*NotificationEvent_DelayEvent); ok {
+			return x.DelayEvent
+		}
+	}
+	return nil
+}
+
+func (x *NotificationEvent) GetScheduleEvent() *ScheduleEvent {
+	if x != nil {
+		if x, ok := x.NotificationOneof.(*NotificationEvent_ScheduleEvent); ok {
+			return x.ScheduleEvent
+		}
+	}
+	return nil
+}
+
+func (x *NotificationEvent) GetNewProcEvent() *NewProcEvent {
+	if x != nil {
+		if x, ok := x.NotificationOneof.(*NotificationEvent_NewProcEvent); ok {
+			return x.NewProcEvent
+		}
+	}
+	return nil
+}
+
+func (x *NotificationEvent) GetInvolvedStructures() []*StructureId {
+	if x != nil {
+		return x.InvolvedStructures
+	}
+	return nil
+}
+
+type isNotificationEvent_NotificationOneof interface {
+	isNotificationEvent_NotificationOneof()
+}
+
+type NotificationEvent_DelayEvent struct {
+	DelayEvent *DelayEvent `protobuf:"bytes,1,opt,name=delay_event,json=delayEvent,proto3,oneof"`
+}
+
+type NotificationEvent_ScheduleEvent struct {
+	ScheduleEvent *ScheduleEvent `protobuf:"bytes,2,opt,name=schedule_event,json=scheduleEvent,proto3,oneof"`
+}
+
+type NotificationEvent_NewProcEvent struct {
+	NewProcEvent *NewProcEvent `protobuf:"bytes,3,opt,name=new_proc_event,json=newProcEvent,proto3,oneof"`
+}
+
+func (*NotificationEvent_DelayEvent) isNotificationEvent_NotificationOneof() {}
+
+func (*NotificationEvent_ScheduleEvent) isNotificationEvent_NotificationOneof() {}
+
+func (*NotificationEvent_NewProcEvent) isNotificationEvent_NotificationOneof() {}
+
+type StructureStateEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to StructureStateOneof:
+	//
+	//	*StructureStateEvent_RunqStatusEvent
+	StructureStateOneof isStructureStateEvent_StructureStateOneof `protobuf_oneof:"structure_state_oneof"`
+	// Technically, a StructureStateEvent may involve only one structure. But
+	// make StructureId a repeated field in case we need to deal with
+	// concurrently reported structures (e.g. global structures like semtable,
+	// same local runqs reported for multiple schedule events on different
+	// threads).
+	InvolvedStructures []*StructureId `protobuf:"bytes,20,rep,name=involved_structures,json=involvedStructures,proto3" json:"involved_structures,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *StructureStateEvent) Reset() {
+	*x = StructureStateEvent{}
+	mi := &file_slowmo_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StructureStateEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StructureStateEvent) ProtoMessage() {}
+
+func (x *StructureStateEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StructureStateEvent.ProtoReflect.Descriptor instead.
+func (*StructureStateEvent) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *StructureStateEvent) GetStructureStateOneof() isStructureStateEvent_StructureStateOneof {
+	if x != nil {
+		return x.StructureStateOneof
+	}
+	return nil
+}
+
+func (x *StructureStateEvent) GetRunqStatusEvent() *RunqStatusEvent {
+	if x != nil {
+		if x, ok := x.StructureStateOneof.(*StructureStateEvent_RunqStatusEvent); ok {
+			return x.RunqStatusEvent
+		}
+	}
+	return nil
+}
+
+func (x *StructureStateEvent) GetInvolvedStructures() []*StructureId {
+	if x != nil {
+		return x.InvolvedStructures
+	}
+	return nil
+}
+
+type isStructureStateEvent_StructureStateOneof interface {
+	isStructureStateEvent_StructureStateOneof()
+}
+
+type StructureStateEvent_RunqStatusEvent struct {
+	RunqStatusEvent *RunqStatusEvent `protobuf:"bytes,1,opt,name=runq_status_event,json=runqStatusEvent,proto3,oneof"`
+}
+
+func (*StructureStateEvent_RunqStatusEvent) isStructureStateEvent_StructureStateOneof() {}
+
 type RunqStatusEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProcId        *int64                 `protobuf:"varint,1,opt,name=proc_id,json=procId,proto3,oneof" json:"proc_id,omitempty"`
-	CurrentPc     *InterpretedPC         `protobuf:"bytes,2,opt,name=current_pc,json=currentPc,proto3" json:"current_pc,omitempty"`
 	RunqEntries   []*RunqEntry           `protobuf:"bytes,3,rep,name=runq_entries,json=runqEntries,proto3" json:"runq_entries,omitempty"`
 	Runnext       *RunqEntry             `protobuf:"bytes,4,opt,name=runnext,proto3" json:"runnext,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -489,7 +761,7 @@ type RunqStatusEvent struct {
 
 func (x *RunqStatusEvent) Reset() {
 	*x = RunqStatusEvent{}
-	mi := &file_slowmo_proto_msgTypes[6]
+	mi := &file_slowmo_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -501,7 +773,7 @@ func (x *RunqStatusEvent) String() string {
 func (*RunqStatusEvent) ProtoMessage() {}
 
 func (x *RunqStatusEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_slowmo_proto_msgTypes[6]
+	mi := &file_slowmo_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -514,7 +786,7 @@ func (x *RunqStatusEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunqStatusEvent.ProtoReflect.Descriptor instead.
 func (*RunqStatusEvent) Descriptor() ([]byte, []int) {
-	return file_slowmo_proto_rawDescGZIP(), []int{6}
+	return file_slowmo_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RunqStatusEvent) GetProcId() int64 {
@@ -522,13 +794,6 @@ func (x *RunqStatusEvent) GetProcId() int64 {
 		return *x.ProcId
 	}
 	return 0
-}
-
-func (x *RunqStatusEvent) GetCurrentPc() *InterpretedPC {
-	if x != nil {
-		return x.CurrentPc
-	}
-	return nil
 }
 
 func (x *RunqStatusEvent) GetRunqEntries() []*RunqEntry {
@@ -556,7 +821,7 @@ type InterpretedPC struct {
 
 func (x *InterpretedPC) Reset() {
 	*x = InterpretedPC{}
-	mi := &file_slowmo_proto_msgTypes[7]
+	mi := &file_slowmo_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -568,7 +833,7 @@ func (x *InterpretedPC) String() string {
 func (*InterpretedPC) ProtoMessage() {}
 
 func (x *InterpretedPC) ProtoReflect() protoreflect.Message {
-	mi := &file_slowmo_proto_msgTypes[7]
+	mi := &file_slowmo_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -581,7 +846,7 @@ func (x *InterpretedPC) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterpretedPC.ProtoReflect.Descriptor instead.
 func (*InterpretedPC) Descriptor() ([]byte, []int) {
-	return file_slowmo_proto_rawDescGZIP(), []int{7}
+	return file_slowmo_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *InterpretedPC) GetFile() string {
@@ -615,7 +880,7 @@ type RunqEntry struct {
 
 func (x *RunqEntry) Reset() {
 	*x = RunqEntry{}
-	mi := &file_slowmo_proto_msgTypes[8]
+	mi := &file_slowmo_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -627,7 +892,7 @@ func (x *RunqEntry) String() string {
 func (*RunqEntry) ProtoMessage() {}
 
 func (x *RunqEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_slowmo_proto_msgTypes[8]
+	mi := &file_slowmo_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -640,7 +905,7 @@ func (x *RunqEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunqEntry.ProtoReflect.Descriptor instead.
 func (*RunqEntry) Descriptor() ([]byte, []int) {
-	return file_slowmo_proto_rawDescGZIP(), []int{8}
+	return file_slowmo_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RunqEntry) GetGoId() int64 {
@@ -668,7 +933,7 @@ type DelayEvent struct {
 
 func (x *DelayEvent) Reset() {
 	*x = DelayEvent{}
-	mi := &file_slowmo_proto_msgTypes[9]
+	mi := &file_slowmo_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -680,7 +945,7 @@ func (x *DelayEvent) String() string {
 func (*DelayEvent) ProtoMessage() {}
 
 func (x *DelayEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_slowmo_proto_msgTypes[9]
+	mi := &file_slowmo_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -693,7 +958,7 @@ func (x *DelayEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DelayEvent.ProtoReflect.Descriptor instead.
 func (*DelayEvent) Descriptor() ([]byte, []int) {
-	return file_slowmo_proto_rawDescGZIP(), []int{9}
+	return file_slowmo_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DelayEvent) GetMId() int64 {
@@ -728,7 +993,7 @@ type ScheduleEvent struct {
 
 func (x *ScheduleEvent) Reset() {
 	*x = ScheduleEvent{}
-	mi := &file_slowmo_proto_msgTypes[10]
+	mi := &file_slowmo_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -740,7 +1005,7 @@ func (x *ScheduleEvent) String() string {
 func (*ScheduleEvent) ProtoMessage() {}
 
 func (x *ScheduleEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_slowmo_proto_msgTypes[10]
+	mi := &file_slowmo_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -753,7 +1018,7 @@ func (x *ScheduleEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduleEvent.ProtoReflect.Descriptor instead.
 func (*ScheduleEvent) Descriptor() ([]byte, []int) {
-	return file_slowmo_proto_rawDescGZIP(), []int{10}
+	return file_slowmo_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ScheduleEvent) GetMId() int64 {
@@ -773,6 +1038,118 @@ func (x *ScheduleEvent) GetReason() ScheduleReason {
 func (x *ScheduleEvent) GetProcId() int64 {
 	if x != nil && x.ProcId != nil {
 		return *x.ProcId
+	}
+	return 0
+}
+
+type NewProcEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CreatorGoId   *int64                 `protobuf:"varint,1,opt,name=creator_go_id,json=creatorGoId,proto3,oneof" json:"creator_go_id,omitempty"`
+	StartPc       *InterpretedPC         `protobuf:"bytes,2,opt,name=start_pc,json=startPc,proto3" json:"start_pc,omitempty"`
+	MId           *int64                 `protobuf:"varint,3,opt,name=m_id,json=mId,proto3,oneof" json:"m_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NewProcEvent) Reset() {
+	*x = NewProcEvent{}
+	mi := &file_slowmo_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NewProcEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NewProcEvent) ProtoMessage() {}
+
+func (x *NewProcEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NewProcEvent.ProtoReflect.Descriptor instead.
+func (*NewProcEvent) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *NewProcEvent) GetCreatorGoId() int64 {
+	if x != nil && x.CreatorGoId != nil {
+		return *x.CreatorGoId
+	}
+	return 0
+}
+
+func (x *NewProcEvent) GetStartPc() *InterpretedPC {
+	if x != nil {
+		return x.StartPc
+	}
+	return nil
+}
+
+func (x *NewProcEvent) GetMId() int64 {
+	if x != nil && x.MId != nil {
+		return *x.MId
+	}
+	return 0
+}
+
+type StructureId struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StructureType StructureType          `protobuf:"varint,1,opt,name=structure_type,json=structureType,proto3,enum=slowmo.StructureType" json:"structure_type,omitempty"`
+	MId           *int64                 `protobuf:"varint,2,opt,name=m_id,json=mId,proto3,oneof" json:"m_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StructureId) Reset() {
+	*x = StructureId{}
+	mi := &file_slowmo_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StructureId) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StructureId) ProtoMessage() {}
+
+func (x *StructureId) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StructureId.ProtoReflect.Descriptor instead.
+func (*StructureId) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *StructureId) GetStructureType() StructureType {
+	if x != nil {
+		return x.StructureType
+	}
+	return StructureType_LocalRunq
+}
+
+func (x *StructureId) GetMId() int64 {
+	if x != nil && x.MId != nil {
+		return *x.MId
 	}
 	return 0
 }
@@ -800,18 +1177,29 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x0e_error_message\"7\n" +
 	"\rRuntimeOutput\x12\x1b\n" +
 	"\x06output\x18\x01 \x01(\tH\x00R\x06output\x88\x01\x01B\t\n" +
-	"\a_output\"\xdf\x01\n" +
+	"\a_output\"\x8a\x03\n" +
 	"\n" +
-	"ProbeEvent\x12E\n" +
-	"\x11runq_status_event\x18\x01 \x01(\v2\x17.slowmo.RunqStatusEventH\x00R\x0frunqStatusEvent\x125\n" +
-	"\vdelay_event\x18\x02 \x01(\v2\x12.slowmo.DelayEventH\x00R\n" +
+	"ProbeEvent\x12I\n" +
+	"\x11runq_status_event\x18\x01 \x01(\v2\x17.slowmo.RunqStatusEventB\x02\x18\x01H\x00R\x0frunqStatusEvent\x129\n" +
+	"\vdelay_event\x18\x02 \x01(\v2\x12.slowmo.DelayEventB\x02\x18\x01H\x00R\n" +
+	"delayEvent\x12B\n" +
+	"\x0eschedule_event\x18\x03 \x01(\v2\x15.slowmo.ScheduleEventB\x02\x18\x01H\x00R\rscheduleEvent\x12J\n" +
+	"\x12notification_event\x18\x04 \x01(\v2\x19.slowmo.NotificationEventH\x00R\x11notificationEvent\x12Q\n" +
+	"\x15structure_state_event\x18\x05 \x01(\v2\x1b.slowmo.StructureStateEventH\x00R\x13structureStateEventB\x13\n" +
+	"\x11probe_event_oneof\"\xa4\x02\n" +
+	"\x11NotificationEvent\x125\n" +
+	"\vdelay_event\x18\x01 \x01(\v2\x12.slowmo.DelayEventH\x00R\n" +
 	"delayEvent\x12>\n" +
-	"\x0eschedule_event\x18\x03 \x01(\v2\x15.slowmo.ScheduleEventH\x00R\rscheduleEventB\x13\n" +
-	"\x11probe_event_oneof\"\xd4\x01\n" +
+	"\x0eschedule_event\x18\x02 \x01(\v2\x15.slowmo.ScheduleEventH\x00R\rscheduleEvent\x12<\n" +
+	"\x0enew_proc_event\x18\x03 \x01(\v2\x14.slowmo.NewProcEventH\x00R\fnewProcEvent\x12D\n" +
+	"\x13involved_structures\x18\x14 \x03(\v2\x13.slowmo.StructureIdR\x12involvedStructuresB\x14\n" +
+	"\x12notification_oneof\"\xbb\x01\n" +
+	"\x13StructureStateEvent\x12E\n" +
+	"\x11runq_status_event\x18\x01 \x01(\v2\x17.slowmo.RunqStatusEventH\x00R\x0frunqStatusEvent\x12D\n" +
+	"\x13involved_structures\x18\x14 \x03(\v2\x13.slowmo.StructureIdR\x12involvedStructuresB\x17\n" +
+	"\x15structure_state_oneof\"\x9e\x01\n" +
 	"\x0fRunqStatusEvent\x12\x1c\n" +
 	"\aproc_id\x18\x01 \x01(\x03H\x00R\x06procId\x88\x01\x01\x124\n" +
-	"\n" +
-	"current_pc\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\tcurrentPc\x124\n" +
 	"\frunq_entries\x18\x03 \x03(\v2\x11.slowmo.RunqEntryR\vrunqEntries\x12+\n" +
 	"\arunnext\x18\x04 \x01(\v2\x11.slowmo.RunqEntryR\arunnextB\n" +
 	"\n" +
@@ -841,7 +1229,17 @@ const file_slowmo_proto_rawDesc = "" +
 	"\aproc_id\x18\x03 \x01(\x03H\x01R\x06procId\x88\x01\x01B\a\n" +
 	"\x05_m_idB\n" +
 	"\n" +
-	"\b_proc_id*?\n" +
+	"\b_proc_id\"\x9c\x01\n" +
+	"\fNewProcEvent\x12'\n" +
+	"\rcreator_go_id\x18\x01 \x01(\x03H\x00R\vcreatorGoId\x88\x01\x01\x120\n" +
+	"\bstart_pc\x18\x02 \x01(\v2\x15.slowmo.InterpretedPCR\astartPc\x12\x16\n" +
+	"\x04m_id\x18\x03 \x01(\x03H\x01R\x03mId\x88\x01\x01B\x10\n" +
+	"\x0e_creator_go_idB\a\n" +
+	"\x05_m_id\"l\n" +
+	"\vStructureId\x12<\n" +
+	"\x0estructure_type\x18\x01 \x01(\x0e2\x15.slowmo.StructureTypeR\rstructureType\x12\x16\n" +
+	"\x04m_id\x18\x02 \x01(\x03H\x00R\x03mId\x88\x01\x01B\a\n" +
+	"\x05_m_id*?\n" +
 	"\x0eScheduleReason\x12\n" +
 	"\n" +
 	"\x06GOEXIT\x10\x00\x12\n" +
@@ -849,7 +1247,12 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x06GOPARK\x10\x01\x12\n" +
 	"\n" +
 	"\x06MSTART\x10\x02\x12\t\n" +
-	"\x05OTHER\x10\x142_\n" +
+	"\x05OTHER\x10\x14*<\n" +
+	"\rStructureType\x12\r\n" +
+	"\tLocalRunq\x10\x00\x12\x0e\n" +
+	"\n" +
+	"GlobalRunq\x10\x01\x12\f\n" +
+	"\bSemtable\x10\x022_\n" +
 	"\rSlowmoService\x12N\n" +
 	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01B$Z\"github.com/kailun2047/slowmo/protob\x06proto3"
 
@@ -865,43 +1268,57 @@ func file_slowmo_proto_rawDescGZIP() []byte {
 	return file_slowmo_proto_rawDescData
 }
 
-var file_slowmo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_slowmo_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_slowmo_proto_goTypes = []any{
 	(ScheduleReason)(0),           // 0: slowmo.ScheduleReason
-	(*CompileAndRunRequest)(nil),  // 1: slowmo.CompileAndRunRequest
-	(*CompileAndRunResponse)(nil), // 2: slowmo.CompileAndRunResponse
-	(*CompilationError)(nil),      // 3: slowmo.CompilationError
-	(*RuntimeError)(nil),          // 4: slowmo.RuntimeError
-	(*RuntimeOutput)(nil),         // 5: slowmo.RuntimeOutput
-	(*ProbeEvent)(nil),            // 6: slowmo.ProbeEvent
-	(*RunqStatusEvent)(nil),       // 7: slowmo.RunqStatusEvent
-	(*InterpretedPC)(nil),         // 8: slowmo.InterpretedPC
-	(*RunqEntry)(nil),             // 9: slowmo.RunqEntry
-	(*DelayEvent)(nil),            // 10: slowmo.DelayEvent
-	(*ScheduleEvent)(nil),         // 11: slowmo.ScheduleEvent
+	(StructureType)(0),            // 1: slowmo.StructureType
+	(*CompileAndRunRequest)(nil),  // 2: slowmo.CompileAndRunRequest
+	(*CompileAndRunResponse)(nil), // 3: slowmo.CompileAndRunResponse
+	(*CompilationError)(nil),      // 4: slowmo.CompilationError
+	(*RuntimeError)(nil),          // 5: slowmo.RuntimeError
+	(*RuntimeOutput)(nil),         // 6: slowmo.RuntimeOutput
+	(*ProbeEvent)(nil),            // 7: slowmo.ProbeEvent
+	(*NotificationEvent)(nil),     // 8: slowmo.NotificationEvent
+	(*StructureStateEvent)(nil),   // 9: slowmo.StructureStateEvent
+	(*RunqStatusEvent)(nil),       // 10: slowmo.RunqStatusEvent
+	(*InterpretedPC)(nil),         // 11: slowmo.InterpretedPC
+	(*RunqEntry)(nil),             // 12: slowmo.RunqEntry
+	(*DelayEvent)(nil),            // 13: slowmo.DelayEvent
+	(*ScheduleEvent)(nil),         // 14: slowmo.ScheduleEvent
+	(*NewProcEvent)(nil),          // 15: slowmo.NewProcEvent
+	(*StructureId)(nil),           // 16: slowmo.StructureId
 }
 var file_slowmo_proto_depIdxs = []int32{
-	3,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
-	4,  // 1: slowmo.CompileAndRunResponse.runtime_error:type_name -> slowmo.RuntimeError
-	6,  // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
-	5,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
-	7,  // 4: slowmo.ProbeEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
-	10, // 5: slowmo.ProbeEvent.delay_event:type_name -> slowmo.DelayEvent
-	11, // 6: slowmo.ProbeEvent.schedule_event:type_name -> slowmo.ScheduleEvent
-	8,  // 7: slowmo.RunqStatusEvent.current_pc:type_name -> slowmo.InterpretedPC
-	9,  // 8: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
-	9,  // 9: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
-	8,  // 10: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
-	8,  // 11: slowmo.DelayEvent.current_pc:type_name -> slowmo.InterpretedPC
-	0,  // 12: slowmo.ScheduleEvent.reason:type_name -> slowmo.ScheduleReason
-	1,  // 13: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
-	2,  // 14: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
-	14, // [14:15] is the sub-list for method output_type
-	13, // [13:14] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	4,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
+	5,  // 1: slowmo.CompileAndRunResponse.runtime_error:type_name -> slowmo.RuntimeError
+	7,  // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
+	6,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
+	10, // 4: slowmo.ProbeEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
+	13, // 5: slowmo.ProbeEvent.delay_event:type_name -> slowmo.DelayEvent
+	14, // 6: slowmo.ProbeEvent.schedule_event:type_name -> slowmo.ScheduleEvent
+	8,  // 7: slowmo.ProbeEvent.notification_event:type_name -> slowmo.NotificationEvent
+	9,  // 8: slowmo.ProbeEvent.structure_state_event:type_name -> slowmo.StructureStateEvent
+	13, // 9: slowmo.NotificationEvent.delay_event:type_name -> slowmo.DelayEvent
+	14, // 10: slowmo.NotificationEvent.schedule_event:type_name -> slowmo.ScheduleEvent
+	15, // 11: slowmo.NotificationEvent.new_proc_event:type_name -> slowmo.NewProcEvent
+	16, // 12: slowmo.NotificationEvent.involved_structures:type_name -> slowmo.StructureId
+	10, // 13: slowmo.StructureStateEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
+	16, // 14: slowmo.StructureStateEvent.involved_structures:type_name -> slowmo.StructureId
+	12, // 15: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
+	12, // 16: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
+	11, // 17: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
+	11, // 18: slowmo.DelayEvent.current_pc:type_name -> slowmo.InterpretedPC
+	0,  // 19: slowmo.ScheduleEvent.reason:type_name -> slowmo.ScheduleReason
+	11, // 20: slowmo.NewProcEvent.start_pc:type_name -> slowmo.InterpretedPC
+	1,  // 21: slowmo.StructureId.structure_type:type_name -> slowmo.StructureType
+	2,  // 22: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
+	3,  // 23: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
+	23, // [23:24] is the sub-list for method output_type
+	22, // [22:23] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_slowmo_proto_init() }
@@ -924,19 +1341,31 @@ func file_slowmo_proto_init() {
 		(*ProbeEvent_RunqStatusEvent)(nil),
 		(*ProbeEvent_DelayEvent)(nil),
 		(*ProbeEvent_ScheduleEvent)(nil),
+		(*ProbeEvent_NotificationEvent)(nil),
+		(*ProbeEvent_StructureStateEvent)(nil),
 	}
-	file_slowmo_proto_msgTypes[6].OneofWrappers = []any{}
-	file_slowmo_proto_msgTypes[7].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[6].OneofWrappers = []any{
+		(*NotificationEvent_DelayEvent)(nil),
+		(*NotificationEvent_ScheduleEvent)(nil),
+		(*NotificationEvent_NewProcEvent)(nil),
+	}
+	file_slowmo_proto_msgTypes[7].OneofWrappers = []any{
+		(*StructureStateEvent_RunqStatusEvent)(nil),
+	}
 	file_slowmo_proto_msgTypes[8].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[9].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[10].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[11].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[12].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[13].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[14].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_slowmo_proto_rawDesc), len(file_slowmo_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   11,
+			NumEnums:      2,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

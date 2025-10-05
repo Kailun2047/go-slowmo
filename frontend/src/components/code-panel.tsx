@@ -3,7 +3,7 @@ import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
 import { useEffect, useRef, type MouseEventHandler } from 'react';
-import { CompileAndRunRequest } from '../../proto/slowmo';
+import { CompileAndRunRequest, NotificationEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
 import { resetAllStores, useAceEditorWrapperStore, useBoundStore } from './store';
@@ -98,31 +98,50 @@ function AceEditorWrapper() {
                         const runEvent = msg.compileAndRunOneof.runEvent;
                         console.log('run event of type ', runEvent.probeEventOneof.oneofKind);
                         switch (runEvent.probeEventOneof.oneofKind) {
-                            case 'delayEvent': {
-                                const {mId, currentPc, goId} = runEvent.probeEventOneof.delayEvent;
-                                if (mId === undefined || goId === undefined || currentPc === undefined || !currentPc.func?.startsWith('main') || currentPc.line === undefined) {
-                                    throw new Error(`invalid delay event (mId: ${mId}, line: ${currentPc?.line})`);
-                                }
-                                handleDelayEvent(Number(mId), currentPc.line, Number(goId));
+                            case 'notificationEvent': {
+                                handleNotificationEvent(runEvent.probeEventOneof.notificationEvent)
                                 break;
                             }
-                            case 'scheduleEvent': {
-                                const {mId, reason, procId} = runEvent.probeEventOneof.scheduleEvent;
-                                if (mId === undefined) {
-                                    throw new Error(`invalid schedule event (mId: ${mId})`);
-                                }
-                                handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
+                            case 'structureStateEvent': {
+                                // TODO: diff structure state and animate
+                                // goroutine movement.
                                 break;
                             }
                         }
                         break;
                     default:
-                        console.log('stream message type: ', msg.compileAndRunOneof.oneofKind);
+                        console.warn(`unknown stream message type: ${msg.compileAndRunOneof.oneofKind}`);
                 }
             }
         } finally {
             resetAllStores();
             clearUsedColors();
+        }
+    }
+
+    function handleNotificationEvent(notificationEvent: NotificationEvent): void {
+        switch (notificationEvent.notificationOneof.oneofKind) {
+            case 'delayEvent': {
+                const {mId, currentPc, goId} = notificationEvent.notificationOneof.delayEvent;
+                if (mId === undefined || goId === undefined || currentPc === undefined || currentPc.func === undefined || currentPc.line === undefined) {
+                    throw new Error(`invalid delay event (mId: ${mId}, line: ${currentPc?.line})`);
+                }
+                if (currentPc.func.startsWith('main')) {
+                    handleDelayEvent(Number(mId), currentPc.line, Number(goId));
+                }
+                break;
+            }
+            case 'scheduleEvent': {
+                const {mId, reason, procId} = notificationEvent.notificationOneof.scheduleEvent;
+                if (mId === undefined) {
+                    throw new Error(`invalid schedule event (mId: ${mId})`);
+                }
+                handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
+                console.log(`handled schedule event for mId ${Number(mId)} and reason ${reason}`);
+                break;
+            }
+            default:
+                console.warn(`unknown notification event type ${notificationEvent.notificationOneof.oneofKind}`)
         }
     }
 

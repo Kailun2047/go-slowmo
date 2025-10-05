@@ -30,15 +30,38 @@ message RuntimeOutput {
 
 message ProbeEvent {
     oneof probe_event_oneof {
-        RunqStatusEvent runq_status_event = 1;
-        DelayEvent delay_event = 2;
-        ScheduleEvent schedule_event = 3;
+        RunqStatusEvent runq_status_event = 1 [deprecated=true];
+        DelayEvent delay_event = 2 [deprecated=true];
+        ScheduleEvent schedule_event = 3 [deprecated=true];
+        NotificationEvent notification_event = 4;
+        StructureStateEvent structure_state_event = 5;
     };
+}
+
+message NotificationEvent {
+    oneof notification_oneof {
+        DelayEvent delay_event = 1;
+        ScheduleEvent schedule_event = 2;
+        NewProcEvent new_proc_event = 3;
+    }
+    // One NotificationEvent may involve multiple structures.
+    repeated StructureId involved_structures = 20;
+}
+
+message StructureStateEvent {
+    oneof structure_state_oneof {
+        RunqStatusEvent runq_status_event = 1;
+    }
+    // Technically, a StructureStateEvent may involve only one structure. But
+    // make StructureId a repeated field in case we need to deal with
+    // concurrently reported structures (e.g. global structures like semtable,
+    // same local runqs reported for multiple schedule events on different
+    // threads).
+    repeated StructureId involved_structures = 20;
 }
 
 message RunqStatusEvent {
     optional int64 proc_id = 1;
-    InterpretedPC current_pc = 2;
     repeated RunqEntry runq_entries = 3;
     RunqEntry runnext = 4;
 }
@@ -71,6 +94,23 @@ enum ScheduleReason {
     GOPARK = 1;
     MSTART = 2;
     OTHER = 20;
+}
+
+message NewProcEvent {
+    optional int64 creator_go_id = 1;
+    InterpretedPC start_pc = 2;
+    optional int64 m_id = 3;
+}
+
+message StructureId {
+    StructureType structure_type = 1;
+    optional int64 m_id = 2;
+}
+
+enum StructureType {
+    LocalRunq = 0;
+    GlobalRunq = 1;
+    Semtable = 2;
 }
 
 service SlowmoService {

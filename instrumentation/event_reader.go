@@ -25,34 +25,35 @@ const (
 	EVENT_TYPE_NEWPROC eventType = iota
 	EVENT_TYPE_DELAY
 	EVENT_TYPE_RUNQ_STATUS
-	EVENT_TYPE_RUNQ_STEAL
-	EVENT_TYPE_EXECUTE
-	EVENT_TYPE_GLOBAL_RUNQ_STATUS
+	// EVENT_TYPE_RUNQ_STEAL
+	// EVENT_TYPE_EXECUTE
+	EVENT_TYPE_GLOBAL_RUNQ_STATUS = iota + 2
 	EVENT_TYPE_SEMTABLE_STATUS
 	EVENT_TYPE_SCHEDULE
 )
 
-//	type newprocEvent struct {
-//		EType       eventType
-//		PC          uint64
-//		CreatorGoID uint64
-//	}
+type newprocEvent struct {
+	EType       eventType
+	PC          uint64
+	CreatorGoID uint64
+	MID         int64
+}
+
 type runqStatusEvent struct {
-	EType  eventType
-	ProcID int64
-	callStack
+	EType    eventType
+	ProcID   int64
 	Runqhead uint64
 	Runqtail uint64
 	indexedRunqEntry
+	MID int64
 }
 type indexedRunqEntry struct {
 	RunqEntryIdx uint64
 	RunqEntry    runqEntry
 }
 type runqEntry struct {
-	PC     uint64
-	GoID   uint64
-	Status uint64
+	PC   uint64
+	GoID uint64
 }
 
 func isDummyEntry(entry runqEntry) bool {
@@ -104,44 +105,10 @@ type scheduleEvent struct {
 	ProcID         int64 // -1 if not applicable
 }
 
-type runqStealEvent struct {
-	EType          eventType
-	StealingProcID int64
-	StolenProcID   int64
-}
-
-type executeEvent struct {
-	EType  eventType
-	ProcID int64
-	GoID   uint64
-	GoPC   uint64
-	callStack
-}
-
 type globalRunqStatusEvent struct {
 	EType eventType
-	callStack
-	Size int64
+	Size  int64
 	indexedRunqEntry
-}
-
-type callStack struct {
-	PC       uint64
-	CallerPC uint64
-}
-
-// Deprecated: Use callStack probe event instead.
-type eventWithCallStack interface {
-	getPC() uint64
-	getCallerPC() uint64
-}
-
-func (cs callStack) getPC() uint64 {
-	return cs.PC
-}
-
-func (cs callStack) getCallerPC() uint64 {
-	return cs.CallerPC
 }
 
 type semtableStatusEvent struct {
@@ -241,17 +208,38 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 	}
 
 	switch etype {
-	// case EVENT_TYPE_NEWPROC:
-	// 	var event newprocEvent
-	// 	err = binary.Read(readSeeker, r.byteOrder, &event)
-	// 	if err != nil {
-	// 		break
-	// 	}
-	// 	file, line, fn := r.interpreter.PCToLine(event.PC)
-	// 	if fn == nil {
-	// 		log.Fatalf("Read newproc event: invalid PC %x", event.PC)
-	// 	}
-	// 	log.Printf("newproc invoked in GoID: %d (function: %s, file: %s, line: %d)", event.CreatorGoID, fn.Name, file, line)
+	case EVENT_TYPE_NEWPROC:
+		var event newprocEvent
+		err = binary.Read(readSeeker, r.byteOrder, &event)
+		if err != nil {
+			break
+		}
+		interpretedPC := r.interpretPC(event.PC)
+		if interpretedPC.Func == nil {
+			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
+		}
+		creatorGoId := int64(event.CreatorGoID)
+		probeEvent := &proto.ProbeEvent{
+			ProbeEventOneof: &proto.ProbeEvent_NotificationEvent{
+				NotificationEvent: &proto.NotificationEvent{
+					NotificationOneof: &proto.NotificationEvent_NewProcEvent{
+						NewProcEvent: &proto.NewProcEvent{
+							CreatorGoId: &creatorGoId,
+							MId:         &event.MID,
+							StartPc:     interpretedPC,
+						},
+					},
+					InvolvedStructures: []*proto.StructureId{
+						{
+							StructureType: proto.StructureType_LocalRunq,
+							MId:           &event.MID,
+						},
+					},
+				},
+			},
+		}
+		log.Printf("Newproc event: %+v", probeEvent)
+		r.ProbeEventCh <- probeEvent
 	case EVENT_TYPE_DELAY:
 		var event delayEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -264,11 +252,15 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		goId := int64(event.GoID)
 		probeEvent := &proto.ProbeEvent{
-			ProbeEventOneof: &proto.ProbeEvent_DelayEvent{
-				DelayEvent: &proto.DelayEvent{
-					GoId:      &goId,
-					MId:       &event.MID,
-					CurrentPc: interpretedPC,
+			ProbeEventOneof: &proto.ProbeEvent_NotificationEvent{
+				NotificationEvent: &proto.NotificationEvent{
+					NotificationOneof: &proto.NotificationEvent_DelayEvent{
+						DelayEvent: &proto.DelayEvent{
+							GoId:      &goId,
+							MId:       &event.MID,
+							CurrentPc: interpretedPC,
+						},
+					},
 				},
 			},
 		}
@@ -286,20 +278,18 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 	case EVENT_TYPE_RUNQ_STATUS:
 		var event runqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
-		if err != nil || !r.shouldKeepEvent(event) {
+		if err != nil {
 			break
 		}
 		if _, ok := r.localRunqs[event.ProcID]; !ok {
 			r.localRunqs[event.ProcID] = []runqEntry{}
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
-			interpretedPC := r.interpretPC(event.PC)
 			runnext := r.interpretRunqEntries([]runqEntry{event.RunqEntry})[0]
 			probeEvent := &proto.ProbeEvent{
 				ProbeEventOneof: &proto.ProbeEvent_RunqStatusEvent{
 					RunqStatusEvent: &proto.RunqStatusEvent{
 						ProcId:      &event.ProcID,
-						CurrentPc:   interpretedPC,
 						RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
 						Runnext:     runnext,
 					},
@@ -311,21 +301,6 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		} else {
 			r.localRunqs[event.ProcID] = append(r.localRunqs[event.ProcID], event.RunqEntry)
 		}
-	case EVENT_TYPE_RUNQ_STEAL:
-		var event runqStealEvent
-		err = binary.Read(readSeeker, r.byteOrder, &event)
-		if err != nil {
-			break
-		}
-		log.Printf("Processor %d steals from processor %d", event.StealingProcID, event.StolenProcID)
-	case EVENT_TYPE_EXECUTE:
-		var event executeEvent
-		err = binary.Read(readSeeker, r.byteOrder, &event)
-		if err != nil || !r.shouldKeepEvent(event) {
-			break
-		}
-		log.Printf("Executing GoID: %d (function: %v) on processor %d",
-			event.GoID, r.interpretPC(event.GoPC), event.ProcID)
 	case EVENT_TYPE_GLOBAL_RUNQ_STATUS:
 		var event globalRunqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -333,7 +308,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		if event.RunqEntryIdx == uint64(event.Size) {
-			log.Printf("In %v, global runq status: %v", r.interpretPC(event.PC), r.interpretRunqEntries(r.globrunq))
+			log.Printf("Global runq status: %v", r.interpretRunqEntries(r.globrunq))
 			r.globrunq = []runqEntry{}
 		} else {
 			r.globrunq = append(r.globrunq, event.RunqEntry)
@@ -386,15 +361,20 @@ func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEven
 	log.Printf("%s called for MID %d, callstack: %+v, pc list: %v", *triggerFunc, event.MID, interpretedCallstack, callstack)
 
 	probeEvent = &proto.ProbeEvent{
-		ProbeEventOneof: &proto.ProbeEvent_ScheduleEvent{
-			ScheduleEvent: &proto.ScheduleEvent{
-				MId:    &event.MID,
-				Reason: findScheduleReason(interpretedCallstack),
+		ProbeEventOneof: &proto.ProbeEvent_NotificationEvent{
+			NotificationEvent: &proto.NotificationEvent{
+				NotificationOneof: &proto.NotificationEvent_ScheduleEvent{
+					ScheduleEvent: &proto.ScheduleEvent{
+						MId:    &event.MID,
+						Reason: findScheduleReason(interpretedCallstack),
+					},
+				},
 			},
+			// TODO: add involved structures for schedule event.
 		},
 	}
 	if event.ProcID != -1 {
-		probeEvent.GetScheduleEvent().ProcId = &event.ProcID
+		probeEvent.GetNotificationEvent().GetScheduleEvent().ProcId = &event.ProcID
 	}
 	return
 }
@@ -415,21 +395,4 @@ func findScheduleReason(callstack []*proto.InterpretedPC) proto.ScheduleReason {
 		}
 	}
 	return reason
-}
-
-func (r *EventReader) shouldKeepEvent(event eventWithCallStack) bool {
-	_, _, fn := r.interpreter.PCToLine(event.getPC())
-	_, _, callerFn := r.interpreter.PCToLine(event.getCallerPC())
-	switch fn.Name {
-	case "runtime.runqget":
-		return callerFn.Name == "runtime.findRunnable"
-	case "runtime.newproc":
-		return true
-	case "runtime.runqsteal":
-		return true
-	case "runtime.execute":
-		return callerFn.Name == "runtime.schedule"
-	default:
-		return false
-	}
 }

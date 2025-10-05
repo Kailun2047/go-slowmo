@@ -112,17 +112,19 @@ func (in *Instrumentor) InstrumentReturns(spec UprobeAttachSpec) {
 
 func (in *Instrumentor) Delay(spec UprobeAttachSpec) {
 	if len(spec.TargetFn) > 0 {
-		log.Fatal("Delay of specific function in target package is not supported")
-	}
-	pkgOffsets := in.interpreter.GetDelayableOffsetsForPackage(spec.TargetPkg)
-	log.Printf("Delayable offsets for package %s: %+v", spec.TargetPkg, pkgOffsets)
-	for fnSym, offsets := range pkgOffsets {
-		for _, offset := range offsets {
-			_, err := in.targetExe.Uprobe(fnSym, in.bpfColl.Programs[spec.BpfFn], &link.UprobeOptions{
-				Offset: offset,
-			})
-			if err != nil {
-				log.Fatal("Attach delay uprobe: ", err)
+		log.Printf("Delaying entry of function %s.%s", spec.TargetPkg, spec.TargetFn)
+		in.InstrumentEntry(spec)
+	} else {
+		pkgOffsets := in.interpreter.GetDelayableOffsetsForPackage(spec.TargetPkg)
+		log.Printf("Delayable offsets for package %s: %+v", spec.TargetPkg, pkgOffsets)
+		for fnSym, offsets := range pkgOffsets {
+			for _, offset := range offsets {
+				_, err := in.targetExe.Uprobe(fnSym, in.bpfColl.Programs[spec.BpfFn], &link.UprobeOptions{
+					Offset: offset,
+				})
+				if err != nil {
+					log.Fatal("Attach delay uprobe: ", err)
+				}
 			}
 		}
 	}

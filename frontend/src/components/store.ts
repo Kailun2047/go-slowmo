@@ -103,6 +103,8 @@ const createThreadsSlice: StateCreator<
 > = (set, get) => ({
     threads: [],
     // initThreads is called once upon receiving num_cpu from server.
+    // 
+    // TODO: visualize G0 properly.
     initThreads: (numCpu: number) => {
         const threads: Thread[] = [];
         for (let i = 0; i < numCpu; i++) {
