@@ -96,29 +96,19 @@ export interface ProbeEvent {
      * @generated from protobuf oneof: probe_event_oneof
      */
     probeEventOneof: {
-        oneofKind: "runqStatusEvent";
-        /**
-         * @deprecated
-         * @generated from protobuf field: slowmo.RunqStatusEvent runq_status_event = 1 [deprecated = true]
-         */
-        runqStatusEvent: RunqStatusEvent;
-    } | {
         oneofKind: "delayEvent";
         /**
-         * @deprecated
-         * @generated from protobuf field: slowmo.DelayEvent delay_event = 2 [deprecated = true]
+         * RunqStatusEvent runq_status_event = 1 [deprecated=true];
+         *
+         * @generated from protobuf field: slowmo.DelayEvent delay_event = 2
          */
-        delayEvent: DelayEvent;
-    } | {
-        oneofKind: "scheduleEvent";
-        /**
-         * @deprecated
-         * @generated from protobuf field: slowmo.ScheduleEvent schedule_event = 3 [deprecated = true]
-         */
-        scheduleEvent: ScheduleEvent;
+        delayEvent: DelayEvent; // ScheduleEvent schedule_event = 3 [deprecated=true];
     } | {
         oneofKind: "notificationEvent";
         /**
+         * TODO: remove redundant m_id field and use only m_id field in
+         * involved_structures.
+         *
          * @generated from protobuf field: slowmo.NotificationEvent notification_event = 4
          */
         notificationEvent: NotificationEvent;
@@ -142,7 +132,8 @@ export interface NotificationEvent {
     notificationOneof: {
         oneofKind: "delayEvent";
         /**
-         * @generated from protobuf field: slowmo.DelayEvent delay_event = 1
+         * @deprecated
+         * @generated from protobuf field: slowmo.DelayEvent delay_event = 1 [deprecated = true]
          */
         delayEvent: DelayEvent;
     } | {
@@ -181,6 +172,12 @@ export interface StructureStateEvent {
          */
         runqStatusEvent: RunqStatusEvent;
     } | {
+        oneofKind: "executeEvent";
+        /**
+         * @generated from protobuf field: slowmo.ExecuteEvent execute_event = 2
+         */
+        executeEvent: ExecuteEvent;
+    } | {
         oneofKind: undefined;
     };
     /**
@@ -212,6 +209,19 @@ export interface RunqStatusEvent {
     runnext?: RunqEntry;
 }
 /**
+ * @generated from protobuf message slowmo.RunqEntry
+ */
+export interface RunqEntry {
+    /**
+     * @generated from protobuf field: optional int64 go_id = 1
+     */
+    goId?: bigint;
+    /**
+     * @generated from protobuf field: slowmo.InterpretedPC execution_context = 2
+     */
+    executionContext?: InterpretedPC;
+}
+/**
  * @generated from protobuf message slowmo.InterpretedPC
  */
 export interface InterpretedPC {
@@ -229,17 +239,17 @@ export interface InterpretedPC {
     func?: string;
 }
 /**
- * @generated from protobuf message slowmo.RunqEntry
+ * @generated from protobuf message slowmo.ExecuteEvent
  */
-export interface RunqEntry {
+export interface ExecuteEvent {
     /**
-     * @generated from protobuf field: optional int64 go_id = 1
+     * @generated from protobuf field: optional int64 m_id = 1
      */
-    goId?: bigint;
+    mId?: bigint;
     /**
-     * @generated from protobuf field: slowmo.InterpretedPC execution_context = 2
+     * @generated from protobuf field: slowmo.RunqEntry found = 2
      */
-    executionContext?: InterpretedPC;
+    found?: RunqEntry;
 }
 /**
  * @generated from protobuf message slowmo.DelayEvent
@@ -341,7 +351,11 @@ export enum StructureType {
     /**
      * @generated from protobuf enum value: Semtable = 2;
      */
-    Semtable = 2
+    Semtable = 2,
+    /**
+     * @generated from protobuf enum value: Executing = 3;
+     */
+    Executing = 3
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
@@ -621,9 +635,7 @@ export const RuntimeOutput = new RuntimeOutput$Type();
 class ProbeEvent$Type extends MessageType<ProbeEvent> {
     constructor() {
         super("slowmo.ProbeEvent", [
-            { no: 1, name: "runq_status_event", kind: "message", oneof: "probeEventOneof", T: () => RunqStatusEvent },
             { no: 2, name: "delay_event", kind: "message", oneof: "probeEventOneof", T: () => DelayEvent },
-            { no: 3, name: "schedule_event", kind: "message", oneof: "probeEventOneof", T: () => ScheduleEvent },
             { no: 4, name: "notification_event", kind: "message", oneof: "probeEventOneof", T: () => NotificationEvent },
             { no: 5, name: "structure_state_event", kind: "message", oneof: "probeEventOneof", T: () => StructureStateEvent }
         ]);
@@ -640,22 +652,10 @@ class ProbeEvent$Type extends MessageType<ProbeEvent> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* slowmo.RunqStatusEvent runq_status_event = 1 [deprecated = true] */ 1:
-                    message.probeEventOneof = {
-                        oneofKind: "runqStatusEvent",
-                        runqStatusEvent: RunqStatusEvent.internalBinaryRead(reader, reader.uint32(), options, (message.probeEventOneof as any).runqStatusEvent)
-                    };
-                    break;
-                case /* slowmo.DelayEvent delay_event = 2 [deprecated = true] */ 2:
+                case /* slowmo.DelayEvent delay_event */ 2:
                     message.probeEventOneof = {
                         oneofKind: "delayEvent",
                         delayEvent: DelayEvent.internalBinaryRead(reader, reader.uint32(), options, (message.probeEventOneof as any).delayEvent)
-                    };
-                    break;
-                case /* slowmo.ScheduleEvent schedule_event = 3 [deprecated = true] */ 3:
-                    message.probeEventOneof = {
-                        oneofKind: "scheduleEvent",
-                        scheduleEvent: ScheduleEvent.internalBinaryRead(reader, reader.uint32(), options, (message.probeEventOneof as any).scheduleEvent)
                     };
                     break;
                 case /* slowmo.NotificationEvent notification_event */ 4:
@@ -682,15 +682,9 @@ class ProbeEvent$Type extends MessageType<ProbeEvent> {
         return message;
     }
     internalBinaryWrite(message: ProbeEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* slowmo.RunqStatusEvent runq_status_event = 1 [deprecated = true]; */
-        if (message.probeEventOneof.oneofKind === "runqStatusEvent")
-            RunqStatusEvent.internalBinaryWrite(message.probeEventOneof.runqStatusEvent, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
-        /* slowmo.DelayEvent delay_event = 2 [deprecated = true]; */
+        /* slowmo.DelayEvent delay_event = 2; */
         if (message.probeEventOneof.oneofKind === "delayEvent")
             DelayEvent.internalBinaryWrite(message.probeEventOneof.delayEvent, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
-        /* slowmo.ScheduleEvent schedule_event = 3 [deprecated = true]; */
-        if (message.probeEventOneof.oneofKind === "scheduleEvent")
-            ScheduleEvent.internalBinaryWrite(message.probeEventOneof.scheduleEvent, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
         /* slowmo.NotificationEvent notification_event = 4; */
         if (message.probeEventOneof.oneofKind === "notificationEvent")
             NotificationEvent.internalBinaryWrite(message.probeEventOneof.notificationEvent, writer.tag(4, WireType.LengthDelimited).fork(), options).join();
@@ -730,7 +724,7 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* slowmo.DelayEvent delay_event */ 1:
+                case /* slowmo.DelayEvent delay_event = 1 [deprecated = true] */ 1:
                     message.notificationOneof = {
                         oneofKind: "delayEvent",
                         delayEvent: DelayEvent.internalBinaryRead(reader, reader.uint32(), options, (message.notificationOneof as any).delayEvent)
@@ -763,7 +757,7 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
         return message;
     }
     internalBinaryWrite(message: NotificationEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* slowmo.DelayEvent delay_event = 1; */
+        /* slowmo.DelayEvent delay_event = 1 [deprecated = true]; */
         if (message.notificationOneof.oneofKind === "delayEvent")
             DelayEvent.internalBinaryWrite(message.notificationOneof.delayEvent, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
         /* slowmo.ScheduleEvent schedule_event = 2; */
@@ -790,6 +784,7 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
     constructor() {
         super("slowmo.StructureStateEvent", [
             { no: 1, name: "runq_status_event", kind: "message", oneof: "structureStateOneof", T: () => RunqStatusEvent },
+            { no: 2, name: "execute_event", kind: "message", oneof: "structureStateOneof", T: () => ExecuteEvent },
             { no: 20, name: "involved_structures", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => StructureId }
         ]);
     }
@@ -812,6 +807,12 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
                         runqStatusEvent: RunqStatusEvent.internalBinaryRead(reader, reader.uint32(), options, (message.structureStateOneof as any).runqStatusEvent)
                     };
                     break;
+                case /* slowmo.ExecuteEvent execute_event */ 2:
+                    message.structureStateOneof = {
+                        oneofKind: "executeEvent",
+                        executeEvent: ExecuteEvent.internalBinaryRead(reader, reader.uint32(), options, (message.structureStateOneof as any).executeEvent)
+                    };
+                    break;
                 case /* repeated slowmo.StructureId involved_structures */ 20:
                     message.involvedStructures.push(StructureId.internalBinaryRead(reader, reader.uint32(), options));
                     break;
@@ -830,6 +831,9 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
         /* slowmo.RunqStatusEvent runq_status_event = 1; */
         if (message.structureStateOneof.oneofKind === "runqStatusEvent")
             RunqStatusEvent.internalBinaryWrite(message.structureStateOneof.runqStatusEvent, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
+        /* slowmo.ExecuteEvent execute_event = 2; */
+        if (message.structureStateOneof.oneofKind === "executeEvent")
+            ExecuteEvent.internalBinaryWrite(message.structureStateOneof.executeEvent, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
         /* repeated slowmo.StructureId involved_structures = 20; */
         for (let i = 0; i < message.involvedStructures.length; i++)
             StructureId.internalBinaryWrite(message.involvedStructures[i], writer.tag(20, WireType.LengthDelimited).fork(), options).join();
@@ -905,6 +909,59 @@ class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
  */
 export const RunqStatusEvent = new RunqStatusEvent$Type();
 // @generated message type with reflection information, may provide speed optimized methods
+class RunqEntry$Type extends MessageType<RunqEntry> {
+    constructor() {
+        super("slowmo.RunqEntry", [
+            { no: 1, name: "go_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 2, name: "execution_context", kind: "message", T: () => InterpretedPC }
+        ]);
+    }
+    create(value?: PartialMessage<RunqEntry>): RunqEntry {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        if (value !== undefined)
+            reflectionMergePartial<RunqEntry>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RunqEntry): RunqEntry {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* optional int64 go_id */ 1:
+                    message.goId = reader.int64().toBigInt();
+                    break;
+                case /* slowmo.InterpretedPC execution_context */ 2:
+                    message.executionContext = InterpretedPC.internalBinaryRead(reader, reader.uint32(), options, message.executionContext);
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: RunqEntry, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional int64 go_id = 1; */
+        if (message.goId !== undefined)
+            writer.tag(1, WireType.Varint).int64(message.goId);
+        /* slowmo.InterpretedPC execution_context = 2; */
+        if (message.executionContext)
+            InterpretedPC.internalBinaryWrite(message.executionContext, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message slowmo.RunqEntry
+ */
+export const RunqEntry = new RunqEntry$Type();
+// @generated message type with reflection information, may provide speed optimized methods
 class InterpretedPC$Type extends MessageType<InterpretedPC> {
     constructor() {
         super("slowmo.InterpretedPC", [
@@ -965,29 +1022,29 @@ class InterpretedPC$Type extends MessageType<InterpretedPC> {
  */
 export const InterpretedPC = new InterpretedPC$Type();
 // @generated message type with reflection information, may provide speed optimized methods
-class RunqEntry$Type extends MessageType<RunqEntry> {
+class ExecuteEvent$Type extends MessageType<ExecuteEvent> {
     constructor() {
-        super("slowmo.RunqEntry", [
-            { no: 1, name: "go_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
-            { no: 2, name: "execution_context", kind: "message", T: () => InterpretedPC }
+        super("slowmo.ExecuteEvent", [
+            { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 2, name: "found", kind: "message", T: () => RunqEntry }
         ]);
     }
-    create(value?: PartialMessage<RunqEntry>): RunqEntry {
+    create(value?: PartialMessage<ExecuteEvent>): ExecuteEvent {
         const message = globalThis.Object.create((this.messagePrototype!));
         if (value !== undefined)
-            reflectionMergePartial<RunqEntry>(this, message, value);
+            reflectionMergePartial<ExecuteEvent>(this, message, value);
         return message;
     }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RunqEntry): RunqEntry {
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: ExecuteEvent): ExecuteEvent {
         let message = target ?? this.create(), end = reader.pos + length;
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* optional int64 go_id */ 1:
-                    message.goId = reader.int64().toBigInt();
+                case /* optional int64 m_id */ 1:
+                    message.mId = reader.int64().toBigInt();
                     break;
-                case /* slowmo.InterpretedPC execution_context */ 2:
-                    message.executionContext = InterpretedPC.internalBinaryRead(reader, reader.uint32(), options, message.executionContext);
+                case /* slowmo.RunqEntry found */ 2:
+                    message.found = RunqEntry.internalBinaryRead(reader, reader.uint32(), options, message.found);
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -1000,13 +1057,13 @@ class RunqEntry$Type extends MessageType<RunqEntry> {
         }
         return message;
     }
-    internalBinaryWrite(message: RunqEntry, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* optional int64 go_id = 1; */
-        if (message.goId !== undefined)
-            writer.tag(1, WireType.Varint).int64(message.goId);
-        /* slowmo.InterpretedPC execution_context = 2; */
-        if (message.executionContext)
-            InterpretedPC.internalBinaryWrite(message.executionContext, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
+    internalBinaryWrite(message: ExecuteEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional int64 m_id = 1; */
+        if (message.mId !== undefined)
+            writer.tag(1, WireType.Varint).int64(message.mId);
+        /* slowmo.RunqEntry found = 2; */
+        if (message.found)
+            RunqEntry.internalBinaryWrite(message.found, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -1014,9 +1071,9 @@ class RunqEntry$Type extends MessageType<RunqEntry> {
     }
 }
 /**
- * @generated MessageType for protobuf message slowmo.RunqEntry
+ * @generated MessageType for protobuf message slowmo.ExecuteEvent
  */
-export const RunqEntry = new RunqEntry$Type();
+export const ExecuteEvent = new ExecuteEvent$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class DelayEvent$Type extends MessageType<DelayEvent> {
     constructor() {

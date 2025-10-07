@@ -22,7 +22,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 // Go version.
 #define G_GOID_OFFSET 152
 #define G_M_PTR_OFFSET 48
-#define G_PC_OFFSET 64
+#define G_STARTPC_OFFSET 296
 #define G_STATUS_OFFSET 144
 #define G_SCHEDLINK_OFFSET 160
 #define M_P_PTR_OFFSET 208
@@ -35,7 +35,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define P_RUNNEXT_OFFSET 2456
 #define GET_GOID_ADDR(g_addr) ((char *)(g_addr) + G_GOID_OFFSET)
 #define GET_M_PTR_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
-#define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_PC_OFFSET)
+#define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_STARTPC_OFFSET)
 #define GET_STATUS_ADDR(g_addr) ((char *)(g_addr) + G_STATUS_OFFSET)
 #define GET_SCHEDLINK_ADDR(g_addr) ((char *)(g_addr) + G_SCHEDLINK_OFFSET)
 #define GET_P_ADDR(m_addr) ((char *)(m_addr) + M_P_PTR_OFFSET)
@@ -65,6 +65,7 @@ const uint64_t EVENT_TYPE_RUNQ_STATUS = 2;
 const uint64_t EVENT_TYPE_GLOBRUNQ_STATUS = 5;
 const uint64_t EVENT_TYPE_SEMTABLE_STATUS = 6;
 const uint64_t EVENT_TYPE_SCHEDULE = 7;
+const uint64_t EVENT_TYPE_FOUND_RUNNABLE = 8;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -597,4 +598,30 @@ static long find_target_func(void *map, void *key, void *value, void *ctx) {
     } else {
         return 0;
     }
+}
+
+struct execute_event {
+    uint64_t etype;
+    int64_t mid;
+    struct runq_entry found; 
+    uint64_t callerpc; // needed to decide if the callsite is runtime.schedule
+};
+
+SEC("uprobe/go_execute")
+int BPF_UPROBE(go_execute) {
+    struct execute_event *e;
+    char *m_ptr;
+
+    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct execute_event), 0))) {
+        bpf_printk("bpf_ringbuf_reserve failed in go_execute");
+        return 1;
+    }
+    e->etype = EVENT_TYPE_FOUND_RUNNABLE;
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_probe_read_user(&e->found.goid, sizeof(uint64_t), GET_GOID_ADDR(GO_PARAM1(ctx)));
+    bpf_probe_read_user(&e->found.pc, sizeof(uint64_t), GET_PC_ADDR(GO_PARAM1(ctx)));
+    bpf_probe_read_user(&e->callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
+    bpf_ringbuf_submit(e, 0);
+    return 0;
 }

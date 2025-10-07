@@ -18,15 +18,28 @@ interface ThreadProps {
 }
 
 function Thread({thread}: ThreadProps) {
-    const {mId, isScheduling, p} = thread;
+    const {mId, isScheduling, p, executing} = thread;
+
+    let goExecutingG = (
+        <div className='go-executing-g-wrapper'></div>
+    );
+    if (executing !== undefined) {
+        goExecutingG = (
+            <div className='go-executing-g-wrapper'>
+                <div className='go-g' style={{backgroundColor: asStyleStr(pickPastelColor(executing.id))}}>
+                    {'g' + executing.id}<br />
+                    {executing.entryFunc}
+                </div>
+            </div>
+        );
+    }
 
     let scheduleSpinner = (
-        <div className={'schedule-spinner-wrapper'}></div>
+        <div className='schedule-spinner-wrapper'></div>
     );
     let goM = (
         <div className='go-m-wrapper'></div>
     );
-
     if (mId !== undefined) {
         scheduleSpinner = (
             <div className='schedule-spinner-wrapper'>
@@ -48,8 +61,8 @@ function Thread({thread}: ThreadProps) {
     if (p !== undefined) {
         const runq = (p.runnext? [p.runnext, ...p.runq]: p.runq).map((g) => (
             <div className='go-g' key={'g'+g.id} style={{backgroundColor: asStyleStr(pickPastelColor(g.id))}}>
-                {'g' + g.id}
-                {'entry: ' + g.entryFunc}
+                {'g' + g.id}<br />
+                {g.entryFunc}
             </div>
         ));
         goP = (
@@ -62,6 +75,7 @@ function Thread({thread}: ThreadProps) {
 
     return (
         <div className='thread'>
+            {goExecutingG}
             {scheduleSpinner}
             {goM}
             {goP}

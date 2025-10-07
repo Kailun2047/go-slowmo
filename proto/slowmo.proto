@@ -30,9 +30,12 @@ message RuntimeOutput {
 
 message ProbeEvent {
     oneof probe_event_oneof {
-        RunqStatusEvent runq_status_event = 1 [deprecated=true];
-        DelayEvent delay_event = 2 [deprecated=true];
-        ScheduleEvent schedule_event = 3 [deprecated=true];
+        // RunqStatusEvent runq_status_event = 1 [deprecated=true];
+        DelayEvent delay_event = 2;
+        // ScheduleEvent schedule_event = 3 [deprecated=true];
+
+        // TODO: remove redundant m_id field and use only m_id field in
+        // involved_structures.
         NotificationEvent notification_event = 4;
         StructureStateEvent structure_state_event = 5;
     };
@@ -40,7 +43,7 @@ message ProbeEvent {
 
 message NotificationEvent {
     oneof notification_oneof {
-        DelayEvent delay_event = 1;
+        DelayEvent delay_event = 1 [deprecated=true];
         ScheduleEvent schedule_event = 2;
         NewProcEvent new_proc_event = 3;
     }
@@ -51,6 +54,7 @@ message NotificationEvent {
 message StructureStateEvent {
     oneof structure_state_oneof {
         RunqStatusEvent runq_status_event = 1;
+        ExecuteEvent execute_event = 2;
     }
     // Technically, a StructureStateEvent may involve only one structure. But
     // make StructureId a repeated field in case we need to deal with
@@ -66,15 +70,20 @@ message RunqStatusEvent {
     RunqEntry runnext = 4;
 }
 
+message RunqEntry {
+    optional int64 go_id = 1;
+    InterpretedPC execution_context = 2;
+}
+
 message InterpretedPC {
     optional string file = 1;
     optional int32 line = 2;
     optional string func = 3;
 }
 
-message RunqEntry {
-    optional int64 go_id = 1;
-    InterpretedPC execution_context = 2;
+message ExecuteEvent {
+    optional int64 m_id = 1;
+    RunqEntry found = 2;
 }
 
 message DelayEvent {
@@ -111,6 +120,7 @@ enum StructureType {
     LocalRunq = 0;
     GlobalRunq = 1;
     Semtable = 2;
+    Executing = 3;
 }
 
 service SlowmoService {

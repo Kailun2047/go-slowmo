@@ -63,6 +63,7 @@ type instrumentorSpecs struct {
 type instrumentorProgramSpecs struct {
 	AvoidPreempt     *ebpf.ProgramSpec `ebpf:"avoid_preempt"`
 	Delay            *ebpf.ProgramSpec `ebpf:"delay"`
+	GoExecute        *ebpf.ProgramSpec `ebpf:"go_execute"`
 	GoGlobrunqStatus *ebpf.ProgramSpec `ebpf:"go_globrunq_status"`
 	GoGopark         *ebpf.ProgramSpec `ebpf:"go_gopark"`
 	GoNewproc        *ebpf.ProgramSpec `ebpf:"go_newproc"`
@@ -84,6 +85,7 @@ type instrumentorMapSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type instrumentorVariableSpecs struct {
 	EVENT_TYPE_DELAY           *ebpf.VariableSpec `ebpf:"EVENT_TYPE_DELAY"`
+	EVENT_TYPE_FOUND_RUNNABLE  *ebpf.VariableSpec `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
 	EVENT_TYPE_NEWPROC         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
@@ -133,6 +135,7 @@ func (m *instrumentorMaps) Close() error {
 // It can be passed to loadInstrumentorObjects or ebpf.CollectionSpec.LoadAndAssign.
 type instrumentorVariables struct {
 	EVENT_TYPE_DELAY           *ebpf.Variable `ebpf:"EVENT_TYPE_DELAY"`
+	EVENT_TYPE_FOUND_RUNNABLE  *ebpf.Variable `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
 	EVENT_TYPE_NEWPROC         *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
@@ -150,6 +153,7 @@ type instrumentorVariables struct {
 type instrumentorPrograms struct {
 	AvoidPreempt     *ebpf.Program `ebpf:"avoid_preempt"`
 	Delay            *ebpf.Program `ebpf:"delay"`
+	GoExecute        *ebpf.Program `ebpf:"go_execute"`
 	GoGlobrunqStatus *ebpf.Program `ebpf:"go_globrunq_status"`
 	GoGopark         *ebpf.Program `ebpf:"go_gopark"`
 	GoNewproc        *ebpf.Program `ebpf:"go_newproc"`
@@ -161,6 +165,7 @@ func (p *instrumentorPrograms) Close() error {
 	return _InstrumentorClose(
 		p.AvoidPreempt,
 		p.Delay,
+		p.GoExecute,
 		p.GoGlobrunqStatus,
 		p.GoGopark,
 		p.GoNewproc,

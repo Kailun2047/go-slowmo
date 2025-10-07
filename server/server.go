@@ -126,7 +126,12 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		TargetFn:  "newproc",
 		BpfFn:     "go_runq_status",
 	})
-	// TODO: inspect globrunq and all runqs when exiting findrunnable.
+	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
+		TargetPkg: "runtime",
+		TargetFn:  "execute",
+		BpfFn:     "go_execute",
+	})
+	// TODO: inspect globrunq and all runqs when entering runtime.execute.
 
 	/* Helpers. */
 	instrumentor.Delay(instrumentation.UprobeAttachSpec{

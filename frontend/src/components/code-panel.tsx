@@ -3,7 +3,7 @@ import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
 import { useEffect, useRef, type MouseEventHandler } from 'react';
-import { CompileAndRunRequest, NotificationEvent } from '../../proto/slowmo';
+import { CompileAndRunRequest, NotificationEvent, StructureStateEvent, StructureType } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
 import { resetAllStores, useAceEditorWrapperStore, useBoundStore } from './store';
@@ -35,6 +35,8 @@ function AceEditorWrapper() {
     const setIsRunning = useBoundStore((state) => state.setIsRunning);
     const handleDelayEvent = useBoundStore((state) => state.handleDelayEvent);
     const handleScheduleEvent = useBoundStore((state) => state.handleScheduleEvent);
+    const handleNewProcEvent = useBoundStore((state) => state.handleNewProcEvent);
+    const handleStructureState = useBoundStore((state) => state.handleStructureState);
     const initThreads = useBoundStore((state) => state.initThreads);
 
     const elemRef = useRef<HTMLDivElement & {
@@ -97,16 +99,24 @@ function AceEditorWrapper() {
                     case 'runEvent':
                         const runEvent = msg.compileAndRunOneof.runEvent;
                         console.log('run event of type ', runEvent.probeEventOneof.oneofKind);
+
                         switch (runEvent.probeEventOneof.oneofKind) {
-                            case 'notificationEvent': {
-                                handleNotificationEvent(runEvent.probeEventOneof.notificationEvent)
+                            case 'delayEvent': {
+                                const {mId, currentPc, goId} = runEvent.probeEventOneof.delayEvent;
+                                if (mId === undefined || goId === undefined || currentPc === undefined || currentPc.func === undefined || currentPc.line === undefined) {
+                                    throw new Error(`invalid delay event (mId: ${mId}, line: ${currentPc?.line})`);
+                                }
+                                if (currentPc.func.startsWith('main')) {
+                                    handleDelayEvent(Number(mId), currentPc.line, Number(goId));
+                                }
                                 break;
                             }
-                            case 'structureStateEvent': {
-                                // TODO: diff structure state and animate
-                                // goroutine movement.
+                            case 'notificationEvent':
+                                processNotificationEvent(runEvent.probeEventOneof.notificationEvent)
                                 break;
-                            }
+                            case 'structureStateEvent':
+                                processStructureStateEvent(runEvent.probeEventOneof.structureStateEvent);
+                                break;
                         }
                         break;
                     default:
@@ -119,29 +129,80 @@ function AceEditorWrapper() {
         }
     }
 
-    function handleNotificationEvent(notificationEvent: NotificationEvent): void {
-        switch (notificationEvent.notificationOneof.oneofKind) {
-            case 'delayEvent': {
-                const {mId, currentPc, goId} = notificationEvent.notificationOneof.delayEvent;
-                if (mId === undefined || goId === undefined || currentPc === undefined || currentPc.func === undefined || currentPc.line === undefined) {
-                    throw new Error(`invalid delay event (mId: ${mId}, line: ${currentPc?.line})`);
-                }
-                if (currentPc.func.startsWith('main')) {
-                    handleDelayEvent(Number(mId), currentPc.line, Number(goId));
-                }
-                break;
+    function processNotificationEvent(event: NotificationEvent): void {
+        const mIds = event.involvedStructures.map(id => {
+            if (id.mId === undefined) {
+                throw new Error(`invalid ${event.notificationOneof.oneofKind} event (undefine mId)`);
             }
-            case 'scheduleEvent': {
-                const {mId, reason, procId} = notificationEvent.notificationOneof.scheduleEvent;
-                if (mId === undefined) {
-                    throw new Error(`invalid schedule event (mId: ${mId})`);
+            return Number(id.mId);
+        });
+        for (const mId of mIds) {
+            switch (event.notificationOneof.oneofKind) {
+                case 'scheduleEvent': {
+                    const {reason, procId} = event.notificationOneof.scheduleEvent;
+                    handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
+                    break;
                 }
-                handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
-                console.log(`handled schedule event for mId ${Number(mId)} and reason ${reason}`);
-                break;
+                case 'newProcEvent': {
+                    handleNewProcEvent(Number(mId));
+                    break;
+                }
+                default:
+                    console.warn(`unknown notification event type ${event.notificationOneof.oneofKind}`)
+            }       
+        }
+    }
+
+    function processStructureStateEvent(event: StructureStateEvent): void {
+        const mIds = event.involvedStructures.map(id => {
+            if (id.mId === undefined) {
+                throw new Error(`invalid ${event.structureStateOneof.oneofKind} event (undefine mId)`);
             }
-            default:
-                console.warn(`unknown notification event type ${notificationEvent.notificationOneof.oneofKind}`)
+            return Number(id.mId);
+        });
+        for (const mId of mIds) {
+            switch (event.structureStateOneof.oneofKind) {
+                case 'executeEvent':
+                    const found = event.structureStateOneof.executeEvent.found;
+                    if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined) {
+                        throw new Error(`invalid executeEvent`)
+                    }
+                    const {goId, executionContext} = found;
+                    handleStructureState([
+                        {
+                            mId,
+                            structureType: StructureType.Executing,
+                            value: {id: Number(goId), entryFunc: executionContext.func!}
+                        },
+                    ]);
+                    break;
+                case 'runqStatusEvent':
+                    const {procId, runnext, runqEntries} = event.structureStateOneof.runqStatusEvent;
+                    if (procId === undefined || runnext === undefined) {
+                        throw new Error(`invalid runqStatusEvent`);
+                    }
+                    handleStructureState([
+                        {
+                            mId,
+                            structureType: StructureType.LocalRunq,
+                            // TODO: validation.
+                            value: {
+                                id: Number(procId),
+                                runnext: {
+                                    id: Number(runnext.goId),
+                                    entryFunc: runnext.executionContext!.func!,
+                                },
+                                runq: runqEntries.map(entry => ({
+                                    id: Number(entry.goId),
+                                    entryFunc: entry.executionContext!.func!,
+                                }))
+                            },
+                        },
+                    ]);
+                    break;
+                default:
+                    console.warn(`unknown structure state event type ${event.structureStateOneof.oneofKind}`);
+            }
         }
     }
 

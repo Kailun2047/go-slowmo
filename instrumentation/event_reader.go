@@ -30,6 +30,7 @@ const (
 	EVENT_TYPE_GLOBAL_RUNQ_STATUS = iota + 2
 	EVENT_TYPE_SEMTABLE_STATUS
 	EVENT_TYPE_SCHEDULE
+	EVENT_TYPE_EXECUTE
 )
 
 type newprocEvent struct {
@@ -126,6 +127,13 @@ type sudog struct {
 type versionedSemtable struct {
 	version uint64
 	sudogs  []sudog
+}
+
+type executeEvent struct {
+	EType    eventType
+	MID      int64
+	Found    runqEntry
+	CallerPC uint64
 }
 
 type EventReader struct {
@@ -252,15 +260,11 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		goId := int64(event.GoID)
 		probeEvent := &proto.ProbeEvent{
-			ProbeEventOneof: &proto.ProbeEvent_NotificationEvent{
-				NotificationEvent: &proto.NotificationEvent{
-					NotificationOneof: &proto.NotificationEvent_DelayEvent{
-						DelayEvent: &proto.DelayEvent{
-							GoId:      &goId,
-							MId:       &event.MID,
-							CurrentPc: interpretedPC,
-						},
-					},
+			ProbeEventOneof: &proto.ProbeEvent_DelayEvent{
+				DelayEvent: &proto.DelayEvent{
+					GoId:      &goId,
+					MId:       &event.MID,
+					CurrentPc: interpretedPC,
 				},
 			},
 		}
@@ -287,11 +291,21 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
 			runnext := r.interpretRunqEntries([]runqEntry{event.RunqEntry})[0]
 			probeEvent := &proto.ProbeEvent{
-				ProbeEventOneof: &proto.ProbeEvent_RunqStatusEvent{
-					RunqStatusEvent: &proto.RunqStatusEvent{
-						ProcId:      &event.ProcID,
-						RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
-						Runnext:     runnext,
+				ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
+					StructureStateEvent: &proto.StructureStateEvent{
+						StructureStateOneof: &proto.StructureStateEvent_RunqStatusEvent{
+							RunqStatusEvent: &proto.RunqStatusEvent{
+								ProcId:      &event.ProcID,
+								RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
+								Runnext:     runnext,
+							},
+						},
+						InvolvedStructures: []*proto.StructureId{
+							{
+								MId:           &event.MID,
+								StructureType: proto.StructureType_LocalRunq,
+							},
+						},
 					},
 				},
 			}
@@ -341,6 +355,41 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		} else {
 			r.semtable.sudogs = append(r.semtable.sudogs, event.Sudog)
 		}
+	case EVENT_TYPE_EXECUTE:
+		var event executeEvent
+		err = binary.Read(readSeeker, r.byteOrder, &event)
+		if err != nil {
+			break
+		}
+		interpretedCallerPC := r.interpretPC(event.CallerPC)
+		if interpretedCallerPC.File != nil && *interpretedCallerPC.Func != "runtime.schedule" {
+			log.Printf("Execute event from non-target callsite (%s), skipping...", *interpretedCallerPC.Func)
+			break
+		}
+		goId := int64(event.Found.GoID)
+		probeEvent := &proto.ProbeEvent{
+			ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
+				StructureStateEvent: &proto.StructureStateEvent{
+					StructureStateOneof: &proto.StructureStateEvent_ExecuteEvent{
+						ExecuteEvent: &proto.ExecuteEvent{
+							MId: &event.MID,
+							Found: &proto.RunqEntry{
+								GoId:             &goId,
+								ExecutionContext: r.interpretPC(event.Found.PC),
+							},
+						},
+					},
+					InvolvedStructures: []*proto.StructureId{
+						{
+							MId:           &event.MID,
+							StructureType: proto.StructureType_Executing,
+						},
+					},
+				},
+			},
+		}
+		log.Printf("Execute event: %+v", probeEvent)
+		r.ProbeEventCh <- probeEvent
 	default:
 		err = fmt.Errorf("unrecognized event type")
 	}
@@ -369,8 +418,14 @@ func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEven
 						Reason: findScheduleReason(interpretedCallstack),
 					},
 				},
+				// TODO: add other involved structures for schedule event.
+				InvolvedStructures: []*proto.StructureId{
+					{
+						MId:           &event.MID,
+						StructureType: proto.StructureType_Executing,
+					},
+				},
 			},
-			// TODO: add involved structures for schedule event.
 		},
 	}
 	if event.ProcID != -1 {
