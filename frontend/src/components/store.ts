@@ -68,7 +68,7 @@ interface Goroutine {
 interface ThreadsSlice {
     threads: Thread[];
     initThreads: (numCpu: number) => void;
-    assignM: (mId: number, procId?: number) => void;
+    resetIsScheduling: (mId: number) => void;
 }
 
 interface SharedSlice {
@@ -127,6 +127,7 @@ const createThreadsSlice: StateCreator<
     CodePanelSlice & ThreadsSlice, [], [], ThreadsSlice
 > = (set, get) => ({
     threads: [],
+
     // initThreads is called once upon receiving num_cpu from server.
     initThreads: (numCpu: number) => {
         const threads: Thread[] = [];
@@ -155,33 +156,16 @@ const createThreadsSlice: StateCreator<
             threads,
         }))
     },
-    // assignM sets mId for thread on mstart.
-    assignM: (mId: number, procId?: number) => {
+
+    resetIsScheduling: (mId: number) => {
         const threads = get().threads;
-        if (procId === undefined) {
-            console.warn('unexpected new M without procId, skipping assignment');
-            return;
+        const thread = threads.find(thread => thread.mId === mId);
+        if (thread === undefined) {
+            throw new Error(`target thread (mId: ${mId}) not found when reset isScheduling`);
         }
-        const threadIdx = threads.findIndex((thread) => thread.p?.id === procId);
-        if (threadIdx === -1) {
-            console.warn(`no existing thread found for procId ${procId}, skipping assignment`);
-            return;
-        }
-        if (threads[threadIdx].mId !== undefined && threads[threadIdx].mId !== mId) {
-            // If p is already assigned to a different M, transfer the p to the
-            // new M and leave the old M with no p.
-            const p = threads[threadIdx].p;
-            threads[threadIdx].p = undefined;
-            threads.push({
-                mId,
-                isScheduling: false,
-                p,
-            });
-        } else {
-            threads[threadIdx].mId = mId;
-        }
+        thread.isScheduling = false;
         set(() => ({
-            threads,
+            threads: [...threads],
         }));
     },
 })
@@ -192,17 +176,54 @@ const createSharedSlice: StateCreator<
     structureStateCollections: [],
 
     handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => {
+        if (procId === undefined) {
+            throw new Error('unexpected new M without procId, skipping assignment');
+        }
         get().handleNotification([
             {mId, structureType: StructureType.Executing},
         ]);
-        if (reason === ScheduleReason.MSTART) {
-            get().assignM(mId, procId);
-        } else {
+
+        // Checks for possible change in m-p bindings.
+        const threads = get().threads;
+        const existingThread = threads.find((thread) => thread.p?.id === procId);
+        if (existingThread === undefined) {
+            throw new Error(`no existing thread found for procId ${procId}, skipping assignment`);
+        }
+        let renderIsSchedulingDelay = 0;
+        if (existingThread.mId === undefined) {
+            existingThread.mId = mId;
+        } else if (existingThread.mId !== mId) {
+            // If p is already assigned to a different M, transfer the p to the
+            // new M and leave the old M with no p.
+            const p = existingThread.p;
+            existingThread.p = undefined;
+            let targetThread = threads.find(thread => thread.mId === mId);
+            if (targetThread === undefined) {
+                // Add to thread if this is a new M.
+                threads.push({
+                    mId,
+                    isScheduling: false,
+                    p,
+                });
+                // When a new thread is added, introduce a delay between
+                // rendering the initial state and rendering change of
+                // isSchedule to avoid having the element in its final state at
+                // birth.
+                set(() => ({
+                    threads: [...threads],
+                }));
+                renderIsSchedulingDelay = 10;
+            } else {
+                targetThread.p = p;
+            }
+        }
+
+        setTimeout(() => {
             set((state) => ({
-                threads: state.threads.map((thread) => thread.mId === mId? {...thread, isScheduling: true}: thread),
+                threads: [...threads.map((thread) => thread.mId === mId? {...thread, isScheduling: true}: thread)],
                 runningCodeLines: new Map([...state.runningCodeLines].filter(([k, _]) => k !== mId)),
             }))
-        }
+        }, renderIsSchedulingDelay);
     },
 
     handleNewProcEvent: (mId: number) => {

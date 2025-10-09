@@ -74,13 +74,17 @@ func (in *Instrumentor) Close() {
 }
 
 type UprobeAttachSpec struct {
+	Target UprobeAttachTarget
+	BpfFn  string
+}
+
+type UprobeAttachTarget struct {
 	TargetPkg string
 	TargetFn  string
-	BpfFn     string
 }
 
 func (in *Instrumentor) InstrumentEntry(spec UprobeAttachSpec) {
-	targetSym := strings.Join([]string{spec.TargetPkg, spec.TargetFn}, ".")
+	targetSym := strings.Join([]string{spec.Target.TargetPkg, spec.Target.TargetFn}, ".")
 	startOffset, err := in.interpreter.GetFunctionStartOffset(targetSym)
 	if err != nil {
 		log.Fatalf("Could not get start offset for target %s\n", targetSym)
@@ -94,12 +98,12 @@ func (in *Instrumentor) InstrumentEntry(spec UprobeAttachSpec) {
 }
 
 func (in *Instrumentor) InstrumentReturns(spec UprobeAttachSpec) {
-	targetSym := strings.Join([]string{spec.TargetPkg, spec.TargetFn}, ".")
+	targetSym := strings.Join([]string{spec.Target.TargetPkg, spec.Target.TargetFn}, ".")
 	retOffsets, err := in.interpreter.GetFunctionReturnOffset(targetSym)
 	if err != nil {
 		log.Fatalf("Could not get return offsets for function %s\n", targetSym)
 	}
-	log.Printf("Return offsets for function %s to instrument: %+v", fmt.Sprintf("%s.%s", spec.TargetPkg, spec.TargetFn), retOffsets)
+	log.Printf("Return offsets for function %s to instrument: %+v", fmt.Sprintf("%s.%s", spec.Target.TargetPkg, spec.Target.TargetFn), retOffsets)
 	for _, offset := range retOffsets {
 		_, err := in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[spec.BpfFn], &link.UprobeOptions{
 			Offset: offset,
@@ -110,16 +114,21 @@ func (in *Instrumentor) InstrumentReturns(spec UprobeAttachSpec) {
 	}
 }
 
-func (in *Instrumentor) Delay(spec UprobeAttachSpec) {
-	if len(spec.TargetFn) > 0 {
-		log.Printf("Delaying entry of function %s.%s", spec.TargetPkg, spec.TargetFn)
-		in.InstrumentEntry(spec)
+const delayBpfFn = "delay"
+
+func (in *Instrumentor) Delay(target UprobeAttachTarget) {
+	if len(target.TargetFn) > 0 {
+		log.Printf("Delaying entry of function %s.%s", target.TargetPkg, target.TargetFn)
+		in.InstrumentEntry(UprobeAttachSpec{
+			Target: target,
+			BpfFn:  delayBpfFn,
+		})
 	} else {
-		pkgOffsets := in.interpreter.GetDelayableOffsetsForPackage(spec.TargetPkg)
-		log.Printf("Delayable offsets for package %s: %+v", spec.TargetPkg, pkgOffsets)
+		pkgOffsets := in.interpreter.GetDelayableOffsetsForPackage(target.TargetPkg)
+		log.Printf("Delayable offsets for package %s: %+v", target.TargetPkg, pkgOffsets)
 		for fnSym, offsets := range pkgOffsets {
 			for _, offset := range offsets {
-				_, err := in.targetExe.Uprobe(fnSym, in.bpfColl.Programs[spec.BpfFn], &link.UprobeOptions{
+				_, err := in.targetExe.Uprobe(fnSym, in.bpfColl.Programs[delayBpfFn], &link.UprobeOptions{
 					Offset: offset,
 				})
 				if err != nil {
