@@ -277,6 +277,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		if probeEvent := r.interpretScheduleCallstack(event); probeEvent != nil {
+			log.Printf("Schedule event: %+v", probeEvent)
 			r.ProbeEventCh <- probeEvent
 		}
 	case EVENT_TYPE_RUNQ_STATUS:
@@ -362,7 +363,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		interpretedCallerPC := r.interpretPC(event.CallerPC)
-		if interpretedCallerPC.File != nil && *interpretedCallerPC.Func != "runtime.schedule" {
+		if interpretedCallerPC.Func == nil || *interpretedCallerPC.Func != "runtime.schedule" {
 			log.Printf("Execute event from non-target callsite (%s), skipping...", *interpretedCallerPC.Func)
 			break
 		}

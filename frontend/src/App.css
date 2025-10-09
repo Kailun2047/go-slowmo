@@ -152,9 +152,17 @@
   margin-right: 20px;
 }
 
-.schedule-spinner-wrapper-transition {
-  transform: rotate(180deg);
-  transition: transform 0.5s linear;
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.schedule-spinner-wrapper-animation {
+  animation: 1s infinite linear spin;
 }
 
 .schedule-spinner-circle {

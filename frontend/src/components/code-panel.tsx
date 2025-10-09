@@ -36,6 +36,7 @@ function AceEditorWrapper() {
     const handleDelayEvent = useBoundStore((state) => state.handleDelayEvent);
     const handleScheduleEvent = useBoundStore((state) => state.handleScheduleEvent);
     const handleNewProcEvent = useBoundStore((state) => state.handleNewProcEvent);
+    const handleExecuteEvent = useBoundStore((state) => state.handleExecuteEvent);
     const handleStructureState = useBoundStore((state) => state.handleStructureState);
     const initThreads = useBoundStore((state) => state.initThreads);
 
@@ -168,13 +169,7 @@ function AceEditorWrapper() {
                         throw new Error(`invalid executeEvent`)
                     }
                     const {goId, executionContext} = found;
-                    handleStructureState([
-                        {
-                            mId,
-                            structureType: StructureType.Executing,
-                            value: {id: Number(goId), entryFunc: executionContext.func!}
-                        },
-                    ]);
+                    handleExecuteEvent(mId, Number(goId), executionContext.func!);
                     break;
                 case 'runqStatusEvent':
                     const {procId, runnext, runqEntries} = event.structureStateOneof.runqStatusEvent;

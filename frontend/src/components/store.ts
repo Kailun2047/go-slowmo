@@ -79,6 +79,7 @@ interface SharedSlice {
     structureStateCollections: Structure[][];
     handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => void;
     handleNewProcEvent: (mId: number) => void;
+    handleExecuteEvent: (mId: number, goId: number, func: string) => void;
     handleNotification: (targetStructs: Structure[]) => void;
     handleStructureState: (receivedStructs: Structure[]) => void;
     // handleStructureStateChange is to be invoked upon complete collection of
@@ -189,7 +190,6 @@ const createSharedSlice: StateCreator<
         if (existingThread === undefined) {
             throw new Error(`no existing thread found for procId ${procId}, skipping assignment`);
         }
-        let renderIsSchedulingDelay = 0;
         if (existingThread.mId === undefined) {
             existingThread.mId = mId;
         } else if (existingThread.mId !== mId) {
@@ -205,30 +205,31 @@ const createSharedSlice: StateCreator<
                     isScheduling: false,
                     p,
                 });
-                // When a new thread is added, introduce a delay between
-                // rendering the initial state and rendering change of
-                // isSchedule to avoid having the element in its final state at
-                // birth.
-                set(() => ({
-                    threads: [...threads],
-                }));
-                renderIsSchedulingDelay = 10;
             } else {
                 targetThread.p = p;
             }
         }
 
-        setTimeout(() => {
-            set((state) => ({
-                threads: [...threads.map((thread) => thread.mId === mId? {...thread, isScheduling: true}: thread)],
-                runningCodeLines: new Map([...state.runningCodeLines].filter(([k, _]) => k !== mId)),
-            }))
-        }, renderIsSchedulingDelay);
+        set((state) => ({
+            threads: [...threads.map((thread) => thread.mId === mId? {...thread, isScheduling: true}: thread)],
+            runningCodeLines: new Map([...state.runningCodeLines].filter(([k, _]) => k !== mId)),
+        }));
     },
 
     handleNewProcEvent: (mId: number) => {
         get().handleNotification([
             {mId, structureType: StructureType.LocalRunq},
+        ]);
+    },
+
+    handleExecuteEvent: (mId: number, goId: number, func: string) => {
+        get().resetIsScheduling(mId);
+        get().handleStructureState([
+            {
+                mId,
+                structureType: StructureType.Executing,
+                value: {id: Number(goId), entryFunc: func},
+            },
         ]);
     },
 

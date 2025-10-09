@@ -53,6 +53,7 @@ static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
 static int64_t unwind_stack(char *curr_stack_addr, uint64_t pc, char *curr_fp, uint64_t callstack_pc_list[]);
 static long find_target_func(void *map, void *key, void *value, void *ctx);
 static bool check_delay_done(uint64_t ns_start);
+static void delay_helper(uint64_t delay_ns);
 
 // C and Go could have different memory layout (e.g. aligning rule) for the
 // "same" struct. uint64_t is used here to ensure consistent encoding/decoding
@@ -127,6 +128,8 @@ int BPF_UPROBE(go_newproc) {
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     bpf_ringbuf_submit(e, 0);
+
+    delay_helper(DELAY_NS);
     
     return 0;
 }
@@ -190,7 +193,6 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx, 
 SEC("uprobe/delay")
 int BPF_UPROBE(delay) {
     struct delay_event *e;
-    uint64_t i, j, ns, ns_start;
     char *m_ptr;
     
     e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct delay_event), 0);
@@ -205,14 +207,21 @@ int BPF_UPROBE(delay) {
     bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     bpf_ringbuf_submit(e, 0);
 
+    delay_helper(DELAY_NS);
+
+    return 0;
+}
+
+static void delay_helper(uint64_t delay_ns) {
+    uint64_t i, ns_start;
+
     ns_start = bpf_ktime_get_ns();
-    // Nested loops suffice for introducing a delay as long as 1s.
+    // Nested loops suffice for introducing a delay as long as a handful of seconds.
     bpf_for(i, 0, MAX_LOOP_ITERS) {
         if (check_delay_done(ns_start)) {
             break;
         }
     }
-    return 0;
 }
 
 static bool check_delay_done(uint64_t ns_start) {
@@ -557,6 +566,9 @@ int BPF_UPROBE(go_schedule) {
         e->callstack[i] = pc_list[i];
     }
     bpf_ringbuf_submit(e, 0);
+
+    delay_helper(DELAY_NS);
+
     return 0;
 }
 
@@ -616,6 +628,9 @@ int BPF_UPROBE(go_execute) {
         bpf_printk("bpf_ringbuf_reserve failed in go_execute");
         return 1;
     }
+
+    delay_helper(DELAY_NS);
+
     e->etype = EVENT_TYPE_FOUND_RUNNABLE;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));

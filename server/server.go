@@ -110,20 +110,12 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		},
 		BpfFn: "go_newproc",
 	})
-	instrumentor.Delay(instrumentation.UprobeAttachTarget{
-		TargetPkg: "runtime",
-		TargetFn:  "newproc",
-	})
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		Target: instrumentation.UprobeAttachTarget{
 			TargetPkg: "runtime",
 			TargetFn:  "schedule",
 		},
 		BpfFn: "go_schedule",
-	})
-	instrumentor.Delay(instrumentation.UprobeAttachTarget{
-		TargetPkg: "runtime",
-		TargetFn:  "schedule",
 	})
 	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
 		Target: instrumentation.UprobeAttachTarget{
