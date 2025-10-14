@@ -185,11 +185,11 @@ function AceEditorWrapper() {
                                 id: Number(procId),
                                 runnext: {
                                     id: Number(runnext.goId),
-                                    entryFunc: runnext.executionContext!.func!,
+                                    entryFunc: runnext.executionContext?.func?? '',
                                 },
                                 runq: runqEntries.map(entry => ({
                                     id: Number(entry.goId),
-                                    entryFunc: entry.executionContext!.func!,
+                                    entryFunc: entry.executionContext?.func?? '',
                                 }))
                             },
                         },

@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
@@ -101,7 +100,7 @@ type delayEvent struct {
 type scheduleEvent struct {
 	EType          eventType
 	MID            int64
-	Callstack      [32]uint64
+	Callstack      [8]uint64
 	CallstackDepth int64
 	ProcID         int64 // -1 if not applicable
 }
@@ -174,7 +173,6 @@ func (r *EventReader) Start() {
 	go func() {
 		defer close(r.eventCh)
 		for {
-			r.ringbufReader.SetDeadline(time.Now().Add(1 * time.Second))
 			record, err := r.ringbufReader.Read()
 			if err != nil {
 				if errors.Is(err, ringbuf.ErrClosed) {
@@ -208,7 +206,10 @@ func (r *EventReader) Start() {
 }
 
 func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error {
-	var err error
+	var (
+		err        error
+		probeEvent *proto.ProbeEvent
+	)
 
 	_, err = readSeeker.Seek(0, io.SeekStart)
 	if err != nil {
@@ -227,7 +228,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
 		}
 		creatorGoId := int64(event.CreatorGoID)
-		probeEvent := &proto.ProbeEvent{
+		probeEvent = &proto.ProbeEvent{
 			ProbeEventOneof: &proto.ProbeEvent_NotificationEvent{
 				NotificationEvent: &proto.NotificationEvent{
 					NotificationOneof: &proto.NotificationEvent_NewProcEvent{
@@ -246,8 +247,6 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 				},
 			},
 		}
-		log.Printf("Newproc event: %+v", probeEvent)
-		r.ProbeEventCh <- probeEvent
 	case EVENT_TYPE_DELAY:
 		var event delayEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -259,7 +258,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			log.Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
 		goId := int64(event.GoID)
-		probeEvent := &proto.ProbeEvent{
+		probeEvent = &proto.ProbeEvent{
 			ProbeEventOneof: &proto.ProbeEvent_DelayEvent{
 				DelayEvent: &proto.DelayEvent{
 					GoId:      &goId,
@@ -268,18 +267,13 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 				},
 			},
 		}
-		log.Printf("Delay event: %v", probeEvent)
-		r.ProbeEventCh <- probeEvent
 	case EVENT_TYPE_SCHEDULE:
 		var event scheduleEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
 		if err != nil {
 			break
 		}
-		if probeEvent := r.interpretScheduleCallstack(event); probeEvent != nil {
-			log.Printf("Schedule event: %+v", probeEvent)
-			r.ProbeEventCh <- probeEvent
-		}
+		probeEvent = r.interpretScheduleCallstack(event)
 	case EVENT_TYPE_RUNQ_STATUS:
 		var event runqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
@@ -291,7 +285,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
 			runnext := r.interpretRunqEntries([]runqEntry{event.RunqEntry})[0]
-			probeEvent := &proto.ProbeEvent{
+			probeEvent = &proto.ProbeEvent{
 				ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
 					StructureStateEvent: &proto.StructureStateEvent{
 						StructureStateOneof: &proto.StructureStateEvent_RunqStatusEvent{
@@ -311,8 +305,6 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 				},
 			}
 			delete(r.localRunqs, event.ProcID)
-			log.Printf("Local runq status event: %v", probeEvent)
-			r.ProbeEventCh <- probeEvent
 		} else {
 			r.localRunqs[event.ProcID] = append(r.localRunqs[event.ProcID], event.RunqEntry)
 		}
@@ -368,7 +360,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		goId := int64(event.Found.GoID)
-		probeEvent := &proto.ProbeEvent{
+		probeEvent = &proto.ProbeEvent{
 			ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
 				StructureStateEvent: &proto.StructureStateEvent{
 					StructureStateOneof: &proto.StructureStateEvent_ExecuteEvent{
@@ -389,10 +381,13 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 				},
 			},
 		}
-		log.Printf("Execute event: %+v", probeEvent)
-		r.ProbeEventCh <- probeEvent
 	default:
 		err = fmt.Errorf("unrecognized event type")
+	}
+
+	if probeEvent != nil {
+		log.Printf("Event of type %v: %+v", etype, probeEvent)
+		r.ProbeEventCh <- probeEvent
 	}
 
 	return err
@@ -429,7 +424,7 @@ func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEven
 			},
 		},
 	}
-	if event.ProcID != -1 {
+	if event.ProcID >= 0 {
 		probeEvent.GetNotificationEvent().GetScheduleEvent().ProcId = &event.ProcID
 	}
 	return

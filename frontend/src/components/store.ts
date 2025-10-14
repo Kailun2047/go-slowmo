@@ -178,7 +178,7 @@ const createSharedSlice: StateCreator<
 
     handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => {
         if (procId === undefined) {
-            throw new Error('unexpected new M without procId, skipping assignment');
+            throw new Error('unexpected new M without procId');
         }
         get().handleNotification([
             {mId, structureType: StructureType.Executing},
@@ -188,7 +188,7 @@ const createSharedSlice: StateCreator<
         const threads = get().threads;
         const existingThread = threads.find((thread) => thread.p?.id === procId);
         if (existingThread === undefined) {
-            throw new Error(`no existing thread found for procId ${procId}, skipping assignment`);
+            throw new Error(`no existing thread found for procId ${procId}`);
         }
         if (existingThread.mId === undefined) {
             existingThread.mId = mId;

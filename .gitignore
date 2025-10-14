@@ -3,6 +3,7 @@
 **/*.asm
 **/*.out
 **/*.log
+*.prof
 
 slowmo-server
 target/greet

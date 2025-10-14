@@ -16,6 +16,8 @@ var (
 )
 
 func main() {
+	flag.Parse()
+	log.Default().SetFlags(log.LstdFlags | log.Lmicroseconds)
 	lis, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", *port))
 	if err != nil {
 		log.Fatalf("Failed to listen on port %d: %v", *port, err)

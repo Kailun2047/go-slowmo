@@ -113,21 +113,16 @@ struct {
 
 SEC("uprobe/go_newproc")
 int BPF_UPROBE(go_newproc) {
-    struct newproc_event *e;
+    struct newproc_event e;
     char *m_ptr;
 
     // Retrieve PC value of callee fn and publish to ringbuf.
-    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct newproc_event), 0);
-    if (!e) {
-        bpf_printk("bpf_ringbuf_reserve failed in go_newproc");
-        return 1;
-    }
-    e->etype = EVENT_TYPE_NEWPROC;
-    bpf_probe_read_user(&e->newproc_pc, sizeof(uint64_t), &((struct funcval *)GO_PARAM1(ctx))->fn);
-    bpf_probe_read_user(&e->creator_goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
+    e.etype = EVENT_TYPE_NEWPROC;
+    bpf_probe_read_user(&e.newproc_pc, sizeof(uint64_t), &((struct funcval *)GO_PARAM1(ctx))->fn);
+    bpf_probe_read_user(&e.creator_goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
-    bpf_ringbuf_submit(e, 0);
+    bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
 
     delay_helper(DELAY_NS);
     
@@ -150,7 +145,7 @@ int BPF_UPROBE(go_runq_status) {
 }
 
 static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx, int64_t mid) {
-    struct runq_status_event *e;
+    struct runq_status_event e;
     char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar);
     uint32_t runqhead, runqtail;
     uint64_t runq_i;
@@ -163,49 +158,39 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx, 
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
 
     bpf_for(runq_i, runqhead, runqtail + 1) {
-        e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct runq_status_event), 0);
-        if (!e) {
-            bpf_printk("bpf_ringbuf_reserve failed for local runq entry in go_runtime_func_ret_runq_status");
-            return 1;
-        }
-        e->etype = EVENT_TYPE_RUNQ_STATUS;
-        e->runq_entry_idx = runq_i;
-        e->procid = procid;
-        e->runqhead = runqhead;
-        e->runqtail = runqtail;
-        e->mid = mid;
+        e.etype = EVENT_TYPE_RUNQ_STATUS;
+        e.runq_entry_idx = runq_i;
+        e.procid = procid;
+        e.runqhead = runqhead;
+        e.runqtail = runqtail;
+        e.mid = mid;
         if (runq_i == runqtail) {
             g_ptr = runnext_g_ptr;
         } else {
             bpf_probe_read_user(&g_ptr, sizeof(char *), (local_runq + (runq_i % P_LOCAL_RUNQ_MAX_LEN) * sizeof(char *)));
         }
         if (!g_ptr) {
-            e->runq_entry.pc = 0;
+            e.runq_entry.pc = 0;
         } else {
-            bpf_probe_read_user(&(e->runq_entry.goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
-            bpf_probe_read_user(&(e->runq_entry.pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
+            bpf_probe_read_user(&(e.runq_entry.goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+            bpf_probe_read_user(&(e.runq_entry.pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
         }
-        bpf_ringbuf_submit(e, 0);
+        bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
     }
     return 0;
 }
 
 SEC("uprobe/delay")
 int BPF_UPROBE(delay) {
-    struct delay_event *e;
+    struct delay_event e;
     char *m_ptr;
     
-    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct delay_event), 0);
-    if (!e) {
-        bpf_printk("bpf_ringbuf_reserve failed in delay");
-        return 1;
-    }
-    e->etype = EVENT_TYPE_DELAY;
-    e->pc = CURR_PC(ctx);
-    bpf_probe_read_user(&e->goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
+    e.etype = EVENT_TYPE_DELAY;
+    e.pc = CURR_PC(ctx);
+    bpf_probe_read_user(&e.goid, sizeof(uint64_t), GET_GOID_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
-    bpf_ringbuf_submit(e, 0);
+    bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
 
     delay_helper(DELAY_NS);
 
@@ -219,9 +204,10 @@ static void delay_helper(uint64_t delay_ns) {
     // Nested loops suffice for introducing a delay as long as a handful of seconds.
     bpf_for(i, 0, MAX_LOOP_ITERS) {
         if (check_delay_done(ns_start)) {
-            break;
+            return;
         }
     }
+    bpf_printk("returning before delay duration is met");
 }
 
 static bool check_delay_done(uint64_t ns_start) {
@@ -282,37 +268,27 @@ int BPF_UPROBE(go_globrunq_status) {
     char *g_ptr;
     int64_t runq_size;
     uint64_t runq_i;
-    struct globrunq_status_event *e;
+    struct globrunq_status_event e;
 
     bpf_probe_read_user(&g_ptr, sizeof(char *), SCHED_GET_RUNQ_HEAD_ADDR(runtime_sched_addr));
     bpf_probe_read_user(&runq_size, sizeof(int32_t), SCHED_GET_RUNQ_SIZE_ADDR(runtime_sched_addr));
 
     bpf_for(runq_i, 0, runq_size) {
-        e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct globrunq_status_event), 0);
-        if (!e) {
-            bpf_printk("bpf_ringbuf_reserve failed in globrunq_status");
-            return 1;
-        }
-        e->etype = EVENT_TYPE_GLOBRUNQ_STATUS;
-        e->size = runq_size;
-        e->runq_entry_idx = runq_i;
-        bpf_probe_read_user(&(e->runq_entry.goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
-        bpf_probe_read_user(&(e->runq_entry.pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
+        e.etype = EVENT_TYPE_GLOBRUNQ_STATUS;
+        e.size = runq_size;
+        e.runq_entry_idx = runq_i;
+        bpf_probe_read_user(&(e.runq_entry.goid), sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+        bpf_probe_read_user(&(e.runq_entry.pc), sizeof(uint64_t), GET_PC_ADDR(g_ptr));
         bpf_probe_read_user(&g_ptr, sizeof(char *), GET_SCHEDLINK_ADDR(g_ptr));
-        bpf_ringbuf_submit(e, 0);
+        bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
     }
 
     // Report an empty entry to indicate the end of globrunq.
-    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct globrunq_status_event), 0);
-    if (!e) {
-        bpf_printk("bpf_ringbuf_reserve failed in globrunq_status");
-        return 1;
-    }
-    e->etype = EVENT_TYPE_GLOBRUNQ_STATUS;
-    e->size = runq_size;
-    e->runq_entry_idx = runq_size;
-    e->runq_entry.pc = 0;
-    bpf_ringbuf_submit(e, 0);
+    e.etype = EVENT_TYPE_GLOBRUNQ_STATUS;
+    e.size = runq_size;
+    e.runq_entry_idx = runq_size;
+    e.runq_entry.pc = 0;
+    bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
     return 0;
 }
 
@@ -374,7 +350,7 @@ struct semtable_status_event {
 };
 
 static int report_semtable_status(int32_t procid) {
-    struct semtable_status_event *e;
+    struct semtable_status_event e;
     uint8_t semroot_i;
     char *root_sudog;
     uint64_t version;
@@ -393,15 +369,10 @@ static int report_semtable_status(int32_t procid) {
         }
     }
 
-    e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct semtable_status_event), 0);
-    if (!e) {
-        bpf_printk("bpf_ringbuf_reserve failed in report_semtable_status");
-        return 1;
-    }
-    e->etype = EVENT_TYPE_SEMTABLE_STATUS;
-    e->version = version;
-    e->is_last = 1;
-    bpf_ringbuf_submit(e, 0);
+    e.etype = EVENT_TYPE_SEMTABLE_STATUS;
+    e.version = version;
+    e.is_last = 1;
+    bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
 
     return 0;
 }
@@ -482,7 +453,7 @@ static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int
 }
 
 static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
-    struct semtable_status_event *e;
+    struct semtable_status_event e;
     char *sudog = head_sudog, *sudog_gp;
     uint8_t i;
 
@@ -494,19 +465,14 @@ static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
         if (!sudog) {
             break;
         }
-        e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct semtable_status_event), 0);
-        if (!e) {
-            bpf_printk("bpf_ringbuf_reserve failed in traverse_sudog_waitlink");
-            return 1;
-        }
-        e->etype = EVENT_TYPE_SEMTABLE_STATUS;
-        e->version = semtab_version;
-        e->is_last = 0;
-        bpf_probe_read_user(&((e->sudog).elem), sizeof(uint64_t), SUDOG_GET_ELEM(sudog));
+        e.etype = EVENT_TYPE_SEMTABLE_STATUS;
+        e.version = semtab_version;
+        e.is_last = 0;
+        bpf_probe_read_user(&((e.sudog).elem), sizeof(uint64_t), SUDOG_GET_ELEM(sudog));
         bpf_probe_read_user(&sudog_gp, sizeof(char *), sudog); // pointer to g is the first field of sudog struct
-        bpf_probe_read_user(&((e->sudog).goid), sizeof(uint64_t), GET_GOID_ADDR(sudog_gp));
+        bpf_probe_read_user(&((e.sudog).goid), sizeof(uint64_t), GET_GOID_ADDR(sudog_gp));
         bpf_probe_read_user(&sudog, sizeof(char *), SUDOG_GET_WAITLINK(sudog));
-        bpf_ringbuf_submit(e, 0);
+        bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
     }
 
     return 0;
@@ -525,7 +491,7 @@ struct {
     __uint(max_entries, 8 * 1024);
 } go_functab SEC(".maps");
 
-#define MAX_STACK_TRACE_DEPTH 32
+#define MAX_STACK_TRACE_DEPTH 8
 #define GO_FUNC_FLAG_TOP_FRAME 1
 
 struct schedule_event {
@@ -538,34 +504,30 @@ struct schedule_event {
 
 SEC("uprobe/go_schedule")
 int BPF_UPROBE(go_schedule) {
-    struct schedule_event *e;
+    struct schedule_event e;
     char *m_ptr, *p_ptr;
     uint64_t pc_list[MAX_STACK_TRACE_DEPTH];
-    int i;
+    int32_t i, procid32;
 
-    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct schedule_event), 0))) {
-        bpf_printk("bpf_ringbuf_reserve failed in schedule");
-        return 1;
-    }
-    e->etype = EVENT_TYPE_SCHEDULE;
+    e.etype = EVENT_TYPE_SCHEDULE;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
     if (!p_ptr) {
-        e->procid = -1;
+        e.procid = -1;
     } else {
-        bpf_probe_read_user(&e->procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
+        bpf_probe_read_user(&procid32, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
+        e.procid = (int64_t)procid32;
     }
-    e->callstack_depth = unwind_stack(CURR_STACK_POINTER(ctx), CURR_PC(ctx), CURR_FP(ctx), pc_list);
-    if (e->callstack_depth < 0) {
+    e.callstack_depth = unwind_stack(CURR_STACK_POINTER(ctx), CURR_PC(ctx), CURR_FP(ctx), pc_list);
+    if (e.callstack_depth < 0) {
         bpf_printk("error unwinding callstack for pc %d", CURR_PC(ctx));
-        bpf_ringbuf_discard(e, 0);
         return 1;
     }
     bpf_for(i, 0, MAX_STACK_TRACE_DEPTH) {
-        e->callstack[i] = pc_list[i];
+        e.callstack[i] = pc_list[i];
     }
-    bpf_ringbuf_submit(e, 0);
+    bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
 
     delay_helper(DELAY_NS);
 
@@ -621,22 +583,19 @@ struct execute_event {
 
 SEC("uprobe/go_execute")
 int BPF_UPROBE(go_execute) {
-    struct execute_event *e;
+    struct execute_event e;
     char *m_ptr;
-
-    if (!(e = bpf_ringbuf_reserve(&instrumentor_event, sizeof(struct execute_event), 0))) {
-        bpf_printk("bpf_ringbuf_reserve failed in go_execute");
-        return 1;
-    }
+    int64_t mid;
 
     delay_helper(DELAY_NS);
 
-    e->etype = EVENT_TYPE_FOUND_RUNNABLE;
+    e.etype = EVENT_TYPE_FOUND_RUNNABLE;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&e->mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
-    bpf_probe_read_user(&e->found.goid, sizeof(uint64_t), GET_GOID_ADDR(GO_PARAM1(ctx)));
-    bpf_probe_read_user(&e->found.pc, sizeof(uint64_t), GET_PC_ADDR(GO_PARAM1(ctx)));
-    bpf_probe_read_user(&e->callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
-    bpf_ringbuf_submit(e, 0);
+    bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_probe_read_user(&e.found.goid, sizeof(uint64_t), GET_GOID_ADDR(GO_PARAM1(ctx)));
+    bpf_probe_read_user(&e.found.pc, sizeof(uint64_t), GET_PC_ADDR(GO_PARAM1(ctx)));
+    bpf_probe_read_user(&e.callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
+    mid = e.mid;
+    bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
     return 0;
 }
