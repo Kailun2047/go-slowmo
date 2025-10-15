@@ -3,12 +3,12 @@ package instrumentation
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
@@ -135,15 +135,21 @@ type executeEvent struct {
 	CallerPC uint64
 }
 
+type ringbufRecordWithTimestamp struct {
+	record    ringbuf.Record
+	timestamp int64
+}
+
 type EventReader struct {
-	interpreter   *ELFInterpreter
-	ringbufReader *ringbuf.Reader
-	eventCh       chan ringbuf.Record
-	byteOrder     binary.ByteOrder
-	localRunqs    map[int64][]runqEntry
-	globrunq      []runqEntry
-	semtable      versionedSemtable
-	ProbeEventCh  chan *proto.ProbeEvent
+	interpreter       *ELFInterpreter
+	ringbufReader     *ringbuf.Reader
+	shouldCloseReader atomic.Bool
+	eventCh           chan ringbufRecordWithTimestamp
+	byteOrder         binary.ByteOrder
+	localRunqs        map[int64][]runqEntry
+	globrunq          []runqEntry
+	semtable          versionedSemtable
+	ProbeEventCh      chan *proto.ProbeEvent
 }
 
 func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventReader {
@@ -151,14 +157,16 @@ func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventRea
 	if err != nil {
 		log.Fatal("Create ring buffer reader: ", err)
 	}
-	return &EventReader{
+	eventReader := &EventReader{
 		interpreter:   interpreter,
 		ringbufReader: ringbufReader,
-		eventCh:       make(chan ringbuf.Record),
+		eventCh:       make(chan ringbufRecordWithTimestamp),
 		byteOrder:     determineByteOrder(),
 		localRunqs:    make(map[int64][]runqEntry),
 		ProbeEventCh:  make(chan *proto.ProbeEvent),
 	}
+	eventReader.shouldCloseReader.Store(false)
+	return eventReader
 }
 
 // When Close() is called, there's no guarantee that all events which are
@@ -166,38 +174,43 @@ func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventRea
 // responsibility to make sure there won't be any further events to collect
 // before calling Close().
 func (r *EventReader) Close() {
-	r.ringbufReader.Close()
+	r.shouldCloseReader.Store(true)
 }
 
 func (r *EventReader) Start() {
 	go func() {
 		defer close(r.eventCh)
 		for {
+			if r.shouldCloseReader.Load() {
+				r.ringbufReader.Close()
+				return
+			}
+			if r.ringbufReader.AvailableBytes() <= 0 {
+				continue
+			}
 			record, err := r.ringbufReader.Read()
 			if err != nil {
-				if errors.Is(err, ringbuf.ErrClosed) {
-					log.Println("Event reader closed")
-					return
-				}
-				if !errors.Is(err, os.ErrDeadlineExceeded) {
-					log.Fatal("Read ring buffer: ", err)
-				}
+				log.Fatal("Read ring buffer: ", err)
 			} else {
-				r.eventCh <- record
+				recordWithTimestamp := ringbufRecordWithTimestamp{
+					record:    record,
+					timestamp: time.Now().UnixMilli(),
+				}
+				r.eventCh <- recordWithTimestamp
 			}
 		}
 	}()
 
 	go func() {
 		defer close(r.ProbeEventCh)
-		for record := range r.eventCh {
+		for recordWithTimestamp := range r.eventCh {
 			var etype eventType
-			bytesReader := bytes.NewReader(record.RawSample)
+			bytesReader := bytes.NewReader(recordWithTimestamp.record.RawSample)
 			err := binary.Read(bytesReader, r.byteOrder, &etype)
 			if err != nil {
 				log.Fatal("Decode event type: ", err)
 			}
-			err = r.readEvent(bytesReader, etype)
+			err = r.readEvent(bytesReader, etype, recordWithTimestamp.timestamp)
 			if err != nil {
 				log.Fatalf("Decode event type %v: %v\n", etype, err)
 			}
@@ -205,7 +218,7 @@ func (r *EventReader) Start() {
 	}()
 }
 
-func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error {
+func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType, timestamp int64) error {
 	var (
 		err        error
 		probeEvent *proto.ProbeEvent
@@ -386,7 +399,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 	}
 
 	if probeEvent != nil {
-		log.Printf("Event of type %v: %+v", etype, probeEvent)
+		log.Printf("Event (received from ringbuf at %d) of type %v: %+v", timestamp, etype, probeEvent)
 		r.ProbeEventCh <- probeEvent
 	}
 

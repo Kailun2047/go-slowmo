@@ -508,10 +508,12 @@ int BPF_UPROBE(go_schedule) {
     char *m_ptr, *p_ptr;
     uint64_t pc_list[MAX_STACK_TRACE_DEPTH];
     int32_t i, procid32;
+    uint64_t mid, timestamp;
 
     e.etype = EVENT_TYPE_SCHEDULE;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    mid = e.mid;
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
     if (!p_ptr) {
         e.procid = -1;
@@ -528,6 +530,8 @@ int BPF_UPROBE(go_schedule) {
         e.callstack[i] = pc_list[i];
     }
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
+    timestamp = bpf_ktime_get_boot_ns();
+    bpf_printk("[%llu] schedule event for mId %d submitted", timestamp, mid);
 
     delay_helper(DELAY_NS);
 
@@ -586,6 +590,7 @@ int BPF_UPROBE(go_execute) {
     struct execute_event e;
     char *m_ptr;
     int64_t mid;
+    uint64_t goid, timestamp;
 
     delay_helper(DELAY_NS);
 
@@ -596,6 +601,9 @@ int BPF_UPROBE(go_execute) {
     bpf_probe_read_user(&e.found.pc, sizeof(uint64_t), GET_PC_ADDR(GO_PARAM1(ctx)));
     bpf_probe_read_user(&e.callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
     mid = e.mid;
+    goid = e.found.goid;
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
+    timestamp = bpf_ktime_get_boot_ns();
+    bpf_printk("[%llu] execute event for mId %d and goId %d submitted", timestamp, mid, goid);
     return 0;
 }
