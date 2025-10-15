@@ -19,10 +19,15 @@ proto_server := $(proto_dir)/slowmo.pb.go
 grpc_server := $(proto_dir)/slowmo_grpc.pb.go
 proto_client := $(client_proto_dir)/slowmo.ts
 grpc_client := $(client_proto_dir)/slowmo.client.ts
+vmlinux_header := $(instrumentation_dir)/vmlinux.h
 
 all: proto $(instrumentor_bpf_prog) $(server_prog)
 
-# TODO: add libbpf as dependency.
+$(vmlinux_header):
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(vmlinux_header)
+
+$(instrumentor_bpf_src): $(vmlinux_header)
+
 $(instrumentor_bpf_prog): $(instrumentor_bpf_src)
 	$(CC) $(CFLAGS) -o $(instrumentor_bpf_prog) -c $(instrumentor_bpf_src)
 	go generate -C $(instrumentation_dir)

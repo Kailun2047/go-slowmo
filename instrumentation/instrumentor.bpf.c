@@ -1,19 +1,17 @@
 //go:build ignore
-#include <linux/bpf.h> // TODO: replace with vmlinux.h
+#include "vmlinux.h"
 #include <bpf/bpf_tracing.h>
-#include <stdint.h>
-#include <asm/ptrace.h>
 #include <stdbool.h>
 
 char __license[] SEC("license") = "Dual MIT/GPL";
 
-#define GO_PARAM1(x) ((x)->rax)
-#define GO_PARAM2(x) ((x)->rbx)
-#define GO_PARAM3(x) ((x)->rcx)
+#define GO_PARAM1(x) ((x)->ax)
+#define GO_PARAM2(x) ((x)->bx)
+#define GO_PARAM3(x) ((x)->cx)
 #define CURR_G_ADDR(x) ((x)->r14)
-#define CURR_PC(x) ((x)->rip)
-#define CURR_STACK_POINTER(x) ((char *)((x)->rsp))
-#define CURR_FP(x) ((char *)((x)->rbp))
+#define CURR_PC(x) ((x)->ip)
+#define CURR_STACK_POINTER(x) ((char *)((x)->sp))
+#define CURR_FP(x) ((char *)((x)->bp))
 #define MAX_LOOP_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
 #define DELAY_NS 1e9
 
