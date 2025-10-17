@@ -1,3 +1,11 @@
+# Install tooling for protobuf and grpc code generation
+
+`apt install -y protobuf-compiler`
+
+`go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.1`
+
+`go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1`
+
 # Starting the Envoy proxy
 
 ## Using Docker

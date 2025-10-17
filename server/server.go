@@ -21,14 +21,13 @@ import (
 )
 
 const (
-	goBinaryPath         = "/home/kailun/go/go1.22.5/bin/go"
 	instrumentorProgPath = "./instrumentor.o"
 
 	outputReaderLimit  = 1024
 	executionTimeLimit = 10 * time.Second
 )
 
-var numCPU = runtime.NumCPU()
+var gomaxprocs = runtime.GOMAXPROCS(-1)
 
 func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrumentor, *instrumentation.EventReader) {
 	flag.Parse()
@@ -76,16 +75,14 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 	//
 	// Assumptions made here:
 	//
-	// 1. GOMAXPROCS defaults to num of logical CPUs
-	//
-	// 2. the instrumentor and the instrumented program perceive the same value
+	// 1. the loader and the instrumented program perceive the same value
 	// for GOMAXPROCS;
 	//
-	// 3. the IDs of processors ("P") are orderded, 0-based numbers.
+	// 2. the IDs of processors ("P") are orderded, 0-based numbers.
 	//
 	// Adjustment is needed if any of the above assumptions doesn't hold true.
 	sudogStacks := instrumentor.GetMap("sudog_stacks")
-	for i := range runtime.NumCPU() {
+	for i := range gomaxprocs {
 		sudogStackName := fmt.Sprintf("sudog_stack_%d", i)
 		sudogStack, err := ebpf.NewMap(&ebpf.MapSpec{
 			Name:       sudogStackName,
@@ -224,7 +221,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		}()
 		stream.Send(&proto.CompileAndRunResponse{
 			CompileAndRunOneof: &proto.CompileAndRunResponse_NumCpu{
-				NumCpu: int32(numCPU),
+				NumCpu: int32(gomaxprocs),
 			},
 		})
 		instrumentor, probeEventReader := startInstrumentation(instrumentorProgPath, outName)
@@ -301,7 +298,7 @@ func sandboxedBuild(source string) (string, error) {
 	}()
 
 	outName := strings.TrimSuffix(tempFile.Name(), ".go")
-	goBuildCmd := exec.Command(goBinaryPath, "build", "-gcflags=all=-N -l", "-o", outName, tempFile.Name())
+	goBuildCmd := exec.Command("/usr/bin/env", "go", "build", "-gcflags=all=-N -l", "-o", outName, tempFile.Name())
 	buf := bytes.Buffer{}
 	goBuildCmd.Stdout = &buf
 	goBuildCmd.Stderr = &buf
@@ -318,7 +315,12 @@ func sandboxedBuild(source string) (string, error) {
 // TODO: detect long-running or deadlocked programs.
 func sandboxedRun(targetName string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
 	log.Printf("Start sandbox run of program %s", targetName)
-	runTargetCmd := exec.Command(targetName)
+	// The server has cpu affinity 0-(gomaxprocs-1), which is specified in the
+	// driver script. And we want to give the server and the target program
+	// mutually exclusive cpu affinities, so that the event reader (which runs
+	// along with the server) can be scheduled to consume instrumentation events
+	// as immediately as possible.
+	runTargetCmd := exec.Command("taskset", "-c", fmt.Sprintf("%d-%d", gomaxprocs, 2*gomaxprocs-1), targetName)
 	runTargetCmd.Stdout, runTargetCmd.Stderr = writer, writer
 	runTargetCmd.WaitDelay = executionTimeLimit
 	err = runTargetCmd.Start()
