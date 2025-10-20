@@ -68,7 +68,6 @@ interface Goroutine {
 interface ThreadsSlice {
     threads: Thread[];
     initThreads: (numCpu: number) => void;
-    resetIsScheduling: (mId: number) => void;
 }
 
 interface SharedSlice {
@@ -79,7 +78,7 @@ interface SharedSlice {
     structureStateCollections: Structure[][];
     handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => void;
     handleNewProcEvent: (mId: number) => void;
-    handleExecuteEvent: (mId: number, goId: number, func: string) => void;
+    handleExecuteEvent: (mId: number, goId: number, func: string, procId: number) => void;
     handleNotification: (targetStructs: Structure[]) => void;
     handleStructureState: (receivedStructs: Structure[]) => void;
     // handleStructureStateChange is to be invoked upon complete collection of
@@ -126,7 +125,7 @@ const createCodePanelSlice: StateCreator<
 
 const createThreadsSlice: StateCreator<
     CodePanelSlice & ThreadsSlice, [], [], ThreadsSlice
-> = (set, get) => ({
+> = (set) => ({
     threads: [],
 
     // initThreads is called once upon receiving num_cpu from server.
@@ -157,18 +156,6 @@ const createThreadsSlice: StateCreator<
             threads,
         }))
     },
-
-    resetIsScheduling: (mId: number) => {
-        const threads = get().threads;
-        const thread = threads.find(thread => thread.mId === mId);
-        if (thread === undefined) {
-            throw new Error(`target thread (mId: ${mId}) not found when reset isScheduling`);
-        }
-        thread.isScheduling = false;
-        set(() => ({
-            threads: [...threads],
-        }));
-    },
 })
 
 const createSharedSlice: StateCreator<
@@ -184,34 +171,11 @@ const createSharedSlice: StateCreator<
             {mId, structureType: StructureType.Executing},
         ]);
 
-        // Checks for possible change in m-p bindings.
         const threads = get().threads;
-        const existingThread = threads.find((thread) => thread.p?.id === procId);
-        if (existingThread === undefined) {
-            throw new Error(`no existing thread found for procId ${procId}`);
-        }
-        if (existingThread.mId === undefined) {
-            existingThread.mId = mId;
-        } else if (existingThread.mId !== mId) {
-            // If p is already assigned to a different M, transfer the p to the
-            // new M and leave the old M with no p.
-            const p = existingThread.p;
-            existingThread.p = undefined;
-            let targetThread = threads.find(thread => thread.mId === mId);
-            if (targetThread === undefined) {
-                // Add to thread if this is a new M.
-                threads.push({
-                    mId,
-                    isScheduling: false,
-                    p,
-                });
-            } else {
-                targetThread.p = p;
-            }
-        }
+        checkAndApplyMPBindingChange(threads, mId, procId);
 
         set((state) => ({
-            threads: [...threads.map((thread) => thread.mId === mId? {...thread, isScheduling: true}: thread)],
+            threads: [...threads.map((thread) => thread.mId === mId? {...thread, executing: undefined, isScheduling: true}: thread)],
             runningCodeLines: new Map([...state.runningCodeLines].filter(([k, _]) => k !== mId)),
         }));
     },
@@ -222,8 +186,13 @@ const createSharedSlice: StateCreator<
         ]);
     },
 
-    handleExecuteEvent: (mId: number, goId: number, func: string) => {
-        get().resetIsScheduling(mId);
+    handleExecuteEvent: (mId: number, goId: number, func: string, procId: number) => {
+        const threads = get().threads;
+        checkAndApplyMPBindingChange(get().threads, mId, procId);
+        set(() => ({
+            threads: [...threads.map((thread) => thread.mId === mId? {...thread, isScheduling: false}: thread)]
+        }))
+
         get().handleStructureState([
             {
                 mId,
@@ -308,6 +277,33 @@ const createSharedSlice: StateCreator<
         }
     }
 })
+
+// checkAndApplyMPBindings Checks for possible change in m-p bindings.
+function checkAndApplyMPBindingChange(threads: Thread[], mId: number, procId: number) {
+    const existingThread = threads.find((thread) => thread.p?.id === procId);
+    if (existingThread === undefined) {
+        throw new Error(`no existing thread found for procId ${procId}`);
+    }
+    if (existingThread.mId === undefined) {
+        existingThread.mId = mId;
+    } else if (existingThread.mId !== mId) {
+        // If p is already assigned to a different M, transfer the p to the
+        // new M and leave the old M with no p.
+        const p = existingThread.p;
+        existingThread.p = undefined;
+        let targetThread = threads.find(thread => thread.mId === mId);
+        if (targetThread === undefined) {
+            // Add to thread if this is a new M.
+            threads.push({
+                mId,
+                isScheduling: false,
+                p,
+            });
+        } else {
+            targetThread.p = p;
+        }
+    }
+}
 
 export const useBoundStore = create<CodePanelSlice & ThreadsSlice & SharedSlice>()(
     (...args) => ({

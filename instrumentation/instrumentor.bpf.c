@@ -158,7 +158,7 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx, 
     bpf_for(runq_i, runqhead, runqtail + 1) {
         e.etype = EVENT_TYPE_RUNQ_STATUS;
         e.runq_entry_idx = runq_i;
-        e.procid = procid;
+        e.procid = (int64_t)procid;
         e.runqhead = runqhead;
         e.runqtail = runqtail;
         e.mid = mid;
@@ -577,23 +577,28 @@ struct execute_event {
     int64_t mid;
     struct runq_entry found; 
     uint64_t callerpc; // needed to decide if the callsite is runtime.schedule
+    int64_t procid;
 };
 
 SEC("uprobe/go_execute")
 int BPF_UPROBE(go_execute) {
     struct execute_event e;
-    char *m_ptr;
-    int64_t mid;
-
-    delay_helper(DELAY_NS);
+    char *m_ptr, *p_ptr;
+    int32_t procid32;
 
     e.etype = EVENT_TYPE_FOUND_RUNNABLE;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
+
+    bpf_probe_read_user(&procid32, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
+    e.procid = (int64_t)procid32;
+
     bpf_probe_read_user(&e.found.goid, sizeof(uint64_t), GET_GOID_ADDR(GO_PARAM1(ctx)));
     bpf_probe_read_user(&e.found.pc, sizeof(uint64_t), GET_PC_ADDR(GO_PARAM1(ctx)));
     bpf_probe_read_user(&e.callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
-    mid = e.mid;
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
+
+    delay_helper(DELAY_NS);
     return 0;
 }

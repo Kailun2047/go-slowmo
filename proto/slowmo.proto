@@ -84,6 +84,7 @@ message InterpretedPC {
 message ExecuteEvent {
     optional int64 m_id = 1;
     RunqEntry found = 2;
+    optional int64 proc_id = 3;
 }
 
 message DelayEvent {

@@ -163,15 +163,16 @@ function AceEditorWrapper() {
         });
         for (const mId of mIds) {
             switch (event.structureStateOneof.oneofKind) {
-                case 'executeEvent':
-                    const found = event.structureStateOneof.executeEvent.found;
-                    if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined) {
+                case 'executeEvent': {
+                    const {found, procId} = event.structureStateOneof.executeEvent;
+                    if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined || procId === undefined) {
                         throw new Error(`invalid executeEvent`)
                     }
                     const {goId, executionContext} = found;
-                    handleExecuteEvent(mId, Number(goId), executionContext.func!);
+                    handleExecuteEvent(mId, Number(goId), executionContext.func!, Number(procId));
                     break;
-                case 'runqStatusEvent':
+                }
+                case 'runqStatusEvent': {
                     const {procId, runnext, runqEntries} = event.structureStateOneof.runqStatusEvent;
                     if (procId === undefined || runnext === undefined) {
                         throw new Error(`invalid runqStatusEvent`);
@@ -195,6 +196,7 @@ function AceEditorWrapper() {
                         },
                     ]);
                     break;
+                }
                 default:
                     console.warn(`unknown structure state event type ${event.structureStateOneof.oneofKind}`);
             }

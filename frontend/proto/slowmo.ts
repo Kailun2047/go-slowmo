@@ -250,6 +250,10 @@ export interface ExecuteEvent {
      * @generated from protobuf field: slowmo.RunqEntry found = 2
      */
     found?: RunqEntry;
+    /**
+     * @generated from protobuf field: optional int64 proc_id = 3
+     */
+    procId?: bigint;
 }
 /**
  * @generated from protobuf message slowmo.DelayEvent
@@ -1026,7 +1030,8 @@ class ExecuteEvent$Type extends MessageType<ExecuteEvent> {
     constructor() {
         super("slowmo.ExecuteEvent", [
             { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
-            { no: 2, name: "found", kind: "message", T: () => RunqEntry }
+            { no: 2, name: "found", kind: "message", T: () => RunqEntry },
+            { no: 3, name: "proc_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ }
         ]);
     }
     create(value?: PartialMessage<ExecuteEvent>): ExecuteEvent {
@@ -1046,6 +1051,9 @@ class ExecuteEvent$Type extends MessageType<ExecuteEvent> {
                 case /* slowmo.RunqEntry found */ 2:
                     message.found = RunqEntry.internalBinaryRead(reader, reader.uint32(), options, message.found);
                     break;
+                case /* optional int64 proc_id */ 3:
+                    message.procId = reader.int64().toBigInt();
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -1064,6 +1072,9 @@ class ExecuteEvent$Type extends MessageType<ExecuteEvent> {
         /* slowmo.RunqEntry found = 2; */
         if (message.found)
             RunqEntry.internalBinaryWrite(message.found, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
+        /* optional int64 proc_id = 3; */
+        if (message.procId !== undefined)
+            writer.tag(3, WireType.Varint).int64(message.procId);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);

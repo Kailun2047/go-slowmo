@@ -912,6 +912,7 @@ type ExecuteEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MId           *int64                 `protobuf:"varint,1,opt,name=m_id,json=mId,proto3,oneof" json:"m_id,omitempty"`
 	Found         *RunqEntry             `protobuf:"bytes,2,opt,name=found,proto3" json:"found,omitempty"`
+	ProcId        *int64                 `protobuf:"varint,3,opt,name=proc_id,json=procId,proto3,oneof" json:"proc_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -958,6 +959,13 @@ func (x *ExecuteEvent) GetFound() *RunqEntry {
 		return x.Found
 	}
 	return nil
+}
+
+func (x *ExecuteEvent) GetProcId() int64 {
+	if x != nil && x.ProcId != nil {
+		return *x.ProcId
+	}
+	return 0
 }
 
 type DelayEvent struct {
@@ -1251,11 +1259,14 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x04func\x18\x03 \x01(\tH\x02R\x04func\x88\x01\x01B\a\n" +
 	"\x05_fileB\a\n" +
 	"\x05_lineB\a\n" +
-	"\x05_func\"X\n" +
+	"\x05_func\"\x82\x01\n" +
 	"\fExecuteEvent\x12\x16\n" +
 	"\x04m_id\x18\x01 \x01(\x03H\x00R\x03mId\x88\x01\x01\x12'\n" +
-	"\x05found\x18\x02 \x01(\v2\x11.slowmo.RunqEntryR\x05foundB\a\n" +
-	"\x05_m_id\"\x87\x01\n" +
+	"\x05found\x18\x02 \x01(\v2\x11.slowmo.RunqEntryR\x05found\x12\x1c\n" +
+	"\aproc_id\x18\x03 \x01(\x03H\x01R\x06procId\x88\x01\x01B\a\n" +
+	"\x05_m_idB\n" +
+	"\n" +
+	"\b_proc_id\"\x87\x01\n" +
 	"\n" +
 	"DelayEvent\x12\x16\n" +
 	"\x04m_id\x18\x01 \x01(\x03H\x00R\x03mId\x88\x01\x01\x12\x18\n" +

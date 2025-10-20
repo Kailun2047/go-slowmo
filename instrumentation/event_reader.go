@@ -133,6 +133,7 @@ type executeEvent struct {
 	MID      int64
 	Found    runqEntry
 	CallerPC uint64
+	ProcID   int64
 }
 
 type EventReader struct {
@@ -370,6 +371,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 								GoId:             &goId,
 								ExecutionContext: r.interpretPC(event.Found.PC),
 							},
+							ProcId: &event.ProcID,
 						},
 					},
 					InvolvedStructures: []*proto.StructureId{
