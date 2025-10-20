@@ -313,6 +313,7 @@ func sandboxedBuild(source string) (string, error) {
 
 // TODO: prevent filesystem and network access in the sandbox.
 // TODO: detect long-running or deadlocked programs.
+// TODO: parameterize GOMAXPROCS for target program in CompileAndRun request.
 func sandboxedRun(targetName string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
 	log.Printf("Start sandbox run of program %s", targetName)
 	// The server has cpu affinity 0-(gomaxprocs-1), which is specified in the
