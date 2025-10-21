@@ -99,7 +99,7 @@ func (ei *ELFInterpreter) PCToLine(pc uint64) (file string, line int, fn *gosym.
 
 type SymbolOffsets = map[string][]uint64
 
-func (ei *ELFInterpreter) GetDelayableOffsetsForPackage(pkgName string) SymbolOffsets {
+func (ei *ELFInterpreter) GetInstrumentableOffsetsForPackage(pkgName string) SymbolOffsets {
 	var symOffsets SymbolOffsets = make(map[string][]uint64)
 
 	for _, fn := range ei.goSymTab.Funcs {

@@ -31,6 +31,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define P_RUNQTAIL_OFFSET 404
 #define P_RUNQ_OFFSET 408
 #define P_RUNNEXT_OFFSET 2456
+#define P_M_PTR_OFFSET 56
 #define GET_GOID_ADDR(g_addr) ((char *)(g_addr) + G_GOID_OFFSET)
 #define GET_M_PTR_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
 #define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_STARTPC_OFFSET)
@@ -43,8 +44,9 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_RUNQTAIL_ADDR(p_addr) ((char *)(p_addr) + P_RUNQTAIL_OFFSET)
 #define GET_P_RUNQ_ADDR(p_addr) ((char *)(p_addr) + P_RUNQ_OFFSET)
 #define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
+#define GET_P_M_PTR_ADDR(p_addr) ((char *)(p_addr) + P_M_PTR_OFFSET)
 
-static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx, int64_t mid);
+static int report_local_runq_status(uint64_t p_ptr_scalar);
 static int report_semtable_status(int32_t procid);
 static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int32_t procid);
 static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
@@ -121,8 +123,6 @@ int BPF_UPROBE(go_newproc) {
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
-
-    delay_helper(DELAY_NS);
     
     return 0;
 }
@@ -131,29 +131,30 @@ SEC("uprobe/go_runq_status")
 int BPF_UPROBE(go_runq_status) {
     uint32_t runq_i, local_runq_entry_i;
     char *m_ptr, *p_ptr;
-    int64_t mid;
 
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
-    bpf_probe_read_user(&mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     // BCC treats p_ptr as scalar (because it is calculated by adding scalar to
     // memory reference) so we need to make report_local_runq_status accept p's
     // address as scalar value and cast p_ptr.
-    return report_local_runq_status((uint64_t)(p_ptr), ctx, mid);
+    return report_local_runq_status((uint64_t)(p_ptr));
 }
 
-static int report_local_runq_status(uint64_t p_ptr_scalar, struct pt_regs *ctx, int64_t mid) {
+static int report_local_runq_status(uint64_t p_ptr_scalar) {
     struct runq_status_event e;
-    char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar);
+    char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar), *m_ptr;
     uint32_t runqhead, runqtail;
     uint64_t runq_i;
     int32_t procid;
+    int64_t mid;
 
     bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
     bpf_probe_read_user(&runqhead, sizeof(uint32_t), GET_P_RUNQHEAD_ADDR(p_ptr));
     bpf_probe_read_user(&runqtail, sizeof(uint32_t), GET_P_RUNQTAIL_ADDR(p_ptr));
     local_runq = GET_P_RUNQ_ADDR(p_ptr);
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_P_M_PTR_ADDR(p_ptr));
+    bpf_probe_read_user(&mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
 
     bpf_for(runq_i, runqhead, runqtail + 1) {
         e.etype = EVENT_TYPE_RUNQ_STATUS;
@@ -527,8 +528,6 @@ int BPF_UPROBE(go_schedule) {
     }
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
 
-    delay_helper(DELAY_NS);
-
     return 0;
 }
 
@@ -599,6 +598,5 @@ int BPF_UPROBE(go_execute) {
     bpf_probe_read_user(&e.callerpc, sizeof(uint64_t), CURR_STACK_POINTER(ctx));
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
 
-    delay_helper(DELAY_NS);
     return 0;
 }

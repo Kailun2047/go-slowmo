@@ -100,56 +100,69 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 	}
 
 	/* Capturing key events. */
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		Target: instrumentation.UprobeAttachTarget{
-			TargetPkg: "runtime",
-			TargetFn:  "newproc",
-		},
-		BpfFn: "go_newproc",
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "newproc",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "go_newproc",
 	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		Target: instrumentation.UprobeAttachTarget{
-			TargetPkg: "runtime",
-			TargetFn:  "schedule",
-		},
-		BpfFn: "go_schedule",
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "newproc",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "delay",
 	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		Target: instrumentation.UprobeAttachTarget{
-			TargetPkg: "runtime",
-			TargetFn:  "gopark",
-		},
-		BpfFn: "go_gopark",
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "schedule",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "go_schedule",
+	})
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "schedule",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "delay",
+	})
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "gopark",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "go_gopark",
 	})
 	// TODO: instrument ready (which pairs with gopark).
 
 	/* Inspecting goroutine-storing structures. */
-	instrumentor.InstrumentReturns(instrumentation.UprobeAttachSpec{
-		Target: instrumentation.UprobeAttachTarget{
-			TargetPkg: "runtime",
-			TargetFn:  "newproc",
-		},
-		BpfFn: "go_runq_status",
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "newproc",
+		AttachOffset: instrumentation.AttachOffsetReturns,
+		BpfFn:        "go_runq_status",
 	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		Target: instrumentation.UprobeAttachTarget{
-			TargetPkg: "runtime",
-			TargetFn:  "execute",
-		},
-		BpfFn: "go_execute",
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "execute",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "go_execute",
+	})
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "execute",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "delay",
 	})
 	// TODO: inspect globrunq and all runqs when entering runtime.execute.
 
 	/* Helpers. */
-	instrumentor.Delay(instrumentation.UprobeAttachTarget{
+	instrumentor.InstrumentPackage(instrumentation.PackageSpec{
 		TargetPkg: "main",
+		BpfFn:     "delay",
 	})
-	instrumentor.InstrumentEntry(instrumentation.UprobeAttachSpec{
-		Target: instrumentation.UprobeAttachTarget{
-			TargetPkg: "runtime",
-			TargetFn:  "retake",
-		},
-		BpfFn: "avoid_preempt",
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "retake",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFn:        "avoid_preempt",
 	})
 
 	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))

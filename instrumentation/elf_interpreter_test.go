@@ -6,7 +6,7 @@ func TestELFInterpreter_GetDelayableOffsetsForPackage(t *testing.T) {
 	exePath := "./testdata/greet"
 	interpreter := NewELFInterpreter(exePath)
 	pkgName := "main"
-	symOffsets := interpreter.GetDelayableOffsetsForPackage(pkgName)
+	symOffsets := interpreter.GetInstrumentableOffsetsForPackage(pkgName)
 
 	expectedOffsets := map[string][]uint64{
 		"main.Greet":                 {0xa, 0x22, 0xcb},

@@ -174,20 +174,19 @@ function AceEditorWrapper() {
                 }
                 case 'runqStatusEvent': {
                     const {procId, runnext, runqEntries} = event.structureStateOneof.runqStatusEvent;
-                    if (procId === undefined || runnext === undefined) {
+                    if (procId === undefined) {
                         throw new Error(`invalid runqStatusEvent`);
                     }
                     handleStructureState([
                         {
                             mId,
                             structureType: StructureType.LocalRunq,
-                            // TODO: validation.
                             value: {
                                 id: Number(procId),
-                                runnext: {
+                                runnext: runnext !== undefined? {
                                     id: Number(runnext.goId),
                                     entryFunc: runnext.executionContext?.func?? '',
-                                },
+                                }: undefined,
                                 runq: runqEntries.map(entry => ({
                                     id: Number(entry.goId),
                                     entryFunc: entry.executionContext?.func?? '',

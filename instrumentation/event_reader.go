@@ -52,7 +52,7 @@ type indexedRunqEntry struct {
 	RunqEntry    runqEntry
 }
 type runqEntry struct {
-	PC   uint64
+	PC   uint64 // 0 if not a real entry (e.g. when representing a nil runnext)
 	GoID uint64
 }
 
@@ -61,19 +61,24 @@ func isDummyEntry(entry runqEntry) bool {
 }
 
 func (r *EventReader) interpretRunqEntries(entries []runqEntry) []*proto.RunqEntry {
-	runqEntries := make([]*proto.RunqEntry, len(entries))
-	for i, entry := range entries {
-		if isDummyEntry(entry) {
-			runqEntries[i] = &proto.RunqEntry{}
-		} else {
-			goId := int64(entry.GoID)
-			runqEntries[i] = &proto.RunqEntry{
-				GoId:             &goId,
-				ExecutionContext: r.interpretPC(entry.PC),
-			}
+	var runqEntries []*proto.RunqEntry
+	for _, entry := range entries {
+		if interpretedEntry := r.interpretRunqEntry(entry); interpretedEntry != nil {
+			runqEntries = append(runqEntries, interpretedEntry)
 		}
 	}
 	return runqEntries
+}
+
+func (r *EventReader) interpretRunqEntry(entry runqEntry) *proto.RunqEntry {
+	if isDummyEntry(entry) {
+		return nil
+	}
+	goId := int64(entry.GoID)
+	return &proto.RunqEntry{
+		GoId:             &goId,
+		ExecutionContext: r.interpretPC(entry.PC),
+	}
 }
 
 func (r *EventReader) interpretPC(pc uint64) *proto.InterpretedPC {
@@ -285,7 +290,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			r.localRunqs[event.ProcID] = []runqEntry{}
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
-			runnext := r.interpretRunqEntries([]runqEntry{event.RunqEntry})[0]
+			runnext := r.interpretRunqEntry(event.RunqEntry)
 			probeEvent = &proto.ProbeEvent{
 				ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
 					StructureStateEvent: &proto.StructureStateEvent{
