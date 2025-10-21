@@ -106,9 +106,6 @@ export interface ProbeEvent {
     } | {
         oneofKind: "notificationEvent";
         /**
-         * TODO: remove redundant m_id field and use only m_id field in
-         * involved_structures.
-         *
          * @generated from protobuf field: slowmo.NotificationEvent notification_event = 4
          */
         notificationEvent: NotificationEvent;
@@ -130,15 +127,10 @@ export interface NotificationEvent {
      * @generated from protobuf oneof: notification_oneof
      */
     notificationOneof: {
-        oneofKind: "delayEvent";
-        /**
-         * @deprecated
-         * @generated from protobuf field: slowmo.DelayEvent delay_event = 1 [deprecated = true]
-         */
-        delayEvent: DelayEvent;
-    } | {
         oneofKind: "scheduleEvent";
         /**
+         * DelayEvent delay_event = 1 [deprecated=true];
+         *
          * @generated from protobuf field: slowmo.ScheduleEvent schedule_event = 2
          */
         scheduleEvent: ScheduleEvent;
@@ -151,12 +143,6 @@ export interface NotificationEvent {
     } | {
         oneofKind: undefined;
     };
-    /**
-     * One NotificationEvent may involve multiple structures.
-     *
-     * @generated from protobuf field: repeated slowmo.StructureId involved_structures = 20
-     */
-    involvedStructures: StructureId[];
 }
 /**
  * @generated from protobuf message slowmo.StructureStateEvent
@@ -180,16 +166,6 @@ export interface StructureStateEvent {
     } | {
         oneofKind: undefined;
     };
-    /**
-     * Technically, a StructureStateEvent may involve only one structure. But
-     * make StructureId a repeated field in case we need to deal with
-     * concurrently reported structures (e.g. global structures like semtable,
-     * same local runqs reported for multiple schedule events on different
-     * threads).
-     *
-     * @generated from protobuf field: repeated slowmo.StructureId involved_structures = 20
-     */
-    involvedStructures: StructureId[];
 }
 /**
  * @generated from protobuf message slowmo.RunqStatusEvent
@@ -207,6 +183,10 @@ export interface RunqStatusEvent {
      * @generated from protobuf field: slowmo.RunqEntry runnext = 4
      */
     runnext?: RunqEntry;
+    /**
+     * @generated from protobuf field: optional int64 m_id = 5
+     */
+    mId?: bigint;
 }
 /**
  * @generated from protobuf message slowmo.RunqEntry
@@ -307,19 +287,6 @@ export interface NewProcEvent {
     mId?: bigint;
 }
 /**
- * @generated from protobuf message slowmo.StructureId
- */
-export interface StructureId {
-    /**
-     * @generated from protobuf field: slowmo.StructureType structure_type = 1
-     */
-    structureType: StructureType;
-    /**
-     * @generated from protobuf field: optional int64 m_id = 2
-     */
-    mId?: bigint;
-}
-/**
  * @generated from protobuf enum slowmo.ScheduleReason
  */
 export enum ScheduleReason {
@@ -339,27 +306,6 @@ export enum ScheduleReason {
      * @generated from protobuf enum value: OTHER = 20;
      */
     OTHER = 20
-}
-/**
- * @generated from protobuf enum slowmo.StructureType
- */
-export enum StructureType {
-    /**
-     * @generated from protobuf enum value: LocalRunq = 0;
-     */
-    LocalRunq = 0,
-    /**
-     * @generated from protobuf enum value: GlobalRunq = 1;
-     */
-    GlobalRunq = 1,
-    /**
-     * @generated from protobuf enum value: Semtable = 2;
-     */
-    Semtable = 2,
-    /**
-     * @generated from protobuf enum value: Executing = 3;
-     */
-    Executing = 3
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
@@ -709,16 +655,13 @@ export const ProbeEvent = new ProbeEvent$Type();
 class NotificationEvent$Type extends MessageType<NotificationEvent> {
     constructor() {
         super("slowmo.NotificationEvent", [
-            { no: 1, name: "delay_event", kind: "message", oneof: "notificationOneof", T: () => DelayEvent },
             { no: 2, name: "schedule_event", kind: "message", oneof: "notificationOneof", T: () => ScheduleEvent },
-            { no: 3, name: "new_proc_event", kind: "message", oneof: "notificationOneof", T: () => NewProcEvent },
-            { no: 20, name: "involved_structures", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => StructureId }
+            { no: 3, name: "new_proc_event", kind: "message", oneof: "notificationOneof", T: () => NewProcEvent }
         ]);
     }
     create(value?: PartialMessage<NotificationEvent>): NotificationEvent {
         const message = globalThis.Object.create((this.messagePrototype!));
         message.notificationOneof = { oneofKind: undefined };
-        message.involvedStructures = [];
         if (value !== undefined)
             reflectionMergePartial<NotificationEvent>(this, message, value);
         return message;
@@ -728,12 +671,6 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
             switch (fieldNo) {
-                case /* slowmo.DelayEvent delay_event = 1 [deprecated = true] */ 1:
-                    message.notificationOneof = {
-                        oneofKind: "delayEvent",
-                        delayEvent: DelayEvent.internalBinaryRead(reader, reader.uint32(), options, (message.notificationOneof as any).delayEvent)
-                    };
-                    break;
                 case /* slowmo.ScheduleEvent schedule_event */ 2:
                     message.notificationOneof = {
                         oneofKind: "scheduleEvent",
@@ -745,9 +682,6 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
                         oneofKind: "newProcEvent",
                         newProcEvent: NewProcEvent.internalBinaryRead(reader, reader.uint32(), options, (message.notificationOneof as any).newProcEvent)
                     };
-                    break;
-                case /* repeated slowmo.StructureId involved_structures */ 20:
-                    message.involvedStructures.push(StructureId.internalBinaryRead(reader, reader.uint32(), options));
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -761,18 +695,12 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
         return message;
     }
     internalBinaryWrite(message: NotificationEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* slowmo.DelayEvent delay_event = 1 [deprecated = true]; */
-        if (message.notificationOneof.oneofKind === "delayEvent")
-            DelayEvent.internalBinaryWrite(message.notificationOneof.delayEvent, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
         /* slowmo.ScheduleEvent schedule_event = 2; */
         if (message.notificationOneof.oneofKind === "scheduleEvent")
             ScheduleEvent.internalBinaryWrite(message.notificationOneof.scheduleEvent, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
         /* slowmo.NewProcEvent new_proc_event = 3; */
         if (message.notificationOneof.oneofKind === "newProcEvent")
             NewProcEvent.internalBinaryWrite(message.notificationOneof.newProcEvent, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
-        /* repeated slowmo.StructureId involved_structures = 20; */
-        for (let i = 0; i < message.involvedStructures.length; i++)
-            StructureId.internalBinaryWrite(message.involvedStructures[i], writer.tag(20, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -788,14 +716,12 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
     constructor() {
         super("slowmo.StructureStateEvent", [
             { no: 1, name: "runq_status_event", kind: "message", oneof: "structureStateOneof", T: () => RunqStatusEvent },
-            { no: 2, name: "execute_event", kind: "message", oneof: "structureStateOneof", T: () => ExecuteEvent },
-            { no: 20, name: "involved_structures", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => StructureId }
+            { no: 2, name: "execute_event", kind: "message", oneof: "structureStateOneof", T: () => ExecuteEvent }
         ]);
     }
     create(value?: PartialMessage<StructureStateEvent>): StructureStateEvent {
         const message = globalThis.Object.create((this.messagePrototype!));
         message.structureStateOneof = { oneofKind: undefined };
-        message.involvedStructures = [];
         if (value !== undefined)
             reflectionMergePartial<StructureStateEvent>(this, message, value);
         return message;
@@ -817,9 +743,6 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
                         executeEvent: ExecuteEvent.internalBinaryRead(reader, reader.uint32(), options, (message.structureStateOneof as any).executeEvent)
                     };
                     break;
-                case /* repeated slowmo.StructureId involved_structures */ 20:
-                    message.involvedStructures.push(StructureId.internalBinaryRead(reader, reader.uint32(), options));
-                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -838,9 +761,6 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
         /* slowmo.ExecuteEvent execute_event = 2; */
         if (message.structureStateOneof.oneofKind === "executeEvent")
             ExecuteEvent.internalBinaryWrite(message.structureStateOneof.executeEvent, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
-        /* repeated slowmo.StructureId involved_structures = 20; */
-        for (let i = 0; i < message.involvedStructures.length; i++)
-            StructureId.internalBinaryWrite(message.involvedStructures[i], writer.tag(20, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -857,7 +777,8 @@ class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
         super("slowmo.RunqStatusEvent", [
             { no: 1, name: "proc_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
             { no: 3, name: "runq_entries", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => RunqEntry },
-            { no: 4, name: "runnext", kind: "message", T: () => RunqEntry }
+            { no: 4, name: "runnext", kind: "message", T: () => RunqEntry },
+            { no: 5, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ }
         ]);
     }
     create(value?: PartialMessage<RunqStatusEvent>): RunqStatusEvent {
@@ -881,6 +802,9 @@ class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
                 case /* slowmo.RunqEntry runnext */ 4:
                     message.runnext = RunqEntry.internalBinaryRead(reader, reader.uint32(), options, message.runnext);
                     break;
+                case /* optional int64 m_id */ 5:
+                    message.mId = reader.int64().toBigInt();
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -902,6 +826,9 @@ class RunqStatusEvent$Type extends MessageType<RunqStatusEvent> {
         /* slowmo.RunqEntry runnext = 4; */
         if (message.runnext)
             RunqEntry.internalBinaryWrite(message.runnext, writer.tag(4, WireType.LengthDelimited).fork(), options).join();
+        /* optional int64 m_id = 5; */
+        if (message.mId !== undefined)
+            writer.tag(5, WireType.Varint).int64(message.mId);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -1266,60 +1193,6 @@ class NewProcEvent$Type extends MessageType<NewProcEvent> {
  * @generated MessageType for protobuf message slowmo.NewProcEvent
  */
 export const NewProcEvent = new NewProcEvent$Type();
-// @generated message type with reflection information, may provide speed optimized methods
-class StructureId$Type extends MessageType<StructureId> {
-    constructor() {
-        super("slowmo.StructureId", [
-            { no: 1, name: "structure_type", kind: "enum", T: () => ["slowmo.StructureType", StructureType] },
-            { no: 2, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ }
-        ]);
-    }
-    create(value?: PartialMessage<StructureId>): StructureId {
-        const message = globalThis.Object.create((this.messagePrototype!));
-        message.structureType = 0;
-        if (value !== undefined)
-            reflectionMergePartial<StructureId>(this, message, value);
-        return message;
-    }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: StructureId): StructureId {
-        let message = target ?? this.create(), end = reader.pos + length;
-        while (reader.pos < end) {
-            let [fieldNo, wireType] = reader.tag();
-            switch (fieldNo) {
-                case /* slowmo.StructureType structure_type */ 1:
-                    message.structureType = reader.int32();
-                    break;
-                case /* optional int64 m_id */ 2:
-                    message.mId = reader.int64().toBigInt();
-                    break;
-                default:
-                    let u = options.readUnknownField;
-                    if (u === "throw")
-                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
-                    let d = reader.skip(wireType);
-                    if (u !== false)
-                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
-            }
-        }
-        return message;
-    }
-    internalBinaryWrite(message: StructureId, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
-        /* slowmo.StructureType structure_type = 1; */
-        if (message.structureType !== 0)
-            writer.tag(1, WireType.Varint).int32(message.structureType);
-        /* optional int64 m_id = 2; */
-        if (message.mId !== undefined)
-            writer.tag(2, WireType.Varint).int64(message.mId);
-        let u = options.writeUnknownFields;
-        if (u !== false)
-            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
-        return writer;
-    }
-}
-/**
- * @generated MessageType for protobuf message slowmo.StructureId
- */
-export const StructureId = new StructureId$Type();
 /**
  * @generated ServiceType for protobuf service slowmo.SlowmoService
  */

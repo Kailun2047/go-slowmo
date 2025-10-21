@@ -244,12 +244,6 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 							StartPc:     interpretedPC,
 						},
 					},
-					InvolvedStructures: []*proto.StructureId{
-						{
-							StructureType: proto.StructureType_LocalRunq,
-							MId:           &event.MID,
-						},
-					},
 				},
 			},
 		}
@@ -299,12 +293,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 								ProcId:      &event.ProcID,
 								RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
 								Runnext:     runnext,
-							},
-						},
-						InvolvedStructures: []*proto.StructureId{
-							{
-								MId:           &event.MID,
-								StructureType: proto.StructureType_LocalRunq,
+								MId:         &event.MID,
 							},
 						},
 					},
@@ -379,12 +368,6 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 							ProcId: &event.ProcID,
 						},
 					},
-					InvolvedStructures: []*proto.StructureId{
-						{
-							MId:           &event.MID,
-							StructureType: proto.StructureType_Executing,
-						},
-					},
 				},
 			},
 		}
@@ -419,13 +402,6 @@ func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEven
 					ScheduleEvent: &proto.ScheduleEvent{
 						MId:    &event.MID,
 						Reason: findScheduleReason(interpretedCallstack),
-					},
-				},
-				// TODO: add other involved structures for schedule event.
-				InvolvedStructures: []*proto.StructureId{
-					{
-						MId:           &event.MID,
-						StructureType: proto.StructureType_Executing,
 					},
 				},
 			},

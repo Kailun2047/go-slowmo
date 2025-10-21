@@ -3,10 +3,10 @@ import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
 import { useEffect, useRef, type MouseEventHandler } from 'react';
-import { CompileAndRunRequest, NotificationEvent, StructureStateEvent, StructureType } from '../../proto/slowmo';
+import { CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
-import { resetAllStores, useAceEditorWrapperStore, useBoundStore } from './store';
+import { resetAllStores, StructureType, useAceEditorWrapperStore, useBoundStore } from './store';
 
 
 interface RunningCodeLinePerThread {
@@ -131,74 +131,59 @@ function AceEditorWrapper() {
     }
 
     function processNotificationEvent(event: NotificationEvent): void {
-        const mIds = event.involvedStructures.map(id => {
-            if (id.mId === undefined) {
-                throw new Error(`invalid ${event.notificationOneof.oneofKind} event (undefine mId)`);
+        switch (event.notificationOneof.oneofKind) {
+            case 'scheduleEvent': {
+                const {reason, procId, mId} = event.notificationOneof.scheduleEvent;
+                handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
+                break;
             }
-            return Number(id.mId);
-        });
-        for (const mId of mIds) {
-            switch (event.notificationOneof.oneofKind) {
-                case 'scheduleEvent': {
-                    const {reason, procId} = event.notificationOneof.scheduleEvent;
-                    handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
-                    break;
-                }
-                case 'newProcEvent': {
-                    handleNewProcEvent(Number(mId));
-                    break;
-                }
-                default:
-                    console.warn(`unknown notification event type ${event.notificationOneof.oneofKind}`)
-            }       
+            case 'newProcEvent': {
+                const {mId} = event.notificationOneof.newProcEvent;
+                handleNewProcEvent(Number(mId));
+                break;
+            }
+            default:
+                console.warn(`unknown notification event type ${event.notificationOneof.oneofKind}`)
         }
     }
 
     function processStructureStateEvent(event: StructureStateEvent): void {
-        const mIds = event.involvedStructures.map(id => {
-            if (id.mId === undefined) {
-                throw new Error(`invalid ${event.structureStateOneof.oneofKind} event (undefine mId)`);
-            }
-            return Number(id.mId);
-        });
-        for (const mId of mIds) {
-            switch (event.structureStateOneof.oneofKind) {
-                case 'executeEvent': {
-                    const {found, procId} = event.structureStateOneof.executeEvent;
-                    if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined || procId === undefined) {
-                        throw new Error(`invalid executeEvent`)
-                    }
-                    const {goId, executionContext} = found;
-                    handleExecuteEvent(mId, Number(goId), executionContext.func!, Number(procId));
-                    break;
+        switch (event.structureStateOneof.oneofKind) {
+            case 'executeEvent': {
+                const {found, procId, mId} = event.structureStateOneof.executeEvent;
+                if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined || procId === undefined) {
+                    throw new Error(`invalid executeEvent`)
                 }
-                case 'runqStatusEvent': {
-                    const {procId, runnext, runqEntries} = event.structureStateOneof.runqStatusEvent;
-                    if (procId === undefined) {
-                        throw new Error(`invalid runqStatusEvent`);
-                    }
-                    handleStructureState([
-                        {
-                            mId,
-                            structureType: StructureType.LocalRunq,
-                            value: {
-                                id: Number(procId),
-                                runnext: runnext !== undefined? {
-                                    id: Number(runnext.goId),
-                                    entryFunc: runnext.executionContext?.func?? '',
-                                }: undefined,
-                                runq: runqEntries.map(entry => ({
-                                    id: Number(entry.goId),
-                                    entryFunc: entry.executionContext?.func?? '',
-                                }))
-                            },
+                const {goId, executionContext} = found;
+                handleExecuteEvent(Number(mId), Number(goId), executionContext.func!, Number(procId));
+                break;
+            }
+            case 'runqStatusEvent': {
+                const {procId, runnext, runqEntries, mId} = event.structureStateOneof.runqStatusEvent;
+                if (procId === undefined) {
+                    throw new Error(`invalid runqStatusEvent`);
+                }
+                handleStructureState([
+                    {
+                        mId: Number(mId),
+                        structureType: StructureType.LocalRunq,
+                        value: {
+                            id: Number(procId),
+                            runnext: runnext !== undefined? {
+                                id: Number(runnext.goId),
+                                entryFunc: runnext.executionContext?.func?? '',
+                            }: undefined,
+                            runq: runqEntries.map(entry => ({
+                                id: Number(entry.goId),
+                                entryFunc: entry.executionContext?.func?? '',
+                            }))
                         },
-                    ]);
-                    break;
-                }
-                default:
-                    console.warn(`unknown structure state event type ${event.structureStateOneof.oneofKind}`);
+                    },
+                ]);
+                break;
             }
+            default:
+                console.warn(`unknown structure state event type ${event.structureStateOneof.oneofKind}`);
         }
     }
 

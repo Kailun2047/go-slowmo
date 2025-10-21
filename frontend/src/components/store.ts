@@ -1,5 +1,5 @@
 import { create as actualCreate, type StateCreator } from "zustand";
-import { ScheduleReason, StructureType } from "../../proto/slowmo";
+import { ScheduleReason } from "../../proto/slowmo";
 import { pickPastelColor, type HSL } from "../lib/color-picker";
 
 interface AceEditorWrapperState {
@@ -71,7 +71,7 @@ interface ThreadsSlice {
 }
 
 interface SharedSlice {
-    // structureStateBuffer collects corresponding structure states received
+    // structureStateCollections collects corresponding structure states received
     // from structure state events for each notification event. This piece of
     // store is used to keep intermediate application state and not intended to
     // be used directly in components.
@@ -81,11 +81,18 @@ interface SharedSlice {
     handleExecuteEvent: (mId: number, goId: number, func: string, procId: number) => void;
     handleNotification: (targetStructs: Structure[]) => void;
     handleStructureState: (receivedStructs: Structure[]) => void;
-    // handleStructureStateChange is to be invoked upon complete collection of
+    // updateStructures is to be invoked upon complete collection of
     // all structure states for a notification event to reflect changed
     // structures in components.
     updateStructures: (collectedStructures: Structure[]) => void;
 }
+
+export enum StructureType {
+    LocalRunq,
+    GlobalRunq,
+    Semtable,
+    Executing,
+};
 
 // An undefined value field means the target structure state has not yet been
 // received from structure state event.
