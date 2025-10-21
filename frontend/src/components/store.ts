@@ -1,5 +1,5 @@
 import { create as actualCreate, type StateCreator } from "zustand";
-import { ScheduleReason } from "../../proto/slowmo";
+import { ExecuteEvent, NewProcEvent, RunqStatusEvent, ScheduleEvent } from "../../proto/slowmo";
 import { pickPastelColor, type HSL } from "../lib/color-picker";
 
 interface AceEditorWrapperState {
@@ -67,20 +67,14 @@ interface Goroutine {
 
 interface ThreadsSlice {
     threads: Thread[];
-    initThreads: (numCpu: number) => void;
+    initThreads: (gomaxprocs: number) => void;
+    handleNewProcEvent: (event: NewProcEvent) => void;
 }
 
 interface SharedSlice {
-    // structureStateCollections collects corresponding structure states received
-    // from structure state events for each notification event. This piece of
-    // store is used to keep intermediate application state and not intended to
-    // be used directly in components.
-    structureStateCollections: Structure[][];
-    handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => void;
-    handleNewProcEvent: (mId: number) => void;
-    handleExecuteEvent: (mId: number, goId: number, func: string, procId: number) => void;
-    handleNotification: (targetStructs: Structure[]) => void;
-    handleStructureState: (receivedStructs: Structure[]) => void;
+    handleScheduleEvent: (event: ScheduleEvent) => void;
+    handleExecuteEvent: (event: ExecuteEvent) => void;
+    handleRunqStatusEvent: (event: RunqStatusEvent) => void;
     // updateStructures is to be invoked upon complete collection of
     // all structure states for a notification event to reflect changed
     // structures in components.
@@ -136,9 +130,9 @@ const createThreadsSlice: StateCreator<
     threads: [],
 
     // initThreads is called once upon receiving num_cpu from server.
-    initThreads: (numCpu: number) => {
+    initThreads: (gomaxprocs: number) => {
         const threads: Thread[] = [];
-        for (let i = 0; i < numCpu; i++) {
+        for (let i = 0; i < gomaxprocs; i++) {
             threads.push(i === 0? {
                 mId: i, // p0 is bound to m0 at start
                 isScheduling: false,
@@ -163,20 +157,22 @@ const createThreadsSlice: StateCreator<
             threads,
         }))
     },
+
+    handleNewProcEvent: (event: NewProcEvent) => {
+        const {mId, creatorGoId} = event;
+        console.debug(`newProcEvent by goId ${Number(creatorGoId)} on mId ${Number(mId)}`);
+    },
 })
 
 const createSharedSlice: StateCreator<
     CodePanelSlice & ThreadsSlice & SharedSlice, [], [], SharedSlice
 > = (set, get) => ({
-    structureStateCollections: [],
-
-    handleScheduleEvent: (mId: number, reason: ScheduleReason, procId?: number) => {
-        if (procId === undefined) {
+    handleScheduleEvent: (event: ScheduleEvent) => {
+        let {procId: rawProcId, mId: rawMId} = event;
+        if (rawProcId === undefined) {
             throw new Error('unexpected new M without procId');
         }
-        get().handleNotification([
-            {mId, structureType: StructureType.Executing},
-        ]);
+        const mId = Number(rawMId), procId = Number(rawProcId);
 
         const threads = get().threads;
         checkAndApplyMPBindingChange(threads, mId, procId);
@@ -187,63 +183,56 @@ const createSharedSlice: StateCreator<
         }));
     },
 
-    handleNewProcEvent: (mId: number) => {
-        get().handleNotification([
-            {mId, structureType: StructureType.LocalRunq},
-        ]);
-    },
-
-    handleExecuteEvent: (mId: number, goId: number, func: string, procId: number) => {
+    handleExecuteEvent: (event: ExecuteEvent) => {
+        const {found, procId: rawProcId, mId: rawMid} = event;
+        if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined || rawProcId === undefined) {
+            throw new Error(`invalid executeEvent`);
+        }
+        const procId = Number(rawProcId), mId = Number(rawMid);
         const threads = get().threads;
-        checkAndApplyMPBindingChange(get().threads, mId, procId);
+        checkAndApplyMPBindingChange(threads, mId, procId);
         set(() => ({
             threads: [...threads.map((thread) => thread.mId === mId? {...thread, isScheduling: false}: thread)]
         }))
 
-        get().handleStructureState([
+        const {goId, executionContext} = found;
+        const {func} = executionContext;
+        get().updateStructures([
             {
                 mId,
                 structureType: StructureType.Executing,
-                value: {id: Number(goId), entryFunc: func},
+                value: {id: Number(goId), entryFunc: func!},
             },
         ]);
     },
 
-    handleNotification: (targetStructs: Structure[]) => {
-        set((state) => ({
-            structureStateCollections: [...state.structureStateCollections, targetStructs],
-        }));
-    },
-
-    handleStructureState: (receivedStructs: Structure[]) => {
-        for (const {mId, structureType, value} of receivedStructs) {
-            let idxInCollection = -1;
-            const collections = get().structureStateCollections;
-            for (let i = 0; i < collections.length; i++) {
-                const structsToCollect = collections[i];
-                idxInCollection = structsToCollect.findIndex(targetStruct => targetStruct.mId === mId && targetStruct.structureType === structureType);
-                if (idxInCollection !== -1) {
-                    structsToCollect[idxInCollection].value = value;
-                    // Update structures and remove collection once states of
-                    // all target structs are collected.
-                    if (structsToCollect.find(struct => struct.value === undefined) === undefined) {
-                        set(() => ({
-                            structureStateCollections: [...collections.slice(0, i), ...collections.slice(i + 1)],
-                        }));
-                        get().updateStructures(structsToCollect);
-                    }
-                    break;
-                }
-            }
-            if (idxInCollection === -1) {
-                console.warn(`received structure (mId: ${mId}, type: ${structureType}) is not among any targets`);
-            }
+    handleRunqStatusEvent: (event: RunqStatusEvent) => {
+        const {procId, runnext, runqEntries, mId} = event;
+        if (procId === undefined) {
+            throw new Error(`invalid runqStatusEvent`);
         }
+        get().updateStructures([
+            {
+                mId: Number(mId),
+                structureType: StructureType.LocalRunq,
+                value: {
+                    id: Number(procId),
+                    runnext: runnext !== undefined? {
+                        id: Number(runnext.goId),
+                        entryFunc: runnext.executionContext?.func?? '',
+                    }: undefined,
+                    runq: runqEntries.map(entry => ({
+                        id: Number(entry.goId),
+                        entryFunc: entry.executionContext?.func?? '',
+                    }))
+                },
+            },
+        ]);
     },
 
-    updateStructures: (collectedStructures: Structure[]) => {
+    updateStructures: (structs: Structure[]) => {
         const changedStructsByMId = new Map<number, Structure[]>();
-        for (const struct of collectedStructures) {
+        for (const struct of structs) {
             const {mId} = struct;
             let changedStructs = changedStructsByMId.get(mId);
             if (changedStructs === undefined) {

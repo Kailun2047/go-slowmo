@@ -6,7 +6,7 @@ import { useEffect, useRef, type MouseEventHandler } from 'react';
 import { CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
-import { resetAllStores, StructureType, useAceEditorWrapperStore, useBoundStore } from './store';
+import { resetAllStores, useAceEditorWrapperStore, useBoundStore } from './store';
 
 
 interface RunningCodeLinePerThread {
@@ -37,7 +37,7 @@ function AceEditorWrapper() {
     const handleScheduleEvent = useBoundStore((state) => state.handleScheduleEvent);
     const handleNewProcEvent = useBoundStore((state) => state.handleNewProcEvent);
     const handleExecuteEvent = useBoundStore((state) => state.handleExecuteEvent);
-    const handleStructureState = useBoundStore((state) => state.handleStructureState);
+    const handleRunqStatusEvent = useBoundStore((state) => state.handleRunqStatusEvent);
     const initThreads = useBoundStore((state) => state.initThreads);
 
     const elemRef = useRef<HTMLDivElement & {
@@ -94,8 +94,8 @@ function AceEditorWrapper() {
                     case 'runtimeOutput':
                         console.log('runtime output: ', msg.compileAndRunOneof.runtimeOutput.output)
                         break
-                    case 'numCpu':
-                        initThreads(msg.compileAndRunOneof.numCpu);
+                    case 'gomaxprocs':
+                        initThreads(msg.compileAndRunOneof.gomaxprocs);
                         break;
                     case 'runEvent':
                         const runEvent = msg.compileAndRunOneof.runEvent;
@@ -133,13 +133,11 @@ function AceEditorWrapper() {
     function processNotificationEvent(event: NotificationEvent): void {
         switch (event.notificationOneof.oneofKind) {
             case 'scheduleEvent': {
-                const {reason, procId, mId} = event.notificationOneof.scheduleEvent;
-                handleScheduleEvent(Number(mId), reason, procId !== undefined? Number(procId) : undefined);
+                handleScheduleEvent(event.notificationOneof.scheduleEvent);
                 break;
             }
             case 'newProcEvent': {
-                const {mId} = event.notificationOneof.newProcEvent;
-                handleNewProcEvent(Number(mId));
+                handleNewProcEvent(event.notificationOneof.newProcEvent);
                 break;
             }
             default:
@@ -150,36 +148,11 @@ function AceEditorWrapper() {
     function processStructureStateEvent(event: StructureStateEvent): void {
         switch (event.structureStateOneof.oneofKind) {
             case 'executeEvent': {
-                const {found, procId, mId} = event.structureStateOneof.executeEvent;
-                if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined || procId === undefined) {
-                    throw new Error(`invalid executeEvent`)
-                }
-                const {goId, executionContext} = found;
-                handleExecuteEvent(Number(mId), Number(goId), executionContext.func!, Number(procId));
+                handleExecuteEvent(event.structureStateOneof.executeEvent);
                 break;
             }
             case 'runqStatusEvent': {
-                const {procId, runnext, runqEntries, mId} = event.structureStateOneof.runqStatusEvent;
-                if (procId === undefined) {
-                    throw new Error(`invalid runqStatusEvent`);
-                }
-                handleStructureState([
-                    {
-                        mId: Number(mId),
-                        structureType: StructureType.LocalRunq,
-                        value: {
-                            id: Number(procId),
-                            runnext: runnext !== undefined? {
-                                id: Number(runnext.goId),
-                                entryFunc: runnext.executionContext?.func?? '',
-                            }: undefined,
-                            runq: runqEntries.map(entry => ({
-                                id: Number(entry.goId),
-                                entryFunc: entry.executionContext?.func?? '',
-                            }))
-                        },
-                    },
-                ]);
+                handleRunqStatusEvent(event.structureStateOneof.runqStatusEvent);
                 break;
             }
             default:

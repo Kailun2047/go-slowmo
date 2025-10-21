@@ -104,31 +104,19 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		TargetPkg:    "runtime",
 		TargetFn:     "newproc",
 		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "go_newproc",
-	})
-	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
-		TargetPkg:    "runtime",
-		TargetFn:     "newproc",
-		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "delay",
+		BpfFns:       []string{"go_newproc"},
 	})
 	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
 		TargetPkg:    "runtime",
 		TargetFn:     "schedule",
 		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "go_schedule",
-	})
-	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
-		TargetPkg:    "runtime",
-		TargetFn:     "schedule",
-		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "delay",
+		BpfFns:       []string{"go_schedule"},
 	})
 	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
 		TargetPkg:    "runtime",
 		TargetFn:     "gopark",
 		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "go_gopark",
+		BpfFns:       []string{"go_gopark"},
 	})
 	// TODO: instrument ready (which pairs with gopark).
 
@@ -137,32 +125,26 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		TargetPkg:    "runtime",
 		TargetFn:     "newproc",
 		AttachOffset: instrumentation.AttachOffsetReturns,
-		BpfFn:        "go_runq_status",
+		BpfFns:       []string{"go_runq_status"},
 	})
 	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
 		TargetPkg:    "runtime",
 		TargetFn:     "execute",
 		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "go_execute",
-	})
-	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
-		TargetPkg:    "runtime",
-		TargetFn:     "execute",
-		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "delay",
+		BpfFns:       []string{"go_execute"},
 	})
 	// TODO: inspect globrunq and all runqs when entering runtime.execute.
 
 	/* Helpers. */
 	instrumentor.InstrumentPackage(instrumentation.PackageSpec{
 		TargetPkg: "main",
-		BpfFn:     "delay",
+		BpfFns:    []string{"delay"},
 	})
 	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
 		TargetPkg:    "runtime",
 		TargetFn:     "retake",
 		AttachOffset: instrumentation.AttachOffsetEntry,
-		BpfFn:        "avoid_preempt",
+		BpfFns:       []string{"avoid_preempt"},
 	})
 
 	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
@@ -233,8 +215,8 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 			}
 		}()
 		stream.Send(&proto.CompileAndRunResponse{
-			CompileAndRunOneof: &proto.CompileAndRunResponse_NumCpu{
-				NumCpu: int32(gomaxprocs),
+			CompileAndRunOneof: &proto.CompileAndRunResponse_Gomaxprocs{
+				Gomaxprocs: int32(gomaxprocs),
 			},
 		})
 		instrumentor, probeEventReader := startInstrumentation(instrumentorProgPath, outName)

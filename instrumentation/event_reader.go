@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/cilium/ebpf"
@@ -46,6 +47,10 @@ type runqStatusEvent struct {
 	Runqtail uint64
 	indexedRunqEntry
 	MID int64
+	// GroupingMID is set as the id of the triggering M when collecting statuses
+	// of multiple runqs, and as a negative number when only collecting status
+	// of an individual runq.
+	GroupingMID int64
 }
 type indexedRunqEntry struct {
 	RunqEntryIdx uint64
@@ -54,6 +59,10 @@ type indexedRunqEntry struct {
 type runqEntry struct {
 	PC   uint64 // 0 if not a real entry (e.g. when representing a nil runnext)
 	GoID uint64
+}
+
+func (event runqStatusEvent) formLocalRunqKey() string {
+	return fmt.Sprintf("%d:%d", event.GroupingMID, event.ProcID)
 }
 
 func isDummyEntry(entry runqEntry) bool {
@@ -139,17 +148,28 @@ type executeEvent struct {
 	Found    runqEntry
 	CallerPC uint64
 	ProcID   int64
+	NumP     uint64
+}
+
+type executeEventBuffer struct {
+	event        executeEvent
+	runqStatuses []*proto.RunqStatusEvent
+}
+
+func (buf *executeEventBuffer) isCompleted() bool {
+	return len(buf.runqStatuses) == int(buf.event.NumP)
 }
 
 type EventReader struct {
-	interpreter   *ELFInterpreter
-	ringbufReader *ringbuf.Reader
-	eventCh       chan ringbuf.Record
-	byteOrder     binary.ByteOrder
-	localRunqs    map[int64][]runqEntry
-	globrunq      []runqEntry
-	semtable      versionedSemtable
-	ProbeEventCh  chan *proto.ProbeEvent
+	interpreter           *ELFInterpreter
+	ringbufReader         *ringbuf.Reader
+	eventCh               chan ringbuf.Record
+	byteOrder             binary.ByteOrder
+	localRunqs            map[string][]runqEntry
+	bufferedExecuteEvents map[int64]*executeEventBuffer
+	globrunq              []runqEntry
+	semtable              versionedSemtable
+	ProbeEventCh          chan *proto.ProbeEvent
 }
 
 func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventReader {
@@ -158,12 +178,13 @@ func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventRea
 		log.Fatal("Create ring buffer reader: ", err)
 	}
 	return &EventReader{
-		interpreter:   interpreter,
-		ringbufReader: ringbufReader,
-		eventCh:       make(chan ringbuf.Record),
-		byteOrder:     determineByteOrder(),
-		localRunqs:    make(map[int64][]runqEntry),
-		ProbeEventCh:  make(chan *proto.ProbeEvent),
+		interpreter:           interpreter,
+		ringbufReader:         ringbufReader,
+		eventCh:               make(chan ringbuf.Record),
+		byteOrder:             determineByteOrder(),
+		localRunqs:            make(map[string][]runqEntry),
+		bufferedExecuteEvents: make(map[int64]*executeEventBuffer),
+		ProbeEventCh:          make(chan *proto.ProbeEvent),
 	}
 }
 
@@ -280,28 +301,40 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil {
 			break
 		}
-		if _, ok := r.localRunqs[event.ProcID]; !ok {
-			r.localRunqs[event.ProcID] = []runqEntry{}
+		localRunqKey := event.formLocalRunqKey()
+		if _, ok := r.localRunqs[localRunqKey]; !ok {
+			r.localRunqs[localRunqKey] = []runqEntry{}
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
-			runnext := r.interpretRunqEntry(event.RunqEntry)
-			probeEvent = &proto.ProbeEvent{
-				ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
-					StructureStateEvent: &proto.StructureStateEvent{
-						StructureStateOneof: &proto.StructureStateEvent_RunqStatusEvent{
-							RunqStatusEvent: &proto.RunqStatusEvent{
-								ProcId:      &event.ProcID,
-								RunqEntries: r.interpretRunqEntries(r.localRunqs[event.ProcID]),
-								Runnext:     runnext,
-								MId:         &event.MID,
+			convertedEvent := r.convertRunqStatusEvent(event)
+			// Update any existing entry in buffered execute event in case of
+			// concurrency,
+			for _, buf := range r.bufferedExecuteEvents {
+				existingIdx := slices.IndexFunc(buf.runqStatuses, func(runq *proto.RunqStatusEvent) bool {
+					return runq.ProcId == convertedEvent.ProcId
+				})
+				if existingIdx != -1 {
+					buf.runqStatuses[existingIdx] = convertedEvent
+				}
+			}
+
+			if event.GroupingMID < 0 {
+				probeEvent = &proto.ProbeEvent{
+					ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
+						StructureStateEvent: &proto.StructureStateEvent{
+							StructureStateOneof: &proto.StructureStateEvent_RunqStatusEvent{
+								RunqStatusEvent: convertedEvent,
 							},
 						},
 					},
-				},
+				}
+			} else {
+				bufferedExecuteEvent := r.bufferedExecuteEvents[event.GroupingMID]
+				bufferedExecuteEvent.runqStatuses = append(bufferedExecuteEvent.runqStatuses, convertedEvent)
+				probeEvent = r.checkCompletedExecuteEvent()
 			}
-			delete(r.localRunqs, event.ProcID)
 		} else {
-			r.localRunqs[event.ProcID] = append(r.localRunqs[event.ProcID], event.RunqEntry)
+			r.localRunqs[localRunqKey] = append(r.localRunqs[localRunqKey], event.RunqEntry)
 		}
 	case EVENT_TYPE_GLOBAL_RUNQ_STATUS:
 		var event globalRunqStatusEvent
@@ -354,33 +387,69 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			log.Printf("Execute event from non-target callsite (%s), skipping...", *interpretedCallerPC.Func)
 			break
 		}
-		goId := int64(event.Found.GoID)
-		probeEvent = &proto.ProbeEvent{
-			ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
-				StructureStateEvent: &proto.StructureStateEvent{
-					StructureStateOneof: &proto.StructureStateEvent_ExecuteEvent{
-						ExecuteEvent: &proto.ExecuteEvent{
-							MId: &event.MID,
-							Found: &proto.RunqEntry{
-								GoId:             &goId,
-								ExecutionContext: r.interpretPC(event.Found.PC),
-							},
-							ProcId: &event.ProcID,
-						},
-					},
-				},
-			},
+		r.bufferedExecuteEvents[event.MID] = &executeEventBuffer{
+			event: event,
 		}
 	default:
 		err = fmt.Errorf("unrecognized event type")
 	}
 
 	if probeEvent != nil {
-		log.Printf("Event of type %v: %+v", etype, probeEvent)
+		log.Printf("Upon receiving event of type %v, probe event created: %+v", etype, probeEvent)
 		r.ProbeEventCh <- probeEvent
 	}
 
 	return err
+}
+
+func (r *EventReader) convertRunqStatusEvent(event runqStatusEvent) *proto.RunqStatusEvent {
+	localRunqKey := event.formLocalRunqKey()
+	runnext := r.interpretRunqEntry(event.RunqEntry)
+	entries := r.interpretRunqEntries(r.localRunqs[localRunqKey])
+	convertedEvent := &proto.RunqStatusEvent{
+		ProcId:      &event.ProcID,
+		RunqEntries: entries,
+		Runnext:     runnext,
+		MId:         &event.MID,
+	}
+	delete(r.localRunqs, localRunqKey)
+	return convertedEvent
+}
+
+func (r *EventReader) checkCompletedExecuteEvent() *proto.ProbeEvent {
+	var (
+		probeEvent   *proto.ProbeEvent
+		completedMID int64
+	)
+	for mID, buf := range r.bufferedExecuteEvents {
+		if buf.isCompleted() {
+			completedMID = mID
+			event := buf.event
+			goId := int64(event.Found.GoID)
+			probeEvent = &proto.ProbeEvent{
+				ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
+					StructureStateEvent: &proto.StructureStateEvent{
+						StructureStateOneof: &proto.StructureStateEvent_ExecuteEvent{
+							ExecuteEvent: &proto.ExecuteEvent{
+								MId: &event.MID,
+								Found: &proto.RunqEntry{
+									GoId:             &goId,
+									ExecutionContext: r.interpretPC(event.Found.PC),
+								},
+								ProcId: &event.ProcID,
+								Runqs:  buf.runqStatuses,
+							},
+						},
+					},
+				},
+			}
+			break
+		}
+	}
+	if probeEvent != nil {
+		delete(r.bufferedExecuteEvents, completedMID)
+	}
+	return probeEvent
 }
 
 func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEvent *proto.ProbeEvent) {

@@ -125,7 +125,7 @@ type CompileAndRunResponse struct {
 	//	*CompileAndRunResponse_RuntimeError
 	//	*CompileAndRunResponse_RunEvent
 	//	*CompileAndRunResponse_RuntimeOutput
-	//	*CompileAndRunResponse_NumCpu
+	//	*CompileAndRunResponse_Gomaxprocs
 	CompileAndRunOneof isCompileAndRunResponse_CompileAndRunOneof `protobuf_oneof:"compile_and_run_oneof"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -204,10 +204,10 @@ func (x *CompileAndRunResponse) GetRuntimeOutput() *RuntimeOutput {
 	return nil
 }
 
-func (x *CompileAndRunResponse) GetNumCpu() int32 {
+func (x *CompileAndRunResponse) GetGomaxprocs() int32 {
 	if x != nil {
-		if x, ok := x.CompileAndRunOneof.(*CompileAndRunResponse_NumCpu); ok {
-			return x.NumCpu
+		if x, ok := x.CompileAndRunOneof.(*CompileAndRunResponse_Gomaxprocs); ok {
+			return x.Gomaxprocs
 		}
 	}
 	return 0
@@ -233,8 +233,8 @@ type CompileAndRunResponse_RuntimeOutput struct {
 	RuntimeOutput *RuntimeOutput `protobuf:"bytes,4,opt,name=runtime_output,json=runtimeOutput,proto3,oneof"`
 }
 
-type CompileAndRunResponse_NumCpu struct {
-	NumCpu int32 `protobuf:"varint,5,opt,name=num_cpu,json=numCpu,proto3,oneof"`
+type CompileAndRunResponse_Gomaxprocs struct {
+	Gomaxprocs int32 `protobuf:"varint,5,opt,name=gomaxprocs,proto3,oneof"`
 }
 
 func (*CompileAndRunResponse_CompileError) isCompileAndRunResponse_CompileAndRunOneof() {}
@@ -245,7 +245,7 @@ func (*CompileAndRunResponse_RunEvent) isCompileAndRunResponse_CompileAndRunOneo
 
 func (*CompileAndRunResponse_RuntimeOutput) isCompileAndRunResponse_CompileAndRunOneof() {}
 
-func (*CompileAndRunResponse_NumCpu) isCompileAndRunResponse_CompileAndRunOneof() {}
+func (*CompileAndRunResponse_Gomaxprocs) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 type CompilationError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -828,6 +828,7 @@ type ExecuteEvent struct {
 	MId           *int64                 `protobuf:"varint,1,opt,name=m_id,json=mId,proto3,oneof" json:"m_id,omitempty"`
 	Found         *RunqEntry             `protobuf:"bytes,2,opt,name=found,proto3" json:"found,omitempty"`
 	ProcId        *int64                 `protobuf:"varint,3,opt,name=proc_id,json=procId,proto3,oneof" json:"proc_id,omitempty"`
+	Runqs         []*RunqStatusEvent     `protobuf:"bytes,4,rep,name=runqs,proto3" json:"runqs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -881,6 +882,13 @@ func (x *ExecuteEvent) GetProcId() int64 {
 		return *x.ProcId
 	}
 	return 0
+}
+
+func (x *ExecuteEvent) GetRunqs() []*RunqStatusEvent {
+	if x != nil {
+		return x.Runqs
+	}
+	return nil
 }
 
 type DelayEvent struct {
@@ -1070,13 +1078,15 @@ const file_slowmo_proto_rawDesc = "" +
 	"\fslowmo.proto\x12\x06slowmo\">\n" +
 	"\x14CompileAndRunRequest\x12\x1b\n" +
 	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
-	"\a_source\"\xbc\x02\n" +
+	"\a_source\"\xc3\x02\n" +
 	"\x15CompileAndRunResponse\x12?\n" +
 	"\rcompile_error\x18\x01 \x01(\v2\x18.slowmo.CompilationErrorH\x00R\fcompileError\x12;\n" +
 	"\rruntime_error\x18\x02 \x01(\v2\x14.slowmo.RuntimeErrorH\x00R\fruntimeError\x121\n" +
 	"\trun_event\x18\x03 \x01(\v2\x12.slowmo.ProbeEventH\x00R\brunEvent\x12>\n" +
-	"\x0eruntime_output\x18\x04 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutput\x12\x19\n" +
-	"\anum_cpu\x18\x05 \x01(\x05H\x00R\x06numCpuB\x17\n" +
+	"\x0eruntime_output\x18\x04 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutput\x12 \n" +
+	"\n" +
+	"gomaxprocs\x18\x05 \x01(\x05H\x00R\n" +
+	"gomaxprocsB\x17\n" +
 	"\x15compile_and_run_oneof\"N\n" +
 	"\x10CompilationError\x12(\n" +
 	"\rerror_message\x18\x01 \x01(\tH\x00R\ferrorMessage\x88\x01\x01B\x10\n" +
@@ -1120,11 +1130,12 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x04func\x18\x03 \x01(\tH\x02R\x04func\x88\x01\x01B\a\n" +
 	"\x05_fileB\a\n" +
 	"\x05_lineB\a\n" +
-	"\x05_func\"\x82\x01\n" +
+	"\x05_func\"\xb1\x01\n" +
 	"\fExecuteEvent\x12\x16\n" +
 	"\x04m_id\x18\x01 \x01(\x03H\x00R\x03mId\x88\x01\x01\x12'\n" +
 	"\x05found\x18\x02 \x01(\v2\x11.slowmo.RunqEntryR\x05found\x12\x1c\n" +
-	"\aproc_id\x18\x03 \x01(\x03H\x01R\x06procId\x88\x01\x01B\a\n" +
+	"\aproc_id\x18\x03 \x01(\x03H\x01R\x06procId\x88\x01\x01\x12-\n" +
+	"\x05runqs\x18\x04 \x03(\v2\x17.slowmo.RunqStatusEventR\x05runqsB\a\n" +
 	"\x05_m_idB\n" +
 	"\n" +
 	"\b_proc_id\"\x87\x01\n" +
@@ -1208,16 +1219,17 @@ var file_slowmo_proto_depIdxs = []int32{
 	10, // 12: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
 	11, // 13: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
 	10, // 14: slowmo.ExecuteEvent.found:type_name -> slowmo.RunqEntry
-	11, // 15: slowmo.DelayEvent.current_pc:type_name -> slowmo.InterpretedPC
-	0,  // 16: slowmo.ScheduleEvent.reason:type_name -> slowmo.ScheduleReason
-	11, // 17: slowmo.NewProcEvent.start_pc:type_name -> slowmo.InterpretedPC
-	1,  // 18: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
-	2,  // 19: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
-	19, // [19:20] is the sub-list for method output_type
-	18, // [18:19] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	9,  // 15: slowmo.ExecuteEvent.runqs:type_name -> slowmo.RunqStatusEvent
+	11, // 16: slowmo.DelayEvent.current_pc:type_name -> slowmo.InterpretedPC
+	0,  // 17: slowmo.ScheduleEvent.reason:type_name -> slowmo.ScheduleReason
+	11, // 18: slowmo.NewProcEvent.start_pc:type_name -> slowmo.InterpretedPC
+	1,  // 19: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
+	2,  // 20: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
+	20, // [20:21] is the sub-list for method output_type
+	19, // [19:20] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_slowmo_proto_init() }
@@ -1231,7 +1243,7 @@ func file_slowmo_proto_init() {
 		(*CompileAndRunResponse_RuntimeError)(nil),
 		(*CompileAndRunResponse_RunEvent)(nil),
 		(*CompileAndRunResponse_RuntimeOutput)(nil),
-		(*CompileAndRunResponse_NumCpu)(nil),
+		(*CompileAndRunResponse_Gomaxprocs)(nil),
 	}
 	file_slowmo_proto_msgTypes[2].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[3].OneofWrappers = []any{}

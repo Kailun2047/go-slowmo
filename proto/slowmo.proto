@@ -12,7 +12,7 @@ message CompileAndRunResponse {
         RuntimeError runtime_error = 2;
         ProbeEvent run_event = 3;
         RuntimeOutput runtime_output = 4;
-        int32 num_cpu = 5;
+        int32 gomaxprocs = 5;
     };
 }
 
@@ -76,6 +76,7 @@ message ExecuteEvent {
     optional int64 m_id = 1;
     RunqEntry found = 2;
     optional int64 proc_id = 3;
+    repeated RunqStatusEvent runqs = 4;
 }
 
 message DelayEvent {

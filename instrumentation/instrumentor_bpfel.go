@@ -63,6 +63,7 @@ type instrumentorSpecs struct {
 type instrumentorProgramSpecs struct {
 	AvoidPreempt     *ebpf.ProgramSpec `ebpf:"avoid_preempt"`
 	Delay            *ebpf.ProgramSpec `ebpf:"delay"`
+	GoAllRunqs       *ebpf.ProgramSpec `ebpf:"go_all_runqs"`
 	GoExecute        *ebpf.ProgramSpec `ebpf:"go_execute"`
 	GoGlobrunqStatus *ebpf.ProgramSpec `ebpf:"go_globrunq_status"`
 	GoGopark         *ebpf.ProgramSpec `ebpf:"go_gopark"`
@@ -153,6 +154,7 @@ type instrumentorVariables struct {
 type instrumentorPrograms struct {
 	AvoidPreempt     *ebpf.Program `ebpf:"avoid_preempt"`
 	Delay            *ebpf.Program `ebpf:"delay"`
+	GoAllRunqs       *ebpf.Program `ebpf:"go_all_runqs"`
 	GoExecute        *ebpf.Program `ebpf:"go_execute"`
 	GoGlobrunqStatus *ebpf.Program `ebpf:"go_globrunq_status"`
 	GoGopark         *ebpf.Program `ebpf:"go_gopark"`
@@ -165,6 +167,7 @@ func (p *instrumentorPrograms) Close() error {
 	return _InstrumentorClose(
 		p.AvoidPreempt,
 		p.Delay,
+		p.GoAllRunqs,
 		p.GoExecute,
 		p.GoGlobrunqStatus,
 		p.GoGopark,

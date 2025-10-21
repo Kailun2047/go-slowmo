@@ -52,11 +52,11 @@ export interface CompileAndRunResponse {
          */
         runtimeOutput: RuntimeOutput;
     } | {
-        oneofKind: "numCpu";
+        oneofKind: "gomaxprocs";
         /**
-         * @generated from protobuf field: int32 num_cpu = 5
+         * @generated from protobuf field: int32 gomaxprocs = 5
          */
-        numCpu: number;
+        gomaxprocs: number;
     } | {
         oneofKind: undefined;
     };
@@ -234,6 +234,10 @@ export interface ExecuteEvent {
      * @generated from protobuf field: optional int64 proc_id = 3
      */
     procId?: bigint;
+    /**
+     * @generated from protobuf field: repeated slowmo.RunqStatusEvent runqs = 4
+     */
+    runqs: RunqStatusEvent[];
 }
 /**
  * @generated from protobuf message slowmo.DelayEvent
@@ -361,7 +365,7 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
             { no: 2, name: "runtime_error", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeError },
             { no: 3, name: "run_event", kind: "message", oneof: "compileAndRunOneof", T: () => ProbeEvent },
             { no: 4, name: "runtime_output", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeOutput },
-            { no: 5, name: "num_cpu", kind: "scalar", oneof: "compileAndRunOneof", T: 5 /*ScalarType.INT32*/ }
+            { no: 5, name: "gomaxprocs", kind: "scalar", oneof: "compileAndRunOneof", T: 5 /*ScalarType.INT32*/ }
         ]);
     }
     create(value?: PartialMessage<CompileAndRunResponse>): CompileAndRunResponse {
@@ -400,10 +404,10 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
                         runtimeOutput: RuntimeOutput.internalBinaryRead(reader, reader.uint32(), options, (message.compileAndRunOneof as any).runtimeOutput)
                     };
                     break;
-                case /* int32 num_cpu */ 5:
+                case /* int32 gomaxprocs */ 5:
                     message.compileAndRunOneof = {
-                        oneofKind: "numCpu",
-                        numCpu: reader.int32()
+                        oneofKind: "gomaxprocs",
+                        gomaxprocs: reader.int32()
                     };
                     break;
                 default:
@@ -430,9 +434,9 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
         /* slowmo.RuntimeOutput runtime_output = 4; */
         if (message.compileAndRunOneof.oneofKind === "runtimeOutput")
             RuntimeOutput.internalBinaryWrite(message.compileAndRunOneof.runtimeOutput, writer.tag(4, WireType.LengthDelimited).fork(), options).join();
-        /* int32 num_cpu = 5; */
-        if (message.compileAndRunOneof.oneofKind === "numCpu")
-            writer.tag(5, WireType.Varint).int32(message.compileAndRunOneof.numCpu);
+        /* int32 gomaxprocs = 5; */
+        if (message.compileAndRunOneof.oneofKind === "gomaxprocs")
+            writer.tag(5, WireType.Varint).int32(message.compileAndRunOneof.gomaxprocs);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -958,11 +962,13 @@ class ExecuteEvent$Type extends MessageType<ExecuteEvent> {
         super("slowmo.ExecuteEvent", [
             { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
             { no: 2, name: "found", kind: "message", T: () => RunqEntry },
-            { no: 3, name: "proc_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ }
+            { no: 3, name: "proc_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 4, name: "runqs", kind: "message", repeat: 2 /*RepeatType.UNPACKED*/, T: () => RunqStatusEvent }
         ]);
     }
     create(value?: PartialMessage<ExecuteEvent>): ExecuteEvent {
         const message = globalThis.Object.create((this.messagePrototype!));
+        message.runqs = [];
         if (value !== undefined)
             reflectionMergePartial<ExecuteEvent>(this, message, value);
         return message;
@@ -980,6 +986,9 @@ class ExecuteEvent$Type extends MessageType<ExecuteEvent> {
                     break;
                 case /* optional int64 proc_id */ 3:
                     message.procId = reader.int64().toBigInt();
+                    break;
+                case /* repeated slowmo.RunqStatusEvent runqs */ 4:
+                    message.runqs.push(RunqStatusEvent.internalBinaryRead(reader, reader.uint32(), options));
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -1002,6 +1011,9 @@ class ExecuteEvent$Type extends MessageType<ExecuteEvent> {
         /* optional int64 proc_id = 3; */
         if (message.procId !== undefined)
             writer.tag(3, WireType.Varint).int64(message.procId);
+        /* repeated slowmo.RunqStatusEvent runqs = 4; */
+        for (let i = 0; i < message.runqs.length; i++)
+            RunqStatusEvent.internalBinaryWrite(message.runqs[i], writer.tag(4, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
