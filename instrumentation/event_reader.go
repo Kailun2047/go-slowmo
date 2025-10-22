@@ -410,7 +410,9 @@ func (r *EventReader) convertRunqStatusEvent(event runqStatusEvent) *proto.RunqS
 		ProcId:      &event.ProcID,
 		RunqEntries: entries,
 		Runnext:     runnext,
-		MId:         &event.MID,
+	}
+	if event.MID >= 0 {
+		convertedEvent.MId = &event.MID
 	}
 	delete(r.localRunqs, localRunqKey)
 	return convertedEvent

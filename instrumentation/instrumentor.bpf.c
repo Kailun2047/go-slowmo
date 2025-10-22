@@ -103,7 +103,7 @@ struct runq_status_event {
     // userspace can take it as the last event of the reported runq.
     uint64_t runq_entry_idx;
     struct runq_entry runq_entry;
-    int64_t mid;
+    int64_t mid; // -1 if runq is not yet attached to an M
     int64_t grouping_mid;
 };
 
@@ -134,7 +134,6 @@ SEC("uprobe/go_runq_status")
 int BPF_UPROBE(go_runq_status) {
     uint32_t runq_i, local_runq_entry_i;
     char *m_ptr, *p_ptr;
-    int ret;
 
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
@@ -158,7 +157,11 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, int64_t grouping_mid)
     local_runq = GET_P_RUNQ_ADDR(p_ptr);
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_P_M_PTR_ADDR(p_ptr));
-    bpf_probe_read_user(&mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    if (!m_ptr) {
+        mid = -1;
+    } else {
+        bpf_probe_read_user(&mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    }
 
     bpf_for(runq_i, runqhead, runqtail + 1) {
         e.etype = EVENT_TYPE_RUNQ_STATUS;
@@ -613,6 +616,8 @@ int BPF_UPROBE(go_execute) {
     int32_t procid32;
     int64_t allp_len;
     int i, ret;
+
+    delay_helper(DELAY_NS);
 
     e.etype = EVENT_TYPE_FOUND_RUNNABLE;
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));

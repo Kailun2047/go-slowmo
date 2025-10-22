@@ -174,8 +174,8 @@ const createSharedSlice: StateCreator<
         }
         const mId = Number(rawMId), procId = Number(rawProcId);
 
-        const threads = get().threads;
-        checkAndApplyMPBindingChange(threads, mId, procId);
+        let threads = get().threads;
+        threads = checkAndApplyMPBindingChange(threads, mId, procId);
 
         set((state) => ({
             threads: [...threads.map((thread) => thread.mId === mId? {...thread, executing: undefined, isScheduling: true}: thread)],
@@ -184,32 +184,53 @@ const createSharedSlice: StateCreator<
     },
 
     handleExecuteEvent: (event: ExecuteEvent) => {
-        const {found, procId: rawProcId, mId: rawMid} = event;
+        const {found, procId: rawProcId, mId: rawMid, runqs} = event;
         if (found === undefined || found.goId === undefined || found.executionContext?.func === undefined || rawProcId === undefined) {
             throw new Error(`invalid executeEvent`);
         }
-        const procId = Number(rawProcId), mId = Number(rawMid);
-        const threads = get().threads;
-        checkAndApplyMPBindingChange(threads, mId, procId);
+        const mId = Number(rawMid);
+        let threads = get().threads;
+        threads = threads.map((thread) => thread.mId === mId? {...thread, isScheduling: false}: thread);
         set(() => ({
-            threads: [...threads.map((thread) => thread.mId === mId? {...thread, isScheduling: false}: thread)]
+            threads: [...threads],
         }))
 
         const {goId, executionContext} = found;
         const {func} = executionContext;
+        const runqStructs: Structure[] = [];
+        runqs.map(runqEvent => {
+            const {mId: runqMId, procId, runnext, runqEntries} = runqEvent;
+            if (procId === undefined) {
+                throw new Error(`Found invalid runq (procId: ${runqEvent.procId}, mId: ${runqEvent.mId}) in execute event for mId ${mId}`);
+            }
+            if (runqMId === undefined) {
+                console.debug(`Found idle p (procId: ${procId}, mId: ${runqMId}) in execute event for mId ${mId}`);
+                return;
+            }
+            runqStructs.push({
+                mId: Number(runqMId),
+                structureType: StructureType.LocalRunq,
+                value: {
+                    id: Number(procId),
+                    runnext: runnext !== undefined? {id: Number(runnext.goId), entryFunc: runnext.executionContext!.func!}: undefined,
+                    runq: runqEntries.map(entry => ({id: Number(entry.goId), entryFunc: entry.executionContext!.func!})),
+                },
+            });
+        })
         get().updateStructures([
             {
                 mId,
                 structureType: StructureType.Executing,
                 value: {id: Number(goId), entryFunc: func!},
             },
+            ...runqStructs,
         ]);
     },
 
     handleRunqStatusEvent: (event: RunqStatusEvent) => {
         const {procId, runnext, runqEntries, mId} = event;
-        if (procId === undefined) {
-            throw new Error(`invalid runqStatusEvent`);
+        if (procId === undefined || mId === undefined) {
+            throw new Error(`invalid runqStatusEvent (procId: ${procId}, mId: ${mId})`);
         }
         get().updateStructures([
             {
@@ -231,8 +252,15 @@ const createSharedSlice: StateCreator<
     },
 
     updateStructures: (structs: Structure[]) => {
+        let updatedState: Partial<ThreadsSlice> = {};
+
+        // Local structures.
+        //
+        // TODO: cover special case where a proc was added after initialization
+        // and has later become idle (why does this happen?).
+        const localStructs = structs.filter(struct => struct.mId !== undefined);
         const changedStructsByMId = new Map<number, Structure[]>();
-        for (const struct of structs) {
+        for (const struct of localStructs) {
             const {mId} = struct;
             let changedStructs = changedStructsByMId.get(mId);
             if (changedStructs === undefined) {
@@ -241,9 +269,9 @@ const createSharedSlice: StateCreator<
             }
             changedStructs.push(struct);
         }
-        const changedStructureTypes = new Set<StructureType>;
+        const threads = get().threads;
         for (const [mId, structs] of [...changedStructsByMId]) {
-            const thread = get().threads.find((thread) => thread.mId === mId)
+            const thread = threads.find((thread) => thread.mId === mId)
             if (thread === undefined) {
                 console.warn(`thread with mId ${mId} has structure change but is not found in thread list`);
                 continue;
@@ -258,47 +286,39 @@ const createSharedSlice: StateCreator<
                         thread.executing = value;
                         break;
                     case StructureType.LocalRunq:
-                        thread.p = value;
+                        checkAndApplyMPBindingChange(threads, mId, value.id, value);
                         break
                     default:
                         console.warn(`state change for m${mId} and structure type ${structureType} not applied`);
                 }
-                changedStructureTypes.add(structureType);
             }
-            let updatedState: Partial<ThreadsSlice> = {};
-            if (changedStructureTypes.has(StructureType.Executing) || changedStructureTypes.has(StructureType.LocalRunq)) {
-                updatedState.threads = [...get().threads];
-            }
-            set(() => (updatedState));
         }
+        if (localStructs.length > 0) {
+            updatedState.threads = [...threads];
+        }
+
+        set(() => (updatedState));
     }
 })
 
-// checkAndApplyMPBindings Checks for possible change in m-p bindings.
-function checkAndApplyMPBindingChange(threads: Thread[], mId: number, procId: number) {
+// checkAndApplyMPBindingChange checks for possible change in m-p bindings.
+function checkAndApplyMPBindingChange(threads: Thread[], mId: number, procId: number, newP: Proc | undefined = undefined): Thread[] {
     const existingThread = threads.find((thread) => thread.p?.id === procId);
     if (existingThread === undefined) {
         throw new Error(`no existing thread found for procId ${procId}`);
     }
-    if (existingThread.mId === undefined) {
-        existingThread.mId = mId;
-    } else if (existingThread.mId !== mId) {
-        // If p is already assigned to a different M, transfer the p to the
-        // new M and leave the old M with no p.
-        const p = existingThread.p;
-        existingThread.p = undefined;
-        let targetThread = threads.find(thread => thread.mId === mId);
-        if (targetThread === undefined) {
-            // Add to thread if this is a new M.
-            threads.push({
-                mId,
-                isScheduling: false,
-                p,
-            });
-        } else {
-            targetThread.p = p;
-        }
+
+    let targetThread = threads.find(thread => thread.mId === mId);
+    if (targetThread === undefined) {
+        targetThread = {mId, isScheduling: false};
+        threads.push(targetThread);
     }
+    const p = newP?? existingThread.p;
+    existingThread.p = undefined;
+    const oldP = targetThread.p;
+    targetThread.p = p;
+    threads.push({p: oldP, isScheduling: false});
+    return threads.filter(thread => thread.mId !== undefined || thread.p !== undefined);
 }
 
 export const useBoundStore = create<CodePanelSlice & ThreadsSlice & SharedSlice>()(
