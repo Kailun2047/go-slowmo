@@ -47,9 +47,6 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_M_PTR_ADDR(p_addr) ((char *)(p_addr) + P_M_PTR_OFFSET)
 
 static int report_local_runq_status(uint64_t p_ptr_scalar, int64_t grouping_mid);
-static int report_semtable_status(int32_t procid);
-static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int32_t procid);
-static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version);
 static int64_t unwind_stack(char *curr_stack_addr, uint64_t pc, char *curr_fp, uint64_t callstack_pc_list[]);
 static long find_target_func(void *map, void *key, void *value, void *ctx);
 static bool check_delay_done(uint64_t ns_start);
@@ -64,9 +61,10 @@ const uint64_t EVENT_TYPE_RUNQ_STATUS = 2;
 // const uint64_t EVENT_TYPE_RUNQ_STEAL = 3;
 // const uint64_t EVENT_TYPE_EXECUTE = 4;
 const uint64_t EVENT_TYPE_GLOBRUNQ_STATUS = 5;
-const uint64_t EVENT_TYPE_SEMTABLE_STATUS = 6;
+// const uint64_t EVENT_TYPE_SEMTABLE_STATUS = 6;
 const uint64_t EVENT_TYPE_SCHEDULE = 7;
 const uint64_t EVENT_TYPE_FOUND_RUNNABLE = 8;
+const uint64_t EVENT_TYPE_GOPARK = 9;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -299,188 +297,78 @@ int BPF_UPROBE(go_globrunq_status) {
     return 0;
 }
 
-#define WAITREASON_SYNC_MUTEX_LOCK 21
+#define NUM_WAITREASON 37
+#define WAITREASON_STRING_MAX_LEN 40
+#define GO_STRING_LEN_OFFSET 8
+#define GO_STRING_SIZE 16
+#define GO_STRING_LEN_ADDR(str_addr) ((char *)(str_addr) + GO_STRING_LEN_OFFSET)
+
+volatile const uint64_t waitreason_strings_addr;
+
+struct waitreason {
+    char str[WAITREASON_STRING_MAX_LEN];
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __type(key, uint32_t);
+    __type(value, struct waitreason);
+    __uint(max_entries, NUM_WAITREASON);
+} waitreason_strings SEC(".maps");
+
+SEC("uprobe/get_waitreason_strings")
+int BPF_UPROBE(get_waitreason_strings) {
+    uint32_t i;
+    int64_t reason_str_len;
+    int ret;
+    char *reason_strings_elem_ptr, *reason_str_ptr;
+    struct waitreason reason;
+
+    bpf_for(i, 0, NUM_WAITREASON) {
+        reason_strings_elem_ptr = (char *)(waitreason_strings_addr + GO_STRING_SIZE * i);
+        bpf_probe_read_user(&reason_str_ptr, sizeof(char *), reason_strings_elem_ptr);
+        bpf_probe_read_user(&reason_str_len, sizeof(int64_t), GO_STRING_LEN_ADDR(reason_strings_elem_ptr));
+        reason_str_len++; // count in the NUL byte
+        if (reason_str_len > sizeof(reason.str)) {
+            reason_str_len = sizeof(reason.str);
+        }
+        bpf_probe_read_user_str(&reason.str, reason_str_len, reason_str_ptr);
+        ret = bpf_map_update_elem(&waitreason_strings, &i, &reason, BPF_EXIST);
+        if (ret) {
+            return ret;
+        }
+    }
+
+    return 0;
+}
+
+struct gopark_event {
+    uint64_t etype;
+    int64_t mid;
+    uint64_t goid;
+    char waitreason[WAITREASON_STRING_MAX_LEN];
+};
 
 SEC("uprobe/go_gopark")
 int BPF_UPROBE(go_gopark) {
-    uint8_t waitreason;
-    char *m_ptr, *p_ptr;
-    int32_t procid;
+    struct gopark_event e;
+    char *m_ptr, *g_ptr;
+    struct waitreason *reason_ptr;
+    uint32_t waitreason_i;
 
-    waitreason = GO_PARAM3(ctx);
-    if (waitreason == WAITREASON_SYNC_MUTEX_LOCK) {
-        bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-        bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
-        bpf_probe_read_user(&procid, sizeof(int32_t), GET_P_ID_ADDR(p_ptr));
-        return report_semtable_status(procid);
+    e.etype = EVENT_TYPE_GOPARK;
+    waitreason_i = GO_PARAM3(ctx);
+    reason_ptr = bpf_map_lookup_elem(&waitreason_strings, &waitreason_i);
+    if (!reason_ptr) {
+        e.waitreason[0] = 0;
     } else {
-        bpf_printk("unprobed gopark reason %d", waitreason);
+        bpf_probe_read_kernel_str(&e.waitreason, sizeof(e.waitreason), reason_ptr);
     }
-    return 0;
-}
-
-volatile const uint64_t semtab_addr;
-uint64_t semtab_version = 0;
-
-#define SEMTAB_ENTRY_NUM 251
-#define SEMTAB_ENTRY_SIZE 64 // size of a Go sem table entry (padding included, different under different arch)
-#define SEMROOT_TREAP_OFFSET 8 // static lock rank is off by default on amd64, which means the runtime.mutex struct is 8-byte
-#define SEMROOT_GET_TREAP_ADDR(semroot_addr) ((char *)(semroot_addr) + SEMROOT_TREAP_OFFSET)
-#define SUDOG_NEXT_OFFSET 8
-#define SUDOG_PREV_OFFSET 16
-#define SUDOG_ELEM_OFFSET 24
-#define SUDOG_WAITLINK_OFFSET 64 // TODO: confirm offset
-#define SUDOG_GET_NEXT(sudog_addr) ((char *)(sudog_addr) + SUDOG_NEXT_OFFSET)
-#define SUDOG_GET_PREV(sudog_addr) ((char *)(sudog_addr) + SUDOG_PREV_OFFSET)
-#define SUDOG_GET_ELEM(sudog_addr) ((char *)(sudog_addr) + SUDOG_ELEM_OFFSET)
-#define SUDOG_GET_WAITLINK(sudog_addr) ((char *)(sudog_addr) + SUDOG_WAITLINK_OFFSET)
-#define MAX_TREAP_HEIGHT 10
-#define MAX_WAITLIST_LEN 64
-
-struct sudog {
-    uint64_t goid;
-    uint64_t elem;
-};
-
-struct semtable_status_event {
-    uint64_t etype;
-    // In case multiple gopark()s might get invoked concurrently on different
-    // CPUs, the version field (which is atomically incremented every time
-    // semtable status is reported by report_semtable_status()) is used to help
-    // the user space pick the latest semtable to read among the concurrently
-    // reported ones.
-    uint64_t version;
-    struct sudog sudog;
-    // is_last marks the end of semtable status event stream (sudog field holds
-    // no meaningful value when is_last is 1).
-    uint64_t is_last;
-};
-
-static int report_semtable_status(int32_t procid) {
-    struct semtable_status_event e;
-    uint8_t semroot_i;
-    char *root_sudog;
-    uint64_t version;
-    int traverse_sudog_err;
-
-    version = __sync_fetch_and_add(&semtab_version, 1);
-
-    bpf_for(semroot_i, 0, SEMTAB_ENTRY_NUM) {
-        bpf_probe_read_user(&root_sudog, sizeof(char *), SEMROOT_GET_TREAP_ADDR(semtab_addr + semroot_i * SEMTAB_ENTRY_SIZE));
-        if (!root_sudog) {
-            continue;
-        }
-        if ((traverse_sudog_err = traverse_sudog_inorder(root_sudog, version, procid))) {
-            bpf_printk("error traversing sudog: %d", traverse_sudog_err);
-            return traverse_sudog_err;
-        }
-    }
-
-    e.etype = EVENT_TYPE_SEMTABLE_STATUS;
-    e.version = version;
-    e.is_last = 1;
+    g_ptr = (char *)(CURR_G_ADDR(ctx));
+    bpf_probe_read_user(&e.goid, sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(g_ptr));
+    bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
-
-    return 0;
-}
-
-#define MAX_NUM_CPU 4
-
-// The max number of logical CPUs that can be used by the tracee program needs
-// to be manually restricted. It would be more flexible to have the use space
-// read it via runtime.NumCPU(), but it's trickier to have the user space create
-// the map first and then access the map within ebpf program.
-struct {
-    __uint(type, BPF_MAP_TYPE_ARRAY_OF_MAPS);
-    __uint(max_entries, MAX_NUM_CPU);
-    __type(key, uint32_t);
-    __type(value, uint32_t);
-    __array(values, struct {
-        __uint(type, BPF_MAP_TYPE_STACK);
-        __uint(max_entries, MAX_TREAP_HEIGHT);
-        __type(value, char *);
-    });
-} sudog_stacks SEC(".maps");
-
-// In-order traverse a sudog and submit the traversed sudogs as ringbuf event
-// stream. Uses bpf_repeat() to approximate while() loop.
-//
-// TODO: an in-order traversal is not enough if we want to illustrate the tree
-// structure of a treap. Maybe we need to in addition report a pre-order or
-// post-order traversal.
-static int traverse_sudog_inorder(char *root_sudog, uint64_t semtab_version, int32_t procid) {
-    char *cur_sudog = root_sudog;
-    void *sudog_stack_ptr;
-    uint32_t u_procid;
-    int err;
-
-    u_procid = (uint32_t) procid;
-    if (!(sudog_stack_ptr = bpf_map_lookup_elem(&sudog_stacks, &u_procid))) {
-        bpf_printk("bpf_map_lookup_elem didn't find sudog_stack for semtab version %d", semtab_version);
-        return 1;
-    }
-
-    bpf_repeat(MAX_TREAP_HEIGHT) {
-        if (!cur_sudog) {
-            break;
-        }
-        if ((err = bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0))) {
-            bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
-            return err;
-        }
-        bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_PREV(cur_sudog));
-    }
-    bpf_repeat(1 << MAX_TREAP_HEIGHT) {
-        err = bpf_map_pop_elem(sudog_stack_ptr, &cur_sudog);
-        if (err) {
-            if (err == -2) { // ENOENT means the stack is empty, and we are done traversing
-                break;
-            } else {
-                bpf_printk("bpf_map_pop_elem from sudog_stack failed: %d", err);
-                return err;
-            }
-        }
-        if ((err = traverse_sudog_waitlink(cur_sudog, semtab_version))) {
-            bpf_printk("traverse_sudog_waitlink failed");
-            return err;
-        }
-        bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_NEXT(cur_sudog));
-        bpf_repeat(MAX_TREAP_HEIGHT) {
-            if (!cur_sudog) {
-                break;
-            }
-            if ((err = bpf_map_push_elem(sudog_stack_ptr, &cur_sudog, 0))) {
-                bpf_printk("bpf_map_push_elem to sudog_stack failed (might be caused by insufficient max_entries)");
-                return err;
-            }
-            bpf_probe_read_user(&cur_sudog, sizeof(char *), SUDOG_GET_PREV(cur_sudog));
-        }
-    }
-    return 0;
-}
-
-static int traverse_sudog_waitlink(char *head_sudog, uint64_t semtab_version) {
-    struct semtable_status_event e;
-    char *sudog = head_sudog, *sudog_gp;
-    uint8_t i;
-
-    bpf_for(i, 0, MAX_WAITLIST_LEN + 1) {
-        if (i == MAX_WAITLIST_LEN) {
-            bpf_printk("traverse_sudog_waitlink number of linked sudogs greater than max len reserved");
-            break;
-        }
-        if (!sudog) {
-            break;
-        }
-        e.etype = EVENT_TYPE_SEMTABLE_STATUS;
-        e.version = semtab_version;
-        e.is_last = 0;
-        bpf_probe_read_user(&((e.sudog).elem), sizeof(uint64_t), SUDOG_GET_ELEM(sudog));
-        bpf_probe_read_user(&sudog_gp, sizeof(char *), sudog); // pointer to g is the first field of sudog struct
-        bpf_probe_read_user(&((e.sudog).goid), sizeof(uint64_t), GET_GOID_ADDR(sudog_gp));
-        bpf_probe_read_user(&sudog, sizeof(char *), SUDOG_GET_WAITLINK(sudog));
-        bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
-    }
 
     return 0;
 }

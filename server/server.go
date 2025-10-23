@@ -35,8 +35,8 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 	interpreter := instrumentation.NewELFInterpreter(targetPath)
 
 	runtimeSchedAddr := interpreter.GetGlobalVariableAddr("runtime.sched")
-	semTableAddr := interpreter.GetGlobalVariableAddr("runtime.semtable")
 	allpSliceAddr := interpreter.GetGlobalVariableAddr("runtime.allp")
+	waitReasonStringsAddr := interpreter.GetGlobalVariableAddr("runtime.waitReasonStrings")
 	instrumentor := instrumentation.NewInstrumentor(
 		interpreter,
 		bpfProg,
@@ -46,12 +46,12 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 			Value:         runtimeSchedAddr,
 		}),
 		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
-			NameInBPFProg: "semtab_addr",
-			Value:         semTableAddr,
-		}),
-		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
 			NameInBPFProg: "allp_slice_addr",
 			Value:         allpSliceAddr,
+		}),
+		instrumentation.WithGlobalVariable(instrumentation.GlobalVariable[uint64]{
+			NameInBPFProg: "waitreason_strings_addr",
+			Value:         waitReasonStringsAddr,
 		}),
 	)
 
@@ -67,35 +67,6 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		err := functabMap.Update(uint32(i), funcInfo, ebpf.UpdateExist)
 		if err != nil {
 			log.Fatalf("error writing function info into go_functab map; key: %d, value %+v, error: %v", i, funcInfo, err)
-		}
-	}
-
-	// Initialize the map-in-map with GOMAXPROCS stacks for the ebpf program to
-	// inspect semtable without potential race condition.
-	//
-	// Assumptions made here:
-	//
-	// 1. the loader and the instrumented program perceive the same value
-	// for GOMAXPROCS;
-	//
-	// 2. the IDs of processors ("P") are orderded, 0-based numbers.
-	//
-	// Adjustment is needed if any of the above assumptions doesn't hold true.
-	sudogStacks := instrumentor.GetMap("sudog_stacks")
-	for i := range gomaxprocs {
-		sudogStackName := fmt.Sprintf("sudog_stack_%d", i)
-		sudogStack, err := ebpf.NewMap(&ebpf.MapSpec{
-			Name:       sudogStackName,
-			Type:       ebpf.Stack,
-			ValueSize:  8, // a sudog stack will hold pointers to sudogs
-			MaxEntries: 10,
-		})
-		if err != nil {
-			log.Fatalf("Error creating sudog stack map %s: %v", sudogStackName, err)
-		}
-		err = sudogStacks.Update(uint32(i), sudogStack, ebpf.UpdateAny)
-		if err != nil {
-			log.Fatalf("Error inserting inner sudog stack map %s into outer map: %v", sudogStackName, err)
 		}
 	}
 
@@ -145,6 +116,12 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		TargetFn:     "retake",
 		AttachOffset: instrumentation.AttachOffsetEntry,
 		BpfFns:       []string{"avoid_preempt"},
+	})
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "main",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFns:       []string{"get_waitreason_strings"},
 	})
 
 	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))

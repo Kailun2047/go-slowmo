@@ -44,6 +44,7 @@ message NotificationEvent {
         // DelayEvent delay_event = 1 [deprecated=true];
         ScheduleEvent schedule_event = 2;
         NewProcEvent new_proc_event = 3;
+        GoparkEvent gopark_event = 4;
     }
 }
 
@@ -102,6 +103,12 @@ message NewProcEvent {
     optional int64 creator_go_id = 1;
     InterpretedPC start_pc = 2;
     optional int64 m_id = 3;
+}
+
+message GoparkEvent {
+    optional int64 m_id = 1;
+    optional int64 go_id = 2;
+    optional string wait_reason = 3;
 }
 
 service SlowmoService {

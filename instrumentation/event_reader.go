@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"slices"
-	"strings"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
@@ -28,9 +27,10 @@ const (
 	// EVENT_TYPE_RUNQ_STEAL
 	// EVENT_TYPE_EXECUTE
 	EVENT_TYPE_GLOBAL_RUNQ_STATUS = iota + 2
-	EVENT_TYPE_SEMTABLE_STATUS
-	EVENT_TYPE_SCHEDULE
+	// EVENT_TYPE_SEMTABLE_STATUS
+	EVENT_TYPE_SCHEDULE = iota + 3
 	EVENT_TYPE_EXECUTE
+	EVENT_TYPE_GOPARK
 )
 
 type newprocEvent struct {
@@ -125,23 +125,6 @@ type globalRunqStatusEvent struct {
 	indexedRunqEntry
 }
 
-type semtableStatusEvent struct {
-	EType   eventType
-	Version uint64
-	Sudog   sudog
-	IsLast  uint64
-}
-
-type sudog struct {
-	Goid uint64
-	Elem uint64
-}
-
-type versionedSemtable struct {
-	version uint64
-	sudogs  []sudog
-}
-
 type executeEvent struct {
 	EType    eventType
 	MID      int64
@@ -160,6 +143,13 @@ func (buf *executeEventBuffer) isCompleted() bool {
 	return len(buf.runqStatuses) == int(buf.event.NumP)
 }
 
+type goparkEvent struct {
+	EType      eventType
+	MID        int64
+	GoID       uint64
+	WaitReason [40]byte
+}
+
 type EventReader struct {
 	interpreter           *ELFInterpreter
 	ringbufReader         *ringbuf.Reader
@@ -168,7 +158,6 @@ type EventReader struct {
 	localRunqs            map[string][]runqEntry
 	bufferedExecuteEvents map[int64]*executeEventBuffer
 	globrunq              []runqEntry
-	semtable              versionedSemtable
 	ProbeEventCh          chan *proto.ProbeEvent
 }
 
@@ -348,33 +337,31 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		} else {
 			r.globrunq = append(r.globrunq, event.RunqEntry)
 		}
-	case EVENT_TYPE_SEMTABLE_STATUS:
-		var event semtableStatusEvent
+	case EVENT_TYPE_GOPARK:
+		var event goparkEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
 		if err != nil {
 			break
 		}
-		if event.Version > r.semtable.version {
-			log.Printf("Received semtable status event of newer version %d, resetting semtable", event.Version)
-			r.semtable.version = event.Version
-			r.semtable.sudogs = []sudog{}
-		} else if event.Version < r.semtable.version {
-			log.Printf("Received semtable status event of stale version %d, discarding", event.Version)
+		goID := int64(event.GoID)
+		nullByteIdx := slices.Index(event.WaitReason[:], 0)
+		if nullByteIdx == -1 {
+			err = fmt.Errorf("null byte not found in wait reason %s", event.WaitReason)
 			break
 		}
-		if event.IsLast == 1 {
-			var semtableSb strings.Builder
-			semtableSb.WriteString("[")
-			for i, entry := range r.semtable.sudogs {
-				semtableSb.WriteString(fmt.Sprintf("GoID %d is waiting on %s (%x)", entry.Goid, r.interpreter.SymByDataElemAddr(entry.Elem), entry.Elem))
-				if i < len(r.semtable.sudogs)-1 {
-					semtableSb.WriteString(", ")
-				}
-			}
-			semtableSb.WriteString("]")
-			log.Printf("Semtable: %s", semtableSb.String())
-		} else {
-			r.semtable.sudogs = append(r.semtable.sudogs, event.Sudog)
+		waitReason := string(event.WaitReason[:nullByteIdx])
+		probeEvent = &proto.ProbeEvent{
+			ProbeEventOneof: &proto.ProbeEvent_NotificationEvent{
+				NotificationEvent: &proto.NotificationEvent{
+					NotificationOneof: &proto.NotificationEvent_GoparkEvent{
+						GoparkEvent: &proto.GoparkEvent{
+							MId:        &event.MID,
+							GoId:       &goID,
+							WaitReason: &waitReason,
+						},
+					},
+				},
+			},
 		}
 	case EVENT_TYPE_EXECUTE:
 		var event executeEvent

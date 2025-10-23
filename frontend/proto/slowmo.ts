@@ -141,6 +141,12 @@ export interface NotificationEvent {
          */
         newProcEvent: NewProcEvent;
     } | {
+        oneofKind: "goparkEvent";
+        /**
+         * @generated from protobuf field: slowmo.GoparkEvent gopark_event = 4
+         */
+        goparkEvent: GoparkEvent;
+    } | {
         oneofKind: undefined;
     };
 }
@@ -289,6 +295,23 @@ export interface NewProcEvent {
      * @generated from protobuf field: optional int64 m_id = 3
      */
     mId?: bigint;
+}
+/**
+ * @generated from protobuf message slowmo.GoparkEvent
+ */
+export interface GoparkEvent {
+    /**
+     * @generated from protobuf field: optional int64 m_id = 1
+     */
+    mId?: bigint;
+    /**
+     * @generated from protobuf field: optional int64 go_id = 2
+     */
+    goId?: bigint;
+    /**
+     * @generated from protobuf field: optional string wait_reason = 3
+     */
+    waitReason?: string;
 }
 /**
  * @generated from protobuf enum slowmo.ScheduleReason
@@ -660,7 +683,8 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
     constructor() {
         super("slowmo.NotificationEvent", [
             { no: 2, name: "schedule_event", kind: "message", oneof: "notificationOneof", T: () => ScheduleEvent },
-            { no: 3, name: "new_proc_event", kind: "message", oneof: "notificationOneof", T: () => NewProcEvent }
+            { no: 3, name: "new_proc_event", kind: "message", oneof: "notificationOneof", T: () => NewProcEvent },
+            { no: 4, name: "gopark_event", kind: "message", oneof: "notificationOneof", T: () => GoparkEvent }
         ]);
     }
     create(value?: PartialMessage<NotificationEvent>): NotificationEvent {
@@ -687,6 +711,12 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
                         newProcEvent: NewProcEvent.internalBinaryRead(reader, reader.uint32(), options, (message.notificationOneof as any).newProcEvent)
                     };
                     break;
+                case /* slowmo.GoparkEvent gopark_event */ 4:
+                    message.notificationOneof = {
+                        oneofKind: "goparkEvent",
+                        goparkEvent: GoparkEvent.internalBinaryRead(reader, reader.uint32(), options, (message.notificationOneof as any).goparkEvent)
+                    };
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -705,6 +735,9 @@ class NotificationEvent$Type extends MessageType<NotificationEvent> {
         /* slowmo.NewProcEvent new_proc_event = 3; */
         if (message.notificationOneof.oneofKind === "newProcEvent")
             NewProcEvent.internalBinaryWrite(message.notificationOneof.newProcEvent, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
+        /* slowmo.GoparkEvent gopark_event = 4; */
+        if (message.notificationOneof.oneofKind === "goparkEvent")
+            GoparkEvent.internalBinaryWrite(message.notificationOneof.goparkEvent, writer.tag(4, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -1205,6 +1238,66 @@ class NewProcEvent$Type extends MessageType<NewProcEvent> {
  * @generated MessageType for protobuf message slowmo.NewProcEvent
  */
 export const NewProcEvent = new NewProcEvent$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class GoparkEvent$Type extends MessageType<GoparkEvent> {
+    constructor() {
+        super("slowmo.GoparkEvent", [
+            { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 2, name: "go_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 3, name: "wait_reason", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
+        ]);
+    }
+    create(value?: PartialMessage<GoparkEvent>): GoparkEvent {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        if (value !== undefined)
+            reflectionMergePartial<GoparkEvent>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: GoparkEvent): GoparkEvent {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* optional int64 m_id */ 1:
+                    message.mId = reader.int64().toBigInt();
+                    break;
+                case /* optional int64 go_id */ 2:
+                    message.goId = reader.int64().toBigInt();
+                    break;
+                case /* optional string wait_reason */ 3:
+                    message.waitReason = reader.string();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: GoparkEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional int64 m_id = 1; */
+        if (message.mId !== undefined)
+            writer.tag(1, WireType.Varint).int64(message.mId);
+        /* optional int64 go_id = 2; */
+        if (message.goId !== undefined)
+            writer.tag(2, WireType.Varint).int64(message.goId);
+        /* optional string wait_reason = 3; */
+        if (message.waitReason !== undefined)
+            writer.tag(3, WireType.LengthDelimited).string(message.waitReason);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message slowmo.GoparkEvent
+ */
+export const GoparkEvent = new GoparkEvent$Type();
 /**
  * @generated ServiceType for protobuf service slowmo.SlowmoService
  */

@@ -19,6 +19,8 @@ type instrumentorGoFuncInfo struct {
 	_       [3]byte
 }
 
+type instrumentorWaitreason struct{ Str [40]int8 }
+
 // loadInstrumentor returns the embedded CollectionSpec for instrumentor.
 func loadInstrumentor() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_InstrumentorBytes)
@@ -61,15 +63,16 @@ type instrumentorSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type instrumentorProgramSpecs struct {
-	AvoidPreempt     *ebpf.ProgramSpec `ebpf:"avoid_preempt"`
-	Delay            *ebpf.ProgramSpec `ebpf:"delay"`
-	GoAllRunqs       *ebpf.ProgramSpec `ebpf:"go_all_runqs"`
-	GoExecute        *ebpf.ProgramSpec `ebpf:"go_execute"`
-	GoGlobrunqStatus *ebpf.ProgramSpec `ebpf:"go_globrunq_status"`
-	GoGopark         *ebpf.ProgramSpec `ebpf:"go_gopark"`
-	GoNewproc        *ebpf.ProgramSpec `ebpf:"go_newproc"`
-	GoRunqStatus     *ebpf.ProgramSpec `ebpf:"go_runq_status"`
-	GoSchedule       *ebpf.ProgramSpec `ebpf:"go_schedule"`
+	AvoidPreempt         *ebpf.ProgramSpec `ebpf:"avoid_preempt"`
+	Delay                *ebpf.ProgramSpec `ebpf:"delay"`
+	GetWaitreasonStrings *ebpf.ProgramSpec `ebpf:"get_waitreason_strings"`
+	GoAllRunqs           *ebpf.ProgramSpec `ebpf:"go_all_runqs"`
+	GoExecute            *ebpf.ProgramSpec `ebpf:"go_execute"`
+	GoGlobrunqStatus     *ebpf.ProgramSpec `ebpf:"go_globrunq_status"`
+	GoGopark             *ebpf.ProgramSpec `ebpf:"go_gopark"`
+	GoNewproc            *ebpf.ProgramSpec `ebpf:"go_newproc"`
+	GoRunqStatus         *ebpf.ProgramSpec `ebpf:"go_runq_status"`
+	GoSchedule           *ebpf.ProgramSpec `ebpf:"go_schedule"`
 }
 
 // instrumentorMapSpecs contains maps before they are loaded into the kernel.
@@ -78,7 +81,7 @@ type instrumentorProgramSpecs struct {
 type instrumentorMapSpecs struct {
 	GoFunctab         *ebpf.MapSpec `ebpf:"go_functab"`
 	InstrumentorEvent *ebpf.MapSpec `ebpf:"instrumentor_event"`
-	SudogStacks       *ebpf.MapSpec `ebpf:"sudog_stacks"`
+	WaitreasonStrings *ebpf.MapSpec `ebpf:"waitreason_strings"`
 }
 
 // instrumentorVariableSpecs contains global variables before they are loaded into the kernel.
@@ -88,14 +91,13 @@ type instrumentorVariableSpecs struct {
 	EVENT_TYPE_DELAY           *ebpf.VariableSpec `ebpf:"EVENT_TYPE_DELAY"`
 	EVENT_TYPE_FOUND_RUNNABLE  *ebpf.VariableSpec `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
+	EVENT_TYPE_GOPARK          *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GOPARK"`
 	EVENT_TYPE_NEWPROC         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_SCHEDULE        *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SCHEDULE"`
-	EVENT_TYPE_SEMTABLE_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
 	AllpSliceAddr              *ebpf.VariableSpec `ebpf:"allp_slice_addr"`
 	RuntimeSchedAddr           *ebpf.VariableSpec `ebpf:"runtime_sched_addr"`
-	SemtabAddr                 *ebpf.VariableSpec `ebpf:"semtab_addr"`
-	SemtabVersion              *ebpf.VariableSpec `ebpf:"semtab_version"`
+	WaitreasonStringsAddr      *ebpf.VariableSpec `ebpf:"waitreason_strings_addr"`
 }
 
 // instrumentorObjects contains all objects after they have been loaded into the kernel.
@@ -120,14 +122,14 @@ func (o *instrumentorObjects) Close() error {
 type instrumentorMaps struct {
 	GoFunctab         *ebpf.Map `ebpf:"go_functab"`
 	InstrumentorEvent *ebpf.Map `ebpf:"instrumentor_event"`
-	SudogStacks       *ebpf.Map `ebpf:"sudog_stacks"`
+	WaitreasonStrings *ebpf.Map `ebpf:"waitreason_strings"`
 }
 
 func (m *instrumentorMaps) Close() error {
 	return _InstrumentorClose(
 		m.GoFunctab,
 		m.InstrumentorEvent,
-		m.SudogStacks,
+		m.WaitreasonStrings,
 	)
 }
 
@@ -138,35 +140,36 @@ type instrumentorVariables struct {
 	EVENT_TYPE_DELAY           *ebpf.Variable `ebpf:"EVENT_TYPE_DELAY"`
 	EVENT_TYPE_FOUND_RUNNABLE  *ebpf.Variable `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
 	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
+	EVENT_TYPE_GOPARK          *ebpf.Variable `ebpf:"EVENT_TYPE_GOPARK"`
 	EVENT_TYPE_NEWPROC         *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
 	EVENT_TYPE_RUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
 	EVENT_TYPE_SCHEDULE        *ebpf.Variable `ebpf:"EVENT_TYPE_SCHEDULE"`
-	EVENT_TYPE_SEMTABLE_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_SEMTABLE_STATUS"`
 	AllpSliceAddr              *ebpf.Variable `ebpf:"allp_slice_addr"`
 	RuntimeSchedAddr           *ebpf.Variable `ebpf:"runtime_sched_addr"`
-	SemtabAddr                 *ebpf.Variable `ebpf:"semtab_addr"`
-	SemtabVersion              *ebpf.Variable `ebpf:"semtab_version"`
+	WaitreasonStringsAddr      *ebpf.Variable `ebpf:"waitreason_strings_addr"`
 }
 
 // instrumentorPrograms contains all programs after they have been loaded into the kernel.
 //
 // It can be passed to loadInstrumentorObjects or ebpf.CollectionSpec.LoadAndAssign.
 type instrumentorPrograms struct {
-	AvoidPreempt     *ebpf.Program `ebpf:"avoid_preempt"`
-	Delay            *ebpf.Program `ebpf:"delay"`
-	GoAllRunqs       *ebpf.Program `ebpf:"go_all_runqs"`
-	GoExecute        *ebpf.Program `ebpf:"go_execute"`
-	GoGlobrunqStatus *ebpf.Program `ebpf:"go_globrunq_status"`
-	GoGopark         *ebpf.Program `ebpf:"go_gopark"`
-	GoNewproc        *ebpf.Program `ebpf:"go_newproc"`
-	GoRunqStatus     *ebpf.Program `ebpf:"go_runq_status"`
-	GoSchedule       *ebpf.Program `ebpf:"go_schedule"`
+	AvoidPreempt         *ebpf.Program `ebpf:"avoid_preempt"`
+	Delay                *ebpf.Program `ebpf:"delay"`
+	GetWaitreasonStrings *ebpf.Program `ebpf:"get_waitreason_strings"`
+	GoAllRunqs           *ebpf.Program `ebpf:"go_all_runqs"`
+	GoExecute            *ebpf.Program `ebpf:"go_execute"`
+	GoGlobrunqStatus     *ebpf.Program `ebpf:"go_globrunq_status"`
+	GoGopark             *ebpf.Program `ebpf:"go_gopark"`
+	GoNewproc            *ebpf.Program `ebpf:"go_newproc"`
+	GoRunqStatus         *ebpf.Program `ebpf:"go_runq_status"`
+	GoSchedule           *ebpf.Program `ebpf:"go_schedule"`
 }
 
 func (p *instrumentorPrograms) Close() error {
 	return _InstrumentorClose(
 		p.AvoidPreempt,
 		p.Delay,
+		p.GetWaitreasonStrings,
 		p.GoAllRunqs,
 		p.GoExecute,
 		p.GoGlobrunqStatus,

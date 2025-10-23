@@ -264,31 +264,3 @@ func (ei *ELFInterpreter) ParseFuncTab() []instrumentorGoFuncInfo {
 
 	return res
 }
-
-// SymByDataElemAddr is used to find the symbol to which a data element belongs
-// (e.g. to find out the variable for a given data element address in a sudog).
-func (ei *ELFInterpreter) SymByDataElemAddr(dataElemAddr uint64) string {
-	target := elf.Symbol{
-		Value: dataElemAddr,
-	}
-	idx, found := slices.BinarySearchFunc(ei.symbols, target, func(sym, target elf.Symbol) int {
-		if sym.Value < target.Value {
-			return -1
-		} else if sym.Value > target.Value {
-			return 1
-		} else {
-			return 0
-		}
-	})
-	if idx == len(ei.symbols) {
-		// The last entry in symbol table holds special symbol which doesn't
-		// match actual symbol in go program. At this point we know the data
-		// element can't be found in the symbol table, and is something on
-		// stack.
-		return "data element on stack"
-	} else if found {
-		return ei.symbols[idx].Name
-	} else {
-		return ei.symbols[idx-1].Name
-	}
-}
