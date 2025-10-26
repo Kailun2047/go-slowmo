@@ -66,10 +66,11 @@ type instrumentorProgramSpecs struct {
 	AvoidPreempt         *ebpf.ProgramSpec `ebpf:"avoid_preempt"`
 	Delay                *ebpf.ProgramSpec `ebpf:"delay"`
 	GetWaitreasonStrings *ebpf.ProgramSpec `ebpf:"get_waitreason_strings"`
-	GoAllRunqs           *ebpf.ProgramSpec `ebpf:"go_all_runqs"`
 	GoExecute            *ebpf.ProgramSpec `ebpf:"go_execute"`
 	GoGlobrunqStatus     *ebpf.ProgramSpec `ebpf:"go_globrunq_status"`
 	GoGopark             *ebpf.ProgramSpec `ebpf:"go_gopark"`
+	GoGoready            *ebpf.ProgramSpec `ebpf:"go_goready"`
+	GoGoreadyRunqStatus  *ebpf.ProgramSpec `ebpf:"go_goready_runq_status"`
 	GoNewproc            *ebpf.ProgramSpec `ebpf:"go_newproc"`
 	GoRunqStatus         *ebpf.ProgramSpec `ebpf:"go_runq_status"`
 	GoSchedule           *ebpf.ProgramSpec `ebpf:"go_schedule"`
@@ -88,16 +89,18 @@ type instrumentorMapSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type instrumentorVariableSpecs struct {
-	EVENT_TYPE_DELAY           *ebpf.VariableSpec `ebpf:"EVENT_TYPE_DELAY"`
-	EVENT_TYPE_FOUND_RUNNABLE  *ebpf.VariableSpec `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
-	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
-	EVENT_TYPE_GOPARK          *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GOPARK"`
-	EVENT_TYPE_NEWPROC         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
-	EVENT_TYPE_RUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
-	EVENT_TYPE_SCHEDULE        *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SCHEDULE"`
-	AllpSliceAddr              *ebpf.VariableSpec `ebpf:"allp_slice_addr"`
-	RuntimeSchedAddr           *ebpf.VariableSpec `ebpf:"runtime_sched_addr"`
-	WaitreasonStringsAddr      *ebpf.VariableSpec `ebpf:"waitreason_strings_addr"`
+	EVENT_TYPE_DELAY               *ebpf.VariableSpec `ebpf:"EVENT_TYPE_DELAY"`
+	EVENT_TYPE_FOUND_RUNNABLE      *ebpf.VariableSpec `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
+	EVENT_TYPE_GLOBRUNQ_STATUS     *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
+	EVENT_TYPE_GOPARK              *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GOPARK"`
+	EVENT_TYPE_GOREADY             *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GOREADY"`
+	EVENT_TYPE_GOREADY_RUNQ_STATUS *ebpf.VariableSpec `ebpf:"EVENT_TYPE_GOREADY_RUNQ_STATUS"`
+	EVENT_TYPE_NEWPROC             *ebpf.VariableSpec `ebpf:"EVENT_TYPE_NEWPROC"`
+	EVENT_TYPE_RUNQ_STATUS         *ebpf.VariableSpec `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
+	EVENT_TYPE_SCHEDULE            *ebpf.VariableSpec `ebpf:"EVENT_TYPE_SCHEDULE"`
+	AllpSliceAddr                  *ebpf.VariableSpec `ebpf:"allp_slice_addr"`
+	RuntimeSchedAddr               *ebpf.VariableSpec `ebpf:"runtime_sched_addr"`
+	WaitreasonStringsAddr          *ebpf.VariableSpec `ebpf:"waitreason_strings_addr"`
 }
 
 // instrumentorObjects contains all objects after they have been loaded into the kernel.
@@ -137,16 +140,18 @@ func (m *instrumentorMaps) Close() error {
 //
 // It can be passed to loadInstrumentorObjects or ebpf.CollectionSpec.LoadAndAssign.
 type instrumentorVariables struct {
-	EVENT_TYPE_DELAY           *ebpf.Variable `ebpf:"EVENT_TYPE_DELAY"`
-	EVENT_TYPE_FOUND_RUNNABLE  *ebpf.Variable `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
-	EVENT_TYPE_GLOBRUNQ_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
-	EVENT_TYPE_GOPARK          *ebpf.Variable `ebpf:"EVENT_TYPE_GOPARK"`
-	EVENT_TYPE_NEWPROC         *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
-	EVENT_TYPE_RUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
-	EVENT_TYPE_SCHEDULE        *ebpf.Variable `ebpf:"EVENT_TYPE_SCHEDULE"`
-	AllpSliceAddr              *ebpf.Variable `ebpf:"allp_slice_addr"`
-	RuntimeSchedAddr           *ebpf.Variable `ebpf:"runtime_sched_addr"`
-	WaitreasonStringsAddr      *ebpf.Variable `ebpf:"waitreason_strings_addr"`
+	EVENT_TYPE_DELAY               *ebpf.Variable `ebpf:"EVENT_TYPE_DELAY"`
+	EVENT_TYPE_FOUND_RUNNABLE      *ebpf.Variable `ebpf:"EVENT_TYPE_FOUND_RUNNABLE"`
+	EVENT_TYPE_GLOBRUNQ_STATUS     *ebpf.Variable `ebpf:"EVENT_TYPE_GLOBRUNQ_STATUS"`
+	EVENT_TYPE_GOPARK              *ebpf.Variable `ebpf:"EVENT_TYPE_GOPARK"`
+	EVENT_TYPE_GOREADY             *ebpf.Variable `ebpf:"EVENT_TYPE_GOREADY"`
+	EVENT_TYPE_GOREADY_RUNQ_STATUS *ebpf.Variable `ebpf:"EVENT_TYPE_GOREADY_RUNQ_STATUS"`
+	EVENT_TYPE_NEWPROC             *ebpf.Variable `ebpf:"EVENT_TYPE_NEWPROC"`
+	EVENT_TYPE_RUNQ_STATUS         *ebpf.Variable `ebpf:"EVENT_TYPE_RUNQ_STATUS"`
+	EVENT_TYPE_SCHEDULE            *ebpf.Variable `ebpf:"EVENT_TYPE_SCHEDULE"`
+	AllpSliceAddr                  *ebpf.Variable `ebpf:"allp_slice_addr"`
+	RuntimeSchedAddr               *ebpf.Variable `ebpf:"runtime_sched_addr"`
+	WaitreasonStringsAddr          *ebpf.Variable `ebpf:"waitreason_strings_addr"`
 }
 
 // instrumentorPrograms contains all programs after they have been loaded into the kernel.
@@ -156,10 +161,11 @@ type instrumentorPrograms struct {
 	AvoidPreempt         *ebpf.Program `ebpf:"avoid_preempt"`
 	Delay                *ebpf.Program `ebpf:"delay"`
 	GetWaitreasonStrings *ebpf.Program `ebpf:"get_waitreason_strings"`
-	GoAllRunqs           *ebpf.Program `ebpf:"go_all_runqs"`
 	GoExecute            *ebpf.Program `ebpf:"go_execute"`
 	GoGlobrunqStatus     *ebpf.Program `ebpf:"go_globrunq_status"`
 	GoGopark             *ebpf.Program `ebpf:"go_gopark"`
+	GoGoready            *ebpf.Program `ebpf:"go_goready"`
+	GoGoreadyRunqStatus  *ebpf.Program `ebpf:"go_goready_runq_status"`
 	GoNewproc            *ebpf.Program `ebpf:"go_newproc"`
 	GoRunqStatus         *ebpf.Program `ebpf:"go_runq_status"`
 	GoSchedule           *ebpf.Program `ebpf:"go_schedule"`
@@ -170,10 +176,11 @@ func (p *instrumentorPrograms) Close() error {
 		p.AvoidPreempt,
 		p.Delay,
 		p.GetWaitreasonStrings,
-		p.GoAllRunqs,
 		p.GoExecute,
 		p.GoGlobrunqStatus,
 		p.GoGopark,
+		p.GoGoready,
+		p.GoGoreadyRunqStatus,
 		p.GoNewproc,
 		p.GoRunqStatus,
 		p.GoSchedule,

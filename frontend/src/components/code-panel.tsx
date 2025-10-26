@@ -39,6 +39,8 @@ function AceEditorWrapper() {
     const handleExecuteEvent = useBoundStore((state) => state.handleExecuteEvent);
     const handleRunqStatusEvent = useBoundStore((state) => state.handleRunqStatusEvent);
     const initThreads = useBoundStore((state) => state.initThreads);
+    const handleGoparkEvent = useBoundStore((state) => state.handleGoparkEvent);
+    const handleGoreadyEvent = useBoundStore((state) => state.handleGoreadyEvent);
 
     const elemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
@@ -140,6 +142,10 @@ function AceEditorWrapper() {
                 handleNewProcEvent(event.notificationOneof.newProcEvent);
                 break;
             }
+            case 'goparkEvent': {
+                handleGoparkEvent(event.notificationOneof.goparkEvent);
+                break;
+            }
             default:
                 console.warn(`unknown notification event type ${event.notificationOneof.oneofKind}`)
         }
@@ -153,6 +159,10 @@ function AceEditorWrapper() {
             }
             case 'runqStatusEvent': {
                 handleRunqStatusEvent(event.structureStateOneof.runqStatusEvent);
+                break;
+            }
+            case 'goreadyEvent': {
+                handleGoreadyEvent(event.structureStateOneof.goreadyEvent);
                 break;
             }
             default:

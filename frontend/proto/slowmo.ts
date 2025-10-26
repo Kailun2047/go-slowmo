@@ -170,6 +170,12 @@ export interface StructureStateEvent {
          */
         executeEvent: ExecuteEvent;
     } | {
+        oneofKind: "goreadyEvent";
+        /**
+         * @generated from protobuf field: slowmo.GoreadyEvent goready_event = 3
+         */
+        goreadyEvent: GoreadyEvent;
+    } | {
         oneofKind: undefined;
     };
 }
@@ -305,13 +311,30 @@ export interface GoparkEvent {
      */
     mId?: bigint;
     /**
-     * @generated from protobuf field: optional int64 go_id = 2
+     * @generated from protobuf field: slowmo.RunqEntry parked = 2
      */
-    goId?: bigint;
+    parked?: RunqEntry;
     /**
      * @generated from protobuf field: optional string wait_reason = 3
      */
     waitReason?: string;
+}
+/**
+ * @generated from protobuf message slowmo.GoreadyEvent
+ */
+export interface GoreadyEvent {
+    /**
+     * @generated from protobuf field: optional int64 m_id = 1
+     */
+    mId?: bigint;
+    /**
+     * @generated from protobuf field: optional int64 go_id = 2
+     */
+    goId?: bigint;
+    /**
+     * @generated from protobuf field: slowmo.RunqStatusEvent runq = 3
+     */
+    runq?: RunqStatusEvent;
 }
 /**
  * @generated from protobuf enum slowmo.ScheduleReason
@@ -753,7 +776,8 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
     constructor() {
         super("slowmo.StructureStateEvent", [
             { no: 1, name: "runq_status_event", kind: "message", oneof: "structureStateOneof", T: () => RunqStatusEvent },
-            { no: 2, name: "execute_event", kind: "message", oneof: "structureStateOneof", T: () => ExecuteEvent }
+            { no: 2, name: "execute_event", kind: "message", oneof: "structureStateOneof", T: () => ExecuteEvent },
+            { no: 3, name: "goready_event", kind: "message", oneof: "structureStateOneof", T: () => GoreadyEvent }
         ]);
     }
     create(value?: PartialMessage<StructureStateEvent>): StructureStateEvent {
@@ -780,6 +804,12 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
                         executeEvent: ExecuteEvent.internalBinaryRead(reader, reader.uint32(), options, (message.structureStateOneof as any).executeEvent)
                     };
                     break;
+                case /* slowmo.GoreadyEvent goready_event */ 3:
+                    message.structureStateOneof = {
+                        oneofKind: "goreadyEvent",
+                        goreadyEvent: GoreadyEvent.internalBinaryRead(reader, reader.uint32(), options, (message.structureStateOneof as any).goreadyEvent)
+                    };
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -798,6 +828,9 @@ class StructureStateEvent$Type extends MessageType<StructureStateEvent> {
         /* slowmo.ExecuteEvent execute_event = 2; */
         if (message.structureStateOneof.oneofKind === "executeEvent")
             ExecuteEvent.internalBinaryWrite(message.structureStateOneof.executeEvent, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
+        /* slowmo.GoreadyEvent goready_event = 3; */
+        if (message.structureStateOneof.oneofKind === "goreadyEvent")
+            GoreadyEvent.internalBinaryWrite(message.structureStateOneof.goreadyEvent, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -1243,7 +1276,7 @@ class GoparkEvent$Type extends MessageType<GoparkEvent> {
     constructor() {
         super("slowmo.GoparkEvent", [
             { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
-            { no: 2, name: "go_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 2, name: "parked", kind: "message", T: () => RunqEntry },
             { no: 3, name: "wait_reason", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
@@ -1261,8 +1294,8 @@ class GoparkEvent$Type extends MessageType<GoparkEvent> {
                 case /* optional int64 m_id */ 1:
                     message.mId = reader.int64().toBigInt();
                     break;
-                case /* optional int64 go_id */ 2:
-                    message.goId = reader.int64().toBigInt();
+                case /* slowmo.RunqEntry parked */ 2:
+                    message.parked = RunqEntry.internalBinaryRead(reader, reader.uint32(), options, message.parked);
                     break;
                 case /* optional string wait_reason */ 3:
                     message.waitReason = reader.string();
@@ -1282,9 +1315,9 @@ class GoparkEvent$Type extends MessageType<GoparkEvent> {
         /* optional int64 m_id = 1; */
         if (message.mId !== undefined)
             writer.tag(1, WireType.Varint).int64(message.mId);
-        /* optional int64 go_id = 2; */
-        if (message.goId !== undefined)
-            writer.tag(2, WireType.Varint).int64(message.goId);
+        /* slowmo.RunqEntry parked = 2; */
+        if (message.parked)
+            RunqEntry.internalBinaryWrite(message.parked, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
         /* optional string wait_reason = 3; */
         if (message.waitReason !== undefined)
             writer.tag(3, WireType.LengthDelimited).string(message.waitReason);
@@ -1298,6 +1331,66 @@ class GoparkEvent$Type extends MessageType<GoparkEvent> {
  * @generated MessageType for protobuf message slowmo.GoparkEvent
  */
 export const GoparkEvent = new GoparkEvent$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class GoreadyEvent$Type extends MessageType<GoreadyEvent> {
+    constructor() {
+        super("slowmo.GoreadyEvent", [
+            { no: 1, name: "m_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 2, name: "go_id", kind: "scalar", opt: true, T: 3 /*ScalarType.INT64*/, L: 0 /*LongType.BIGINT*/ },
+            { no: 3, name: "runq", kind: "message", T: () => RunqStatusEvent }
+        ]);
+    }
+    create(value?: PartialMessage<GoreadyEvent>): GoreadyEvent {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        if (value !== undefined)
+            reflectionMergePartial<GoreadyEvent>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: GoreadyEvent): GoreadyEvent {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* optional int64 m_id */ 1:
+                    message.mId = reader.int64().toBigInt();
+                    break;
+                case /* optional int64 go_id */ 2:
+                    message.goId = reader.int64().toBigInt();
+                    break;
+                case /* slowmo.RunqStatusEvent runq */ 3:
+                    message.runq = RunqStatusEvent.internalBinaryRead(reader, reader.uint32(), options, message.runq);
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: GoreadyEvent, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional int64 m_id = 1; */
+        if (message.mId !== undefined)
+            writer.tag(1, WireType.Varint).int64(message.mId);
+        /* optional int64 go_id = 2; */
+        if (message.goId !== undefined)
+            writer.tag(2, WireType.Varint).int64(message.goId);
+        /* slowmo.RunqStatusEvent runq = 3; */
+        if (message.runq)
+            RunqStatusEvent.internalBinaryWrite(message.runq, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message slowmo.GoreadyEvent
+ */
+export const GoreadyEvent = new GoreadyEvent$Type();
 /**
  * @generated ServiceType for protobuf service slowmo.SlowmoService
  */

@@ -43,7 +43,7 @@ export function ThreadList() {
         }
 
         let goP = (
-            <div className='go-p-wrapper'></div>
+            <div className='go-struct-wrapper' style={{borderColor: "transparent"}}></div>
         );
         if (p !== undefined) {
             const runq = (p.runnext? [p.runnext, ...p.runq]: p.runq).map((g) => (
@@ -53,9 +53,9 @@ export function ThreadList() {
                 </div>
             ));
             goP = (
-                <div className='go-p-wrapper' style={{borderWidth: '2px', borderStyle: 'dashed', borderColor: 'gray'}}>
-                    <div className='go-p'>{'p' + p.id}</div>
-                    <div className='go-runq'>{runq}</div>
+                <div className='go-struct-wrapper' style={{borderColor: 'gray'}}>
+                    <div className='go-struct-name'>{'p' + p.id}</div>
+                    <div className='go-struct'>{runq}</div>
                 </div>
             )
         }

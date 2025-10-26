@@ -31,6 +31,8 @@ const (
 	EVENT_TYPE_SCHEDULE = iota + 3
 	EVENT_TYPE_EXECUTE
 	EVENT_TYPE_GOPARK
+	EVENT_TYPE_GOREADY
+	EVENT_TYPE_GOREADY_RUNQ_STATUS
 )
 
 type newprocEvent struct {
@@ -62,7 +64,7 @@ type runqEntry struct {
 }
 
 func (event runqStatusEvent) formLocalRunqKey() string {
-	return fmt.Sprintf("%d:%d", event.GroupingMID, event.ProcID)
+	return fmt.Sprintf("%d:%d:%d", event.EType, event.GroupingMID, event.ProcID)
 }
 
 func isDummyEntry(entry runqEntry) bool {
@@ -146,8 +148,14 @@ func (buf *executeEventBuffer) isCompleted() bool {
 type goparkEvent struct {
 	EType      eventType
 	MID        int64
-	GoID       uint64
+	Parked     runqEntry
 	WaitReason [40]byte
+}
+
+type goreadyEvent struct {
+	EType eventType
+	MID   int64
+	GoID  uint64
 }
 
 type EventReader struct {
@@ -157,6 +165,7 @@ type EventReader struct {
 	byteOrder             binary.ByteOrder
 	localRunqs            map[string][]runqEntry
 	bufferedExecuteEvents map[int64]*executeEventBuffer
+	bufferedGoreadyEvents map[int64]*proto.GoreadyEvent
 	globrunq              []runqEntry
 	ProbeEventCh          chan *proto.ProbeEvent
 }
@@ -173,6 +182,7 @@ func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventRea
 		byteOrder:             determineByteOrder(),
 		localRunqs:            make(map[string][]runqEntry),
 		bufferedExecuteEvents: make(map[int64]*executeEventBuffer),
+		bufferedGoreadyEvents: make(map[int64]*proto.GoreadyEvent),
 		ProbeEventCh:          make(chan *proto.ProbeEvent),
 	}
 }
@@ -284,7 +294,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		probeEvent = r.interpretScheduleCallstack(event)
-	case EVENT_TYPE_RUNQ_STATUS:
+	case EVENT_TYPE_RUNQ_STATUS, EVENT_TYPE_GOREADY_RUNQ_STATUS:
 		var event runqStatusEvent
 		err = binary.Read(readSeeker, r.byteOrder, &event)
 		if err != nil {
@@ -296,31 +306,33 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
 			convertedEvent := r.convertRunqStatusEvent(event)
-			// Update any existing entry in buffered execute event in case of
-			// concurrency,
-			for _, buf := range r.bufferedExecuteEvents {
-				existingIdx := slices.IndexFunc(buf.runqStatuses, func(runq *proto.RunqStatusEvent) bool {
-					return runq.ProcId == convertedEvent.ProcId
-				})
-				if existingIdx != -1 {
-					buf.runqStatuses[existingIdx] = convertedEvent
+			if event.EType == EVENT_TYPE_RUNQ_STATUS {
+				// Update any existing entry in buffered execute event in case of
+				// concurrency,
+				for _, buf := range r.bufferedExecuteEvents {
+					existingIdx := slices.IndexFunc(buf.runqStatuses, func(runq *proto.RunqStatusEvent) bool {
+						return runq.ProcId == convertedEvent.ProcId
+					})
+					if existingIdx != -1 {
+						buf.runqStatuses[existingIdx] = convertedEvent
+					}
 				}
-			}
 
-			if event.GroupingMID < 0 {
-				probeEvent = &proto.ProbeEvent{
-					ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
-						StructureStateEvent: &proto.StructureStateEvent{
-							StructureStateOneof: &proto.StructureStateEvent_RunqStatusEvent{
-								RunqStatusEvent: convertedEvent,
+				if event.GroupingMID < 0 {
+					probeEvent = &proto.ProbeEvent{
+						ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
+							StructureStateEvent: &proto.StructureStateEvent{
+								StructureStateOneof: &proto.StructureStateEvent_RunqStatusEvent{
+									RunqStatusEvent: convertedEvent,
+								},
 							},
 						},
-					},
+					}
+				} else {
+					probeEvent = r.tryCompleteExecuteEvent(event.GroupingMID, convertedEvent)
 				}
 			} else {
-				bufferedExecuteEvent := r.bufferedExecuteEvents[event.GroupingMID]
-				bufferedExecuteEvent.runqStatuses = append(bufferedExecuteEvent.runqStatuses, convertedEvent)
-				probeEvent = r.checkCompletedExecuteEvent()
+				probeEvent = r.completeGoreadyEvent(event.MID, convertedEvent)
 			}
 		} else {
 			r.localRunqs[localRunqKey] = append(r.localRunqs[localRunqKey], event.RunqEntry)
@@ -343,7 +355,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		if err != nil {
 			break
 		}
-		goID := int64(event.GoID)
+		goID := int64(event.Parked.GoID)
 		nullByteIdx := slices.Index(event.WaitReason[:], 0)
 		if nullByteIdx == -1 {
 			err = fmt.Errorf("null byte not found in wait reason %s", event.WaitReason)
@@ -355,8 +367,11 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 				NotificationEvent: &proto.NotificationEvent{
 					NotificationOneof: &proto.NotificationEvent_GoparkEvent{
 						GoparkEvent: &proto.GoparkEvent{
-							MId:        &event.MID,
-							GoId:       &goID,
+							MId: &event.MID,
+							Parked: &proto.RunqEntry{
+								GoId:             &goID,
+								ExecutionContext: r.interpretPC(event.Parked.PC),
+							},
 							WaitReason: &waitReason,
 						},
 					},
@@ -376,6 +391,17 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		r.bufferedExecuteEvents[event.MID] = &executeEventBuffer{
 			event: event,
+		}
+	case EVENT_TYPE_GOREADY:
+		var event goreadyEvent
+		err = binary.Read(readSeeker, r.byteOrder, &event)
+		if err != nil {
+			break
+		}
+		goId := int64(event.GoID)
+		r.bufferedGoreadyEvents[event.MID] = &proto.GoreadyEvent{
+			MId:  &event.MID,
+			GoId: &goId,
 		}
 	default:
 		err = fmt.Errorf("unrecognized event type")
@@ -405,40 +431,54 @@ func (r *EventReader) convertRunqStatusEvent(event runqStatusEvent) *proto.RunqS
 	return convertedEvent
 }
 
-func (r *EventReader) checkCompletedExecuteEvent() *proto.ProbeEvent {
-	var (
-		probeEvent   *proto.ProbeEvent
-		completedMID int64
-	)
-	for mID, buf := range r.bufferedExecuteEvents {
-		if buf.isCompleted() {
-			completedMID = mID
-			event := buf.event
-			goId := int64(event.Found.GoID)
-			probeEvent = &proto.ProbeEvent{
-				ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
-					StructureStateEvent: &proto.StructureStateEvent{
-						StructureStateOneof: &proto.StructureStateEvent_ExecuteEvent{
-							ExecuteEvent: &proto.ExecuteEvent{
-								MId: &event.MID,
-								Found: &proto.RunqEntry{
-									GoId:             &goId,
-									ExecutionContext: r.interpretPC(event.Found.PC),
-								},
-								ProcId: &event.ProcID,
-								Runqs:  buf.runqStatuses,
+func (r *EventReader) tryCompleteExecuteEvent(groupingMID int64, runqStatus *proto.RunqStatusEvent) *proto.ProbeEvent {
+	var probeEvent *proto.ProbeEvent
+
+	buf := r.bufferedExecuteEvents[groupingMID]
+	if buf == nil {
+		log.Fatalf("No buffered execute event found for grouping mID %d", groupingMID)
+	}
+	buf.runqStatuses = append(buf.runqStatuses, runqStatus)
+	if buf.isCompleted() {
+		event := buf.event
+		goId := int64(event.Found.GoID)
+		probeEvent = &proto.ProbeEvent{
+			ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
+				StructureStateEvent: &proto.StructureStateEvent{
+					StructureStateOneof: &proto.StructureStateEvent_ExecuteEvent{
+						ExecuteEvent: &proto.ExecuteEvent{
+							MId: &event.MID,
+							Found: &proto.RunqEntry{
+								GoId:             &goId,
+								ExecutionContext: r.interpretPC(event.Found.PC),
 							},
+							ProcId: &event.ProcID,
+							Runqs:  buf.runqStatuses,
 						},
 					},
 				},
-			}
-			break
+			},
 		}
-	}
-	if probeEvent != nil {
-		delete(r.bufferedExecuteEvents, completedMID)
+		delete(r.bufferedExecuteEvents, groupingMID)
 	}
 	return probeEvent
+}
+
+func (r *EventReader) completeGoreadyEvent(mID int64, runqStatus *proto.RunqStatusEvent) *proto.ProbeEvent {
+	buf := r.bufferedGoreadyEvents[mID]
+	if buf == nil {
+		log.Fatalf("No buffered goready event found for mID %d", mID)
+	}
+	buf.Runq = runqStatus
+	return &proto.ProbeEvent{
+		ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
+			StructureStateEvent: &proto.StructureStateEvent{
+				StructureStateOneof: &proto.StructureStateEvent_GoreadyEvent{
+					GoreadyEvent: buf,
+				},
+			},
+		},
+	}
 }
 
 func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEvent *proto.ProbeEvent) {

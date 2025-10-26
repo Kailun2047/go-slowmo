@@ -46,7 +46,7 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
 #define GET_P_M_PTR_ADDR(p_addr) ((char *)(p_addr) + P_M_PTR_OFFSET)
 
-static int report_local_runq_status(uint64_t p_ptr_scalar, int64_t grouping_mid);
+static int report_local_runq_status(uint64_t etype, uint64_t p_ptr_scalar, int64_t grouping_mid);
 static int64_t unwind_stack(char *curr_stack_addr, uint64_t pc, char *curr_fp, uint64_t callstack_pc_list[]);
 static long find_target_func(void *map, void *key, void *value, void *ctx);
 static bool check_delay_done(uint64_t ns_start);
@@ -65,6 +65,8 @@ const uint64_t EVENT_TYPE_GLOBRUNQ_STATUS = 5;
 const uint64_t EVENT_TYPE_SCHEDULE = 7;
 const uint64_t EVENT_TYPE_FOUND_RUNNABLE = 8;
 const uint64_t EVENT_TYPE_GOPARK = 9;
+const uint64_t EVENT_TYPE_GOREADY = 10;
+const uint64_t EVENT_TYPE_GOREADY_RUNQ_STATUS = 11;
 
 // C-equivalent of Go runtime.funcval struct.
 struct funcval {
@@ -102,7 +104,7 @@ struct runq_status_event {
     uint64_t runq_entry_idx;
     struct runq_entry runq_entry;
     int64_t mid; // -1 if runq is not yet attached to an M
-    int64_t grouping_mid;
+    int64_t grouping_mid; // -1 if only collecting status of individual runq
 };
 
 struct {
@@ -138,10 +140,10 @@ int BPF_UPROBE(go_runq_status) {
     // BCC treats p_ptr as non-scalar (because it is calculated by adding scalar
     // to memory reference) so we need to make report_local_runq_status accept
     // p's address as scalar value and cast p_ptr.
-    return report_local_runq_status((uint64_t)(p_ptr), -1);
+    return report_local_runq_status(EVENT_TYPE_RUNQ_STATUS, (uint64_t)(p_ptr), -1);
 }
 
-static int report_local_runq_status(uint64_t p_ptr_scalar, int64_t grouping_mid) {
+static int report_local_runq_status(uint64_t etype, uint64_t p_ptr_scalar, int64_t grouping_mid) {
     struct runq_status_event e;
     char *local_runq, *runnext_g_ptr, *g_ptr, *p_ptr = (char *)(p_ptr_scalar), *m_ptr;
     uint32_t runqhead, runqtail;
@@ -162,7 +164,7 @@ static int report_local_runq_status(uint64_t p_ptr_scalar, int64_t grouping_mid)
     }
 
     bpf_for(runq_i, runqhead, runqtail + 1) {
-        e.etype = EVENT_TYPE_RUNQ_STATUS;
+        e.etype = etype;
         e.runq_entry_idx = runq_i;
         e.procid = (int64_t)procid;
         e.runqhead = runqhead;
@@ -345,7 +347,7 @@ int BPF_UPROBE(get_waitreason_strings) {
 struct gopark_event {
     uint64_t etype;
     int64_t mid;
-    uint64_t goid;
+    struct runq_entry parked;
     char waitreason[WAITREASON_STRING_MAX_LEN];
 };
 
@@ -356,6 +358,8 @@ int BPF_UPROBE(go_gopark) {
     struct waitreason *reason_ptr;
     uint32_t waitreason_i;
 
+    delay_helper(DELAY_NS);
+
     e.etype = EVENT_TYPE_GOPARK;
     waitreason_i = GO_PARAM3(ctx);
     reason_ptr = bpf_map_lookup_elem(&waitreason_strings, &waitreason_i);
@@ -365,10 +369,44 @@ int BPF_UPROBE(go_gopark) {
         bpf_probe_read_kernel_str(&e.waitreason, sizeof(e.waitreason), reason_ptr);
     }
     g_ptr = (char *)(CURR_G_ADDR(ctx));
-    bpf_probe_read_user(&e.goid, sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+    bpf_probe_read_user(&e.parked.goid, sizeof(uint64_t), GET_GOID_ADDR(g_ptr));
+    bpf_probe_read_user(&e.parked.pc, sizeof(uint64_t), GET_PC_ADDR(g_ptr));
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(g_ptr));
     bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
     bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
+
+    return 0;
+}
+
+struct goready_event {
+    uint64_t etype;
+    int64_t mid;
+    uint64_t goid;
+};
+
+SEC("uprobe/go_goready")
+int BPF_UPROBE(go_goready) {
+    struct goready_event e;
+    char *m_ptr;
+
+    delay_helper(DELAY_NS);
+
+    e.etype = EVENT_TYPE_GOREADY;
+    bpf_probe_read_user(&e.goid, sizeof(uint64_t), GET_GOID_ADDR(GO_PARAM1(ctx)));
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&e.mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
+    bpf_ringbuf_output(&instrumentor_event, &e, sizeof(e), 0);
+
+    return 0;
+}
+
+SEC("uprobe/go_goready_runq_status")
+int BPF_UPROBE(go_goready_runq_status) {
+    char *m_ptr, *p_ptr;
+
+    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
+    bpf_probe_read_user(&p_ptr, sizeof(char *), GET_P_ADDR(m_ptr));
+    report_local_runq_status(EVENT_TYPE_GOREADY_RUNQ_STATUS, (uint64_t)p_ptr, -1);
 
     return 0;
 }
@@ -469,25 +507,6 @@ static long find_target_func(void *map, void *key, void *value, void *ctx) {
     }
 }
 
-SEC("uprobe/go_all_runqs")
-int BPF_UPROBE(go_all_runqs) {
-    char *allp_arr_addr, *p_ptr, *m_ptr;
-    int64_t allp_len, mid;
-    int i, ret;
-
-    bpf_probe_read_user(&allp_arr_addr, sizeof(char *), (char *)allp_slice_addr);
-    bpf_probe_read_user(&allp_len, sizeof(int64_t), (char *)(allp_slice_addr + SLICE_LEN_OFFSET));
-    bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
-    bpf_probe_read_user(&mid, sizeof(int64_t), GET_M_ID_ADDR(m_ptr));
-    bpf_for(i, 0, allp_len) {
-        bpf_probe_read_user(&p_ptr, sizeof(char *), allp_arr_addr + sizeof(char *) * i);
-        if ((ret = report_local_runq_status((uint64_t)p_ptr, mid))) {
-            return ret;
-        }
-    }
-    return 0;
-}
-
 struct execute_event {
     uint64_t etype;
     int64_t mid;
@@ -526,7 +545,7 @@ int BPF_UPROBE(go_execute) {
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_M_PTR_ADDR(CURR_G_ADDR(ctx)));
     bpf_for(i, 0, allp_len) {
         bpf_probe_read_user(&p_ptr, sizeof(char *), allp_arr_addr + sizeof(char *) * i);
-        if ((ret = report_local_runq_status((uint64_t)p_ptr, e.mid))) {
+        if ((ret = report_local_runq_status(EVENT_TYPE_RUNQ_STATUS, (uint64_t)p_ptr, e.mid))) {
             return ret;
         }
     }

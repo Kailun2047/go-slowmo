@@ -89,7 +89,12 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		AttachOffset: instrumentation.AttachOffsetEntry,
 		BpfFns:       []string{"go_gopark"},
 	})
-	// TODO: instrument ready (which pairs with gopark).
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "ready",
+		AttachOffset: instrumentation.AttachOffsetEntry,
+		BpfFns:       []string{"go_goready"},
+	})
 
 	/* Inspecting goroutine-storing structures. */
 	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
@@ -104,7 +109,13 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		AttachOffset: instrumentation.AttachOffsetEntry,
 		BpfFns:       []string{"go_execute"},
 	})
-	// TODO: inspect globrunq and all runqs when entering runtime.execute.
+	instrumentor.InstrumentFunction(instrumentation.FunctionSpec{
+		TargetPkg:    "runtime",
+		TargetFn:     "goready",
+		AttachOffset: instrumentation.AttachOffsetReturns,
+		BpfFns:       []string{"go_goready_runq_status"},
+	})
+	// TODO: inspect globrunq when entering runtime.execute.
 
 	/* Helpers. */
 	instrumentor.InstrumentPackage(instrumentation.PackageSpec{

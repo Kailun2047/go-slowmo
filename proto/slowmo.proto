@@ -52,6 +52,7 @@ message StructureStateEvent {
     oneof structure_state_oneof {
         RunqStatusEvent runq_status_event = 1;
         ExecuteEvent execute_event = 2;
+        GoreadyEvent goready_event = 3;
     }
 }
 
@@ -107,8 +108,14 @@ message NewProcEvent {
 
 message GoparkEvent {
     optional int64 m_id = 1;
-    optional int64 go_id = 2;
+    RunqEntry parked = 2;
     optional string wait_reason = 3;
+}
+
+message GoreadyEvent {
+    optional int64 m_id = 1;
+    optional int64 go_id = 2;
+    RunqStatusEvent runq = 3;
 }
 
 service SlowmoService {

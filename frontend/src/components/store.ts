@@ -1,6 +1,7 @@
 import { create as actualCreate, type StateCreator } from "zustand";
-import { ExecuteEvent, NewProcEvent, RunqStatusEvent, ScheduleEvent } from "../../proto/slowmo";
+import { ExecuteEvent, GoparkEvent, GoreadyEvent, NewProcEvent, RunqStatusEvent, ScheduleEvent } from "../../proto/slowmo";
 import { pickPastelColor, type HSL } from "../lib/color-picker";
+import {isNil} from 'lodash';
 
 interface AceEditorWrapperState {
     codeLines: string[];
@@ -71,34 +72,51 @@ interface ThreadsSlice {
     handleNewProcEvent: (event: NewProcEvent) => void;
 }
 
+interface ParkedGoroutine extends Goroutine {
+    waitReason: string;
+}
+
+interface GlobalStructsSlice {
+    parked: ParkedGoroutine[];
+}
+
 interface SharedSlice {
     handleScheduleEvent: (event: ScheduleEvent) => void;
     handleExecuteEvent: (event: ExecuteEvent) => void;
     handleRunqStatusEvent: (event: RunqStatusEvent) => void;
-    // updateStructures is to be invoked upon complete collection of
-    // all structure states for a notification event to reflect changed
-    // structures in components.
+    handleGoparkEvent: (event: GoparkEvent) => void;
+    handleGoreadyEvent: (event: GoreadyEvent) => void;
+    // updateStructures is used to render local/global structure state changes
+    // for an individual event.
     updateStructures: (collectedStructures: Structure[]) => void;
 }
 
 export enum StructureType {
     LocalRunq,
     GlobalRunq,
-    Semtable,
-    Executing,
+    // Semtable,
+    Executing = 3,
+    Parked,
 };
 
-// An undefined value field means the target structure state has not yet been
-// received from structure state event.
 type Structure = {
     mId: number;
-} & ({
     structureType: StructureType.Executing;
     value?: Goroutine;
 } | {
+    mId: number | undefined;
     structureType: StructureType.LocalRunq;
-    value?: Proc;
-})
+    value: Proc;
+} | {
+    mId: undefined;
+    structureType: StructureType.Parked;
+    value: ParkedChange;
+}
+
+interface ParkedChange {
+    added?: ParkedGoroutine;
+    removed?: Pick<Goroutine, 'id'>;
+}
 
 const createCodePanelSlice: StateCreator<
     CodePanelSlice & ThreadsSlice, [], [], CodePanelSlice
@@ -164,8 +182,12 @@ const createThreadsSlice: StateCreator<
     },
 })
 
+const createGlobalStructsThread: StateCreator<GlobalStructsSlice, [], []> = () => ({
+    parked: [],
+})
+
 const createSharedSlice: StateCreator<
-    CodePanelSlice & ThreadsSlice & SharedSlice, [], [], SharedSlice
+    CodePanelSlice & ThreadsSlice & SharedSlice & GlobalStructsSlice, [], [], SharedSlice
 > = (set, get) => ({
     handleScheduleEvent: (event: ScheduleEvent) => {
         let {procId: rawProcId, mId: rawMId} = event;
@@ -198,23 +220,13 @@ const createSharedSlice: StateCreator<
         const {goId, executionContext} = found;
         const {func} = executionContext;
         const runqStructs: Structure[] = [];
+
         runqs.map(runqEvent => {
-            const {mId: runqMId, procId, runnext, runqEntries} = runqEvent;
-            if (procId === undefined) {
-                throw new Error(`Found invalid runq (procId: ${runqEvent.procId}, mId: ${runqEvent.mId}) in execute event for mId ${mId}`);
-            }
-            if (runqMId === undefined) {
-                console.debug(`Found idle p (procId: ${procId}, mId: ${runqMId}) in execute event for mId ${mId}`);
-                return;
-            }
+            const converted = convertRunqStatusEvent(runqEvent);
             runqStructs.push({
-                mId: Number(runqMId),
+                mId: converted.mId,
                 structureType: StructureType.LocalRunq,
-                value: {
-                    id: Number(procId),
-                    runnext: runnext !== undefined? {id: Number(runnext.goId), entryFunc: runnext.executionContext!.func!}: undefined,
-                    runq: runqEntries.map(entry => ({id: Number(entry.goId), entryFunc: entry.executionContext!.func!})),
-                },
+                value: converted.proc,
             });
         })
         get().updateStructures([
@@ -228,103 +240,151 @@ const createSharedSlice: StateCreator<
     },
 
     handleRunqStatusEvent: (event: RunqStatusEvent) => {
-        const {procId, runnext, runqEntries, mId} = event;
-        if (procId === undefined || mId === undefined) {
-            throw new Error(`invalid runqStatusEvent (procId: ${procId}, mId: ${mId})`);
-        }
+        const {mId, proc} = convertRunqStatusEvent(event);
         get().updateStructures([
             {
-                mId: Number(mId),
+                mId,
                 structureType: StructureType.LocalRunq,
-                value: {
-                    id: Number(procId),
-                    runnext: runnext !== undefined? {
-                        id: Number(runnext.goId),
-                        entryFunc: runnext.executionContext?.func?? '',
-                    }: undefined,
-                    runq: runqEntries.map(entry => ({
-                        id: Number(entry.goId),
-                        entryFunc: entry.executionContext?.func?? '',
-                    }))
-                },
+                value: proc,
+            },
+        ]);
+    },
+
+    handleGoparkEvent: (event: GoparkEvent) => {
+        if (event.mId === undefined || event.parked === undefined || event.parked.goId === undefined || event.parked.executionContext === undefined || event.waitReason === undefined) {
+            throw new Error(`invalid gopark event from mId ${event.mId} with wait reason ${event.waitReason}`)
+        }
+        const mId = Number(event.mId);
+        const {goId, executionContext} = event.parked;
+        get().updateStructures([
+            {
+                mId: mId,
+                structureType: StructureType.Executing,
+                value: undefined,
+            },
+            {
+                mId: undefined,
+                structureType: StructureType.Parked,
+                value: {added: {id: Number(goId), entryFunc: executionContext.func?? '', waitReason: event.waitReason}},
+            },
+        ]);
+    },
+
+    handleGoreadyEvent: (event: GoreadyEvent) => {
+        const {goId, runq} = event;
+        if (goId === undefined || runq === undefined || runq.mId === undefined || runq.procId === undefined) {
+            throw new Error(`invalid goready event from mId ${runq?.mId} and goId ${goId}`);
+        }
+        const {mId, proc} = convertRunqStatusEvent(runq);
+        get().updateStructures([
+            {
+                mId,
+                structureType: StructureType.LocalRunq,
+                value: proc,
+            },
+            {
+                mId: undefined,
+                structureType: StructureType.Parked,
+                value: {removed: {id: Number(goId)}},
             },
         ]);
     },
 
     updateStructures: (structs: Structure[]) => {
-        let updatedState: Partial<ThreadsSlice> = {};
+        let updatedState: Partial<ThreadsSlice & GlobalStructsSlice> = {};
 
-        // Local structures.
-        //
-        // TODO: cover special case where a proc was added after initialization
-        // and has later become idle (why does this happen?).
-        const localStructs = structs.filter(struct => struct.mId !== undefined);
-        const changedStructsByMId = new Map<number, Structure[]>();
-        for (const struct of localStructs) {
-            const {mId} = struct;
-            let changedStructs = changedStructsByMId.get(mId);
-            if (changedStructs === undefined) {
-                changedStructs = [];
-                changedStructsByMId.set(mId, changedStructs);
-            }
-            changedStructs.push(struct);
-        }
-        const threads = get().threads;
-        for (const [mId, structs] of [...changedStructsByMId]) {
-            const thread = threads.find((thread) => thread.mId === mId)
-            if (thread === undefined) {
-                console.warn(`thread with mId ${mId} has structure change but is not found in thread list`);
-                continue;
-            }
-            for (const {structureType, value} of structs) {
-                if (value === undefined) {
-                    console.warn(`undefined value for mId ${mId} and structure type ${structureType} when updating structure state`);
-                    continue;
+        let {threads, parked} = get();
+        const updatedTypes = new Set<StructureType>();
+        for (const struct of structs) {
+            const {mId, structureType, value} = struct;
+            updatedTypes.add(structureType)
+            switch (structureType) {
+                case StructureType.Executing: {
+                    const thread = threads.find((thread) => thread.mId === mId)
+                    if (isNil(thread)) {
+                        throw new Error(`thread with mId ${mId} has executing structure change but is not found in thread list`);
+                    }
+                    thread.executing = value;
+                    break;
                 }
-                switch (structureType) {
-                    case StructureType.Executing:
-                        thread.executing = value;
-                        break;
-                    case StructureType.LocalRunq:
-                        checkAndApplyMPBindingChange(threads, mId, value.id, value);
-                        break
-                    default:
-                        console.warn(`state change for m${mId} and structure type ${structureType} not applied`);
+                case StructureType.LocalRunq: {
+                    threads = checkAndApplyMPBindingChange(threads, mId, value.id, value);
+                    break;
                 }
+                case StructureType.Parked: {
+                    const {added, removed} = struct.value;
+                    if (!isNil(added)) {
+                        parked = [...parked, added];
+                    }
+                    if (!isNil(removed)) {
+                       parked = parked.filter(parkedG => parkedG.id !== removed.id);
+                    }
+                    break;
+                }
+                default:
+                    console.warn(`state change for m${mId} and structure type ${structureType} not applied`);
             }
         }
-        if (localStructs.length > 0) {
+
+        if (updatedTypes.has(StructureType.LocalRunq) || updatedTypes.has(StructureType.Executing)) {
             updatedState.threads = [...threads];
         }
-
+        if (updatedTypes.has(StructureType.Parked)) {
+            updatedState.parked = [...parked];
+        }
         set(() => (updatedState));
-    }
+    },
 })
 
+function convertRunqStatusEvent(event: RunqStatusEvent): {proc: Proc, mId?: number} {
+    const {procId, runnext, runqEntries, mId} = event;
+    if (procId === undefined) {
+        throw new Error(`invalid runqStatusEvent (procId: ${procId}, mId: ${mId})`);
+    }
+    return {
+        proc: {
+            id: Number(procId),
+            runnext: runnext !== undefined? {
+                id: Number(runnext.goId),
+                entryFunc: runnext.executionContext?.func?? '',
+            }: undefined,
+            runq: runqEntries.map(entry => ({
+                id: Number(entry.goId),
+                entryFunc: entry.executionContext?.func?? '',
+            }))
+        },
+        mId: !isNil(mId)? Number(mId): undefined,
+    };
+}
+
 // checkAndApplyMPBindingChange checks for possible change in m-p bindings.
-function checkAndApplyMPBindingChange(threads: Thread[], mId: number, procId: number, newP: Proc | undefined = undefined): Thread[] {
+function checkAndApplyMPBindingChange(threads: Thread[], mId: number | undefined, procId: number, newP: Proc | undefined = undefined): Thread[] {
     const existingThread = threads.find((thread) => thread.p?.id === procId);
     if (existingThread === undefined) {
         throw new Error(`no existing thread found for procId ${procId}`);
     }
 
-    let targetThread = threads.find(thread => thread.mId === mId);
+    let targetThread = undefined;
+    if (!isNil(mId)) {
+        targetThread = threads.find(thread => thread.mId === mId);
+    }
     if (targetThread === undefined) {
         targetThread = {mId, isScheduling: false};
-        threads.push(targetThread);
+        threads = [...threads, targetThread];
     }
     const p = newP?? existingThread.p;
     existingThread.p = undefined;
     const oldP = targetThread.p;
     targetThread.p = p;
-    threads.push({p: oldP, isScheduling: false});
+    threads = [...threads, {p: oldP, isScheduling: false}];
     return threads.filter(thread => thread.mId !== undefined || thread.p !== undefined);
 }
 
-export const useBoundStore = create<CodePanelSlice & ThreadsSlice & SharedSlice>()(
+export const useBoundStore = create<CodePanelSlice & ThreadsSlice & GlobalStructsSlice & SharedSlice>()(
     (...args) => ({
         ...createCodePanelSlice(...args),
         ...createThreadsSlice(...args),
+        ...createGlobalStructsThread(...args),
         ...createSharedSlice(...args),
     })
 );
