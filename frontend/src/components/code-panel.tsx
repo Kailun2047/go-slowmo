@@ -171,10 +171,10 @@ function AceEditorWrapper() {
     }
 
     return (
-        <div className='code-panel'>
+        <div className='code-panel code-panel-editing'>
             <div id="banner">
-                <div id='head'>Go Slowmo</div>
-                <Button id='button-run' onClick={handleClickRun}>Run</Button>
+                <h1 id='head'>Go Slowmo</h1>
+                <Button className='button-run' onClick={handleClickRun}>Compile & Run</Button>
             </div>
             <div ref={elemRef} className='golang-editor' id='ace-editor-wrapper'></div>
         </div>
@@ -220,8 +220,8 @@ function InstrumentedEditor() {
     return (
         <div className='code-panel'>
             <div id="banner">
-                <div id='head'>Go Slowmo</div>
-                <Button id='button-run'>Run</Button>
+                <h1 id='head'>Go Slowmo</h1>
+                <Button className='button-run button-run-running'>Compile & Run</Button>
             </div>
             <div className='golang-editor'>
                 <div id='instrumented-code-linenums'>
@@ -239,18 +239,18 @@ function InstrumentedEditor() {
 }
 
 interface RunButtonProps {
-    id: string,
+    className: string
     onClick?: MouseEventHandler,
     children: string,
 }
 
-function Button({id, onClick, children}: RunButtonProps) {
+function Button({className: classNames, onClick, children}: RunButtonProps) {
     return onClick? (
-        <button id={id} onClick={onClick}>
+        <button className={classNames} onClick={onClick}>
             {children}
         </button>
     ): (
-        <button id={id} disabled={true}>
+        <button className={classNames} disabled={true}>
             {children}
         </button>
     );

@@ -3,6 +3,7 @@ import { useBoundStore } from "./store";
 
 export function ThreadList() {
     const threads = useBoundStore((state) => state.threads);
+    const isRunning = useBoundStore((state) => state.isRunning);
 
     const individualThreads = threads.map((thread, i) => {
         const {mId, isScheduling, p, executing} = thread;
@@ -70,9 +71,9 @@ export function ThreadList() {
         );
     });
 
-    return (
+    return isRunning? (
         <div className='thread-list'>
             {individualThreads}
         </div>
-    );
+    ): undefined;
 }
