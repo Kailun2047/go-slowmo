@@ -10,19 +10,20 @@
   position: absolute;
   display: flex;
   flex-direction: column;
-  width: 38%;
+  width: 96%;
   height: 80%;
   padding-left: 2%;
 }
 
-.code-panel-editing {
-  width: 96%;
+.code-panel-running {
+  width: 38%;
 }
 
 .golang-editor {
   position: relative;
   flex: 1;
   border-radius: 6px;
+  overflow-y: auto;
 }
 
 #banner {
@@ -38,7 +39,7 @@
   display: inline;
 }
 
-.button-run {
+.button-compile-and-run {
   position: absolute;
   display: inline-block;
   right: 10px;
@@ -58,33 +59,32 @@
   vertical-align: middle;
 }
 
-.button-run-running {
+.button-compile-and-run-running {
   right: 11%;
 }
 
-
-.button-run:hover {
+.button-compile-and-run:hover {
     background-color: #2c974b;
     color: white;
 }
 
-.button-run:focus {
+.button-compile-and-run:focus {
     box-shadow: rgba(46, 164, 79, .4) 0 0 0 3px;
     outline: none;
 }
 
-.button-run:disabled {
+.button-compile-and-run:disabled {
     background-color: rgb(203, 202, 202);
     border-color: rgba(27, 31, 35, .1);
     color: white; cursor: default;
 }
 
-.button-run:active {
+.button-compile-and-run:active {
     background-color: #298e46;
     box-shadow: rgba(20, 70, 32, .2) 0 1px 0 inset;
 }
 
-#instrumented-code {
+.instrumented-code {
   background: #fdf6e3;
   position: absolute;
   left: 6%;
@@ -93,7 +93,8 @@
   font-size: 12px;
   line-height: 16px;
   white-space: pre;
-  overflow-x: auto;
+  overflow-x: clip;
+  height: 100%;
 }
 
 .instrumented-line {
@@ -106,20 +107,54 @@
   height: 16px;
 }
 
-#instrumented-code-linenums {
+.instrumented-code-linenums {
   position: absolute;
   width: 5%;
   text-align: right;
   background: #fbf1d3;
   padding-right: 1%;
+  height: 100%;
 }
 
-#instrumented-cursors {
+.instrumented-cursors {
   position: absolute;
   left: 91%;
   width: 8%;
   padding-left: 1%;
   text-align: left;
+  height: 100%;
+}
+
+.output-wrapper {
+  position: absolute;
+  width: 96%;
+  top: 80%;
+  height: 20%;
+  margin-left: 2%;
+  border-radius: 6px;
+  overflow-x: auto;
+  overflow-y: auto;
+  font-size: 12px;
+  background-color: #f8f8f8;
+}
+
+.output-wrapper-running {
+  width: 34.58%;
+}
+
+.output {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.compile-and-run-output {
+  
+}
+
+.system-output {
+  color: gray;
+  margin-top: 10px;
 }
 
 .thread-list {

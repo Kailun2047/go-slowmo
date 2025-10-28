@@ -167,8 +167,9 @@ func (ce compileError) Is(target error) bool {
 func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) (compileAndRunErr error) {
 	log.Println("Received CompileAndRun request")
 	var (
-		internalErr error
-		wg          sync.WaitGroup
+		internalErr   error
+		wg            sync.WaitGroup
+		respRunErrMsg *string
 	)
 
 	defer func() {
@@ -253,8 +254,19 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 				}
 			}()
 
-			runTargetCmd.Wait()
+			runErr := runTargetCmd.Wait()
 			pipeWriter.Close()
+			if runErr != nil {
+				runErrMsg := runErr.Error()
+				respRunErrMsg = &runErrMsg
+			}
+			stream.Send(&proto.CompileAndRunResponse{
+				CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeResult{
+					RuntimeResult: &proto.RuntimeResult{
+						ErrorMessage: respRunErrMsg,
+					},
+				},
+			})
 			log.Printf("Program %s exited", outName)
 		}
 		probeEventReader.Close()

@@ -34,11 +34,11 @@ export interface CompileAndRunResponse {
          */
         compileError: CompilationError;
     } | {
-        oneofKind: "runtimeError";
+        oneofKind: "runtimeResult";
         /**
-         * @generated from protobuf field: slowmo.RuntimeError runtime_error = 2
+         * @generated from protobuf field: slowmo.RuntimeResult runtime_result = 2
          */
-        runtimeError: RuntimeError;
+        runtimeResult: RuntimeResult;
     } | {
         oneofKind: "runEvent";
         /**
@@ -71,9 +71,9 @@ export interface CompilationError {
     errorMessage?: string;
 }
 /**
- * @generated from protobuf message slowmo.RuntimeError
+ * @generated from protobuf message slowmo.RuntimeResult
  */
-export interface RuntimeError {
+export interface RuntimeResult {
     /**
      * @generated from protobuf field: optional string error_message = 1
      */
@@ -408,7 +408,7 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
     constructor() {
         super("slowmo.CompileAndRunResponse", [
             { no: 1, name: "compile_error", kind: "message", oneof: "compileAndRunOneof", T: () => CompilationError },
-            { no: 2, name: "runtime_error", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeError },
+            { no: 2, name: "runtime_result", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeResult },
             { no: 3, name: "run_event", kind: "message", oneof: "compileAndRunOneof", T: () => ProbeEvent },
             { no: 4, name: "runtime_output", kind: "message", oneof: "compileAndRunOneof", T: () => RuntimeOutput },
             { no: 5, name: "gomaxprocs", kind: "scalar", oneof: "compileAndRunOneof", T: 5 /*ScalarType.INT32*/ }
@@ -432,10 +432,10 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
                         compileError: CompilationError.internalBinaryRead(reader, reader.uint32(), options, (message.compileAndRunOneof as any).compileError)
                     };
                     break;
-                case /* slowmo.RuntimeError runtime_error */ 2:
+                case /* slowmo.RuntimeResult runtime_result */ 2:
                     message.compileAndRunOneof = {
-                        oneofKind: "runtimeError",
-                        runtimeError: RuntimeError.internalBinaryRead(reader, reader.uint32(), options, (message.compileAndRunOneof as any).runtimeError)
+                        oneofKind: "runtimeResult",
+                        runtimeResult: RuntimeResult.internalBinaryRead(reader, reader.uint32(), options, (message.compileAndRunOneof as any).runtimeResult)
                     };
                     break;
                 case /* slowmo.ProbeEvent run_event */ 3:
@@ -471,9 +471,9 @@ class CompileAndRunResponse$Type extends MessageType<CompileAndRunResponse> {
         /* slowmo.CompilationError compile_error = 1; */
         if (message.compileAndRunOneof.oneofKind === "compileError")
             CompilationError.internalBinaryWrite(message.compileAndRunOneof.compileError, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
-        /* slowmo.RuntimeError runtime_error = 2; */
-        if (message.compileAndRunOneof.oneofKind === "runtimeError")
-            RuntimeError.internalBinaryWrite(message.compileAndRunOneof.runtimeError, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
+        /* slowmo.RuntimeResult runtime_result = 2; */
+        if (message.compileAndRunOneof.oneofKind === "runtimeResult")
+            RuntimeResult.internalBinaryWrite(message.compileAndRunOneof.runtimeResult, writer.tag(2, WireType.LengthDelimited).fork(), options).join();
         /* slowmo.ProbeEvent run_event = 3; */
         if (message.compileAndRunOneof.oneofKind === "runEvent")
             ProbeEvent.internalBinaryWrite(message.compileAndRunOneof.runEvent, writer.tag(3, WireType.LengthDelimited).fork(), options).join();
@@ -540,19 +540,19 @@ class CompilationError$Type extends MessageType<CompilationError> {
  */
 export const CompilationError = new CompilationError$Type();
 // @generated message type with reflection information, may provide speed optimized methods
-class RuntimeError$Type extends MessageType<RuntimeError> {
+class RuntimeResult$Type extends MessageType<RuntimeResult> {
     constructor() {
-        super("slowmo.RuntimeError", [
+        super("slowmo.RuntimeResult", [
             { no: 1, name: "error_message", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
-    create(value?: PartialMessage<RuntimeError>): RuntimeError {
+    create(value?: PartialMessage<RuntimeResult>): RuntimeResult {
         const message = globalThis.Object.create((this.messagePrototype!));
         if (value !== undefined)
-            reflectionMergePartial<RuntimeError>(this, message, value);
+            reflectionMergePartial<RuntimeResult>(this, message, value);
         return message;
     }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RuntimeError): RuntimeError {
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: RuntimeResult): RuntimeResult {
         let message = target ?? this.create(), end = reader.pos + length;
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
@@ -571,7 +571,7 @@ class RuntimeError$Type extends MessageType<RuntimeError> {
         }
         return message;
     }
-    internalBinaryWrite(message: RuntimeError, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+    internalBinaryWrite(message: RuntimeResult, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
         /* optional string error_message = 1; */
         if (message.errorMessage !== undefined)
             writer.tag(1, WireType.LengthDelimited).string(message.errorMessage);
@@ -582,9 +582,9 @@ class RuntimeError$Type extends MessageType<RuntimeError> {
     }
 }
 /**
- * @generated MessageType for protobuf message slowmo.RuntimeError
+ * @generated MessageType for protobuf message slowmo.RuntimeResult
  */
-export const RuntimeError = new RuntimeError$Type();
+export const RuntimeResult = new RuntimeResult$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class RuntimeOutput$Type extends MessageType<RuntimeOutput> {
     constructor() {

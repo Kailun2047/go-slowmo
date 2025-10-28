@@ -6,7 +6,7 @@ const parkedColor = '#f68647';
 
 export function GlobalStructList() {
     const parked = useBoundStore((state) => state.parked);
-    const isRunning = useBoundStore((state) => state.isRunning);
+    const isRunning = useBoundStore((state) => !!(state.isRequested?.isRunning));
     
     const byWaitReason = groupBy(parked, (parkedG) => parkedG.waitReason);
     const parkedGroups = [];

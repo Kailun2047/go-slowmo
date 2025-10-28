@@ -122,7 +122,7 @@ type CompileAndRunResponse struct {
 	// Types that are valid to be assigned to CompileAndRunOneof:
 	//
 	//	*CompileAndRunResponse_CompileError
-	//	*CompileAndRunResponse_RuntimeError
+	//	*CompileAndRunResponse_RuntimeResult
 	//	*CompileAndRunResponse_RunEvent
 	//	*CompileAndRunResponse_RuntimeOutput
 	//	*CompileAndRunResponse_Gomaxprocs
@@ -177,10 +177,10 @@ func (x *CompileAndRunResponse) GetCompileError() *CompilationError {
 	return nil
 }
 
-func (x *CompileAndRunResponse) GetRuntimeError() *RuntimeError {
+func (x *CompileAndRunResponse) GetRuntimeResult() *RuntimeResult {
 	if x != nil {
-		if x, ok := x.CompileAndRunOneof.(*CompileAndRunResponse_RuntimeError); ok {
-			return x.RuntimeError
+		if x, ok := x.CompileAndRunOneof.(*CompileAndRunResponse_RuntimeResult); ok {
+			return x.RuntimeResult
 		}
 	}
 	return nil
@@ -221,8 +221,8 @@ type CompileAndRunResponse_CompileError struct {
 	CompileError *CompilationError `protobuf:"bytes,1,opt,name=compile_error,json=compileError,proto3,oneof"`
 }
 
-type CompileAndRunResponse_RuntimeError struct {
-	RuntimeError *RuntimeError `protobuf:"bytes,2,opt,name=runtime_error,json=runtimeError,proto3,oneof"`
+type CompileAndRunResponse_RuntimeResult struct {
+	RuntimeResult *RuntimeResult `protobuf:"bytes,2,opt,name=runtime_result,json=runtimeResult,proto3,oneof"`
 }
 
 type CompileAndRunResponse_RunEvent struct {
@@ -239,7 +239,7 @@ type CompileAndRunResponse_Gomaxprocs struct {
 
 func (*CompileAndRunResponse_CompileError) isCompileAndRunResponse_CompileAndRunOneof() {}
 
-func (*CompileAndRunResponse_RuntimeError) isCompileAndRunResponse_CompileAndRunOneof() {}
+func (*CompileAndRunResponse_RuntimeResult) isCompileAndRunResponse_CompileAndRunOneof() {}
 
 func (*CompileAndRunResponse_RunEvent) isCompileAndRunResponse_CompileAndRunOneof() {}
 
@@ -291,27 +291,27 @@ func (x *CompilationError) GetErrorMessage() string {
 	return ""
 }
 
-type RuntimeError struct {
+type RuntimeResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ErrorMessage  *string                `protobuf:"bytes,1,opt,name=error_message,json=errorMessage,proto3,oneof" json:"error_message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RuntimeError) Reset() {
-	*x = RuntimeError{}
+func (x *RuntimeResult) Reset() {
+	*x = RuntimeResult{}
 	mi := &file_slowmo_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RuntimeError) String() string {
+func (x *RuntimeResult) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RuntimeError) ProtoMessage() {}
+func (*RuntimeResult) ProtoMessage() {}
 
-func (x *RuntimeError) ProtoReflect() protoreflect.Message {
+func (x *RuntimeResult) ProtoReflect() protoreflect.Message {
 	mi := &file_slowmo_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -323,12 +323,12 @@ func (x *RuntimeError) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RuntimeError.ProtoReflect.Descriptor instead.
-func (*RuntimeError) Descriptor() ([]byte, []int) {
+// Deprecated: Use RuntimeResult.ProtoReflect.Descriptor instead.
+func (*RuntimeResult) Descriptor() ([]byte, []int) {
 	return file_slowmo_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *RuntimeError) GetErrorMessage() string {
+func (x *RuntimeResult) GetErrorMessage() string {
 	if x != nil && x.ErrorMessage != nil {
 		return *x.ErrorMessage
 	}
@@ -1230,10 +1230,10 @@ const file_slowmo_proto_rawDesc = "" +
 	"\fslowmo.proto\x12\x06slowmo\">\n" +
 	"\x14CompileAndRunRequest\x12\x1b\n" +
 	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
-	"\a_source\"\xc3\x02\n" +
+	"\a_source\"\xc6\x02\n" +
 	"\x15CompileAndRunResponse\x12?\n" +
-	"\rcompile_error\x18\x01 \x01(\v2\x18.slowmo.CompilationErrorH\x00R\fcompileError\x12;\n" +
-	"\rruntime_error\x18\x02 \x01(\v2\x14.slowmo.RuntimeErrorH\x00R\fruntimeError\x121\n" +
+	"\rcompile_error\x18\x01 \x01(\v2\x18.slowmo.CompilationErrorH\x00R\fcompileError\x12>\n" +
+	"\x0eruntime_result\x18\x02 \x01(\v2\x15.slowmo.RuntimeResultH\x00R\rruntimeResult\x121\n" +
 	"\trun_event\x18\x03 \x01(\v2\x12.slowmo.ProbeEventH\x00R\brunEvent\x12>\n" +
 	"\x0eruntime_output\x18\x04 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutput\x12 \n" +
 	"\n" +
@@ -1242,8 +1242,8 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x15compile_and_run_oneof\"N\n" +
 	"\x10CompilationError\x12(\n" +
 	"\rerror_message\x18\x01 \x01(\tH\x00R\ferrorMessage\x88\x01\x01B\x10\n" +
-	"\x0e_error_message\"J\n" +
-	"\fRuntimeError\x12(\n" +
+	"\x0e_error_message\"K\n" +
+	"\rRuntimeResult\x12(\n" +
 	"\rerror_message\x18\x01 \x01(\tH\x00R\ferrorMessage\x88\x01\x01B\x10\n" +
 	"\x0e_error_message\"7\n" +
 	"\rRuntimeOutput\x12\x1b\n" +
@@ -1357,7 +1357,7 @@ var file_slowmo_proto_goTypes = []any{
 	(*CompileAndRunRequest)(nil),  // 1: slowmo.CompileAndRunRequest
 	(*CompileAndRunResponse)(nil), // 2: slowmo.CompileAndRunResponse
 	(*CompilationError)(nil),      // 3: slowmo.CompilationError
-	(*RuntimeError)(nil),          // 4: slowmo.RuntimeError
+	(*RuntimeResult)(nil),         // 4: slowmo.RuntimeResult
 	(*RuntimeOutput)(nil),         // 5: slowmo.RuntimeOutput
 	(*ProbeEvent)(nil),            // 6: slowmo.ProbeEvent
 	(*NotificationEvent)(nil),     // 7: slowmo.NotificationEvent
@@ -1374,7 +1374,7 @@ var file_slowmo_proto_goTypes = []any{
 }
 var file_slowmo_proto_depIdxs = []int32{
 	3,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
-	4,  // 1: slowmo.CompileAndRunResponse.runtime_error:type_name -> slowmo.RuntimeError
+	4,  // 1: slowmo.CompileAndRunResponse.runtime_result:type_name -> slowmo.RuntimeResult
 	6,  // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
 	5,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
 	13, // 4: slowmo.ProbeEvent.delay_event:type_name -> slowmo.DelayEvent
@@ -1413,7 +1413,7 @@ func file_slowmo_proto_init() {
 	file_slowmo_proto_msgTypes[0].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[1].OneofWrappers = []any{
 		(*CompileAndRunResponse_CompileError)(nil),
-		(*CompileAndRunResponse_RuntimeError)(nil),
+		(*CompileAndRunResponse_RuntimeResult)(nil),
 		(*CompileAndRunResponse_RunEvent)(nil),
 		(*CompileAndRunResponse_RuntimeOutput)(nil),
 		(*CompileAndRunResponse_Gomaxprocs)(nil),

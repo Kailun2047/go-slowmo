@@ -10,7 +10,7 @@ interface AceEditorWrapperState {
 
 export const useAceEditorWrapperStore = actualCreate<AceEditorWrapperState>((set) => ({
     codeLines: ['// Your Go code'],
-    setCodeLines: (codeLines: string[]) => set({codeLines}),
+    setCodeLines: (codeLines: string[]) => set(() => ({codeLines})),
 }));
 
 const resetStoreFns = new Set<() => void>();
@@ -36,9 +36,9 @@ interface RunningCodeLinePerThread {
 }
 
 interface CodePanelSlice {
-    isRunning: boolean;
+    isRequested: {isRunning: boolean} | undefined;
     runningCodeLines: Map<number, RunningCodeLinePerThread>;
-    setIsRunning: (isRunning: boolean) => void;
+    setIsRequested: (isRequested: {isRunning: boolean}) => void;
     handleDelayEvent: (mId: number, lineNumber: number, goId: number) => void;
 }
 
@@ -80,6 +80,93 @@ interface GlobalStructsSlice {
     parked: ParkedGoroutine[];
 }
 
+export enum OutputType {
+    Requesting,
+    RequestError,
+    CompilationError,
+    ProgramExited,
+}
+
+type Output = {
+    type: OutputType.Requesting,
+} | {
+    type: OutputType.RequestError,
+    requestError: string,
+} | {
+    type: OutputType.CompilationError,
+    compilationError: string,
+} | {
+    type: OutputType.ProgramExited | undefined,
+    runtimeOutput: string | undefined,
+}
+
+interface OutputState {
+    output: Output | undefined;
+    outputRequesting: () => void;
+    outputRequestError: (requestError: string) => void;
+    outputCompilatioError: (compilationError: string) => void;
+    outputProgramStart: () => void;
+    outputRuntimeOutput: (runtimeOutput: string) => void;
+    outputProgramExit: () => void;
+}
+
+export const useOutputStore = actualCreate<OutputState>((set, get) => ({
+    output: undefined,
+
+    outputRequesting: () => {
+        set(() => ({
+            output: {type: OutputType.Requesting},
+        }));
+    },
+
+    outputRequestError: (requestError: string) => {
+        set(() => ({
+            output: {type: OutputType.RequestError, requestError},
+        }));
+    },
+
+    outputCompilatioError: (compilationError: string) => {
+        set(() => ({
+            output: {
+                type: OutputType.CompilationError,
+                compilationError,
+            },
+        }));
+    },
+
+    outputProgramStart: () => {
+        set(() => ({
+            output: {type: undefined, runtimeOutput: undefined},
+        }))
+    },
+
+    outputRuntimeOutput: (runtimeOutput: string) => {
+        const oldOut = get().output;
+        if (isNil(oldOut) || !isNil(oldOut?.type) && oldOut?.type !== OutputType.Requesting) {
+            throw new Error(`received runtime output under invalid output type ${oldOut?.type}`);
+        }
+        if (oldOut.type === undefined) {
+            set(() => ({
+                output: {type: undefined, runtimeOutput: (oldOut.runtimeOutput?? '') + runtimeOutput},
+            }));
+        } else {
+            set(() => ({
+                output: {type: undefined, runtimeOutput},
+            }));
+        }
+    },
+
+    outputProgramExit: () => {
+        const oldOut = get().output;
+        if (isNil(oldOut) || !isNil(oldOut?.type)) {
+            throw new Error(`program terminated under invalid output type ${oldOut?.type}`);
+        }
+        set(() => ({
+            output: {type: OutputType.ProgramExited, runtimeOutput: oldOut.runtimeOutput}
+        }));
+    },
+}))
+
 interface SharedSlice {
     handleScheduleEvent: (event: ScheduleEvent) => void;
     handleExecuteEvent: (event: ExecuteEvent) => void;
@@ -119,11 +206,11 @@ interface ParkedChange {
 }
 
 const createCodePanelSlice: StateCreator<
-    CodePanelSlice & ThreadsSlice, [], [], CodePanelSlice
+    CodePanelSlice, [], [], CodePanelSlice
 > = (set, get) => ({
-    isRunning: false,
+    isRequested: undefined,
     runningCodeLines: new Map(),
-    setIsRunning: (isRunning: boolean) => set({isRunning}),
+    setIsRequested: (isRequested: {isRunning: boolean}) => set(() => ({isRequested})),
     handleDelayEvent: (mId: number, lineNumber: number, goId: number) => {
         const runningCodeLines = get().runningCodeLines;
         const runningCodeLinesPerThread = runningCodeLines.get(Number(mId));
@@ -143,7 +230,7 @@ const createCodePanelSlice: StateCreator<
 })
 
 const createThreadsSlice: StateCreator<
-    CodePanelSlice & ThreadsSlice, [], [], ThreadsSlice
+    ThreadsSlice, [], [], ThreadsSlice
 > = (set) => ({
     threads: [],
 

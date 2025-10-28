@@ -2,11 +2,12 @@ import { GrpcWebFetchTransport } from '@protobuf-ts/grpcweb-transport';
 import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
+import { isNil } from 'lodash';
 import { useEffect, useRef, type MouseEventHandler } from 'react';
 import { CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
-import { resetAllStores, useAceEditorWrapperStore, useBoundStore } from './store';
+import { resetAllStores, useAceEditorWrapperStore, useBoundStore, useOutputStore } from './store';
 
 
 interface RunningCodeLinePerThread {
@@ -16,7 +17,7 @@ interface RunningCodeLinePerThread {
 }
 
 export default function CodePanel() {
-    const isRunning = useBoundStore((state) => state.isRunning);
+    const isRunning = useBoundStore((state) => !!(state.isRequested?.isRunning));
 
     if (!isRunning) {
         return (
@@ -32,7 +33,7 @@ export default function CodePanel() {
 function AceEditorWrapper() {
     const codeLines = useAceEditorWrapperStore((state) => state.codeLines);
     const setCodeLines = useAceEditorWrapperStore((state) => state.setCodeLines);
-    const setIsRunning = useBoundStore((state) => state.setIsRunning);
+    const setIsRequested = useBoundStore((state) => state.setIsRequested);
     const handleDelayEvent = useBoundStore((state) => state.handleDelayEvent);
     const handleScheduleEvent = useBoundStore((state) => state.handleScheduleEvent);
     const handleNewProcEvent = useBoundStore((state) => state.handleNewProcEvent);
@@ -41,6 +42,13 @@ function AceEditorWrapper() {
     const initThreads = useBoundStore((state) => state.initThreads);
     const handleGoparkEvent = useBoundStore((state) => state.handleGoparkEvent);
     const handleGoreadyEvent = useBoundStore((state) => state.handleGoreadyEvent);
+
+    const outputRequesting = useOutputStore((state) => state.outputRequesting);
+    const outputRequestError = useOutputStore((state) => state.outputRequestError);
+    const outputCompilationError = useOutputStore((state) => state.outputCompilatioError);
+    const outputProgramExit = useOutputStore((state) => state.outputProgramExit);
+    const outputRuntimeOutput = useOutputStore((state) => state.outputRuntimeOutput);
+    const outputProgramStart = useOutputStore((state) => state.outputProgramStart);
 
     const elemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
@@ -82,27 +90,33 @@ function AceEditorWrapper() {
         };
 
         try {
+            outputRequesting();
             const stream = client.compileAndRun(request);
             setCodeLines(source.split('\n'));
-            setIsRunning(true);
-            for await (const msg of stream.responses) {
+            setIsRequested({isRunning: false});
+            streamingLoop: for await (const msg of stream.responses) {
                 switch (msg.compileAndRunOneof.oneofKind) {
                     case 'compileError':
-                        console.log('compilation returns error: ', msg.compileAndRunOneof.compileError.errorMessage);
-                        break;
-                    case 'runtimeError':
-                        console.log('runtime error: ', msg.compileAndRunOneof.runtimeError.errorMessage);
-                        break;
+                        outputCompilationError(msg.compileAndRunOneof.compileError.errorMessage?? '');
+                        break streamingLoop;
+                    case 'runtimeResult':
+                        const errMsg = msg.compileAndRunOneof.runtimeResult.errorMessage;
+                        if (!isNil(errMsg)) {
+                            console.log(`Program exited with error: ${errMsg}`);
+                        }
+                        outputProgramExit();
+                        break streamingLoop;
                     case 'runtimeOutput':
-                        console.log('runtime output: ', msg.compileAndRunOneof.runtimeOutput.output)
+                        outputRuntimeOutput(msg.compileAndRunOneof.runtimeOutput.output?? '');
                         break
                     case 'gomaxprocs':
+                        setIsRequested({isRunning: true});
+                        outputProgramStart();
                         initThreads(msg.compileAndRunOneof.gomaxprocs);
                         break;
                     case 'runEvent':
                         const runEvent = msg.compileAndRunOneof.runEvent;
-                        console.log('run event of type ', runEvent.probeEventOneof.oneofKind);
-
+                        console.debug('run event of type ', runEvent.probeEventOneof.oneofKind);
                         switch (runEvent.probeEventOneof.oneofKind) {
                             case 'delayEvent': {
                                 const {mId, currentPc, goId} = runEvent.probeEventOneof.delayEvent;
@@ -126,6 +140,8 @@ function AceEditorWrapper() {
                         console.warn(`unknown stream message type: ${msg.compileAndRunOneof.oneofKind}`);
                 }
             }
+        } catch (e) {
+            outputRequestError((e as Error).message);
         } finally {
             resetAllStores();
             clearUsedColors();
@@ -171,10 +187,10 @@ function AceEditorWrapper() {
     }
 
     return (
-        <div className='code-panel code-panel-editing'>
+        <div className='code-panel'>
             <div id="banner">
                 <h1 id='head'>Go Slowmo</h1>
-                <Button className='button-run' onClick={handleClickRun}>Compile & Run</Button>
+                <CompileAndRunButton onClick={handleClickRun}></CompileAndRunButton>
             </div>
             <div ref={elemRef} className='golang-editor' id='ace-editor-wrapper'></div>
         </div>
@@ -218,19 +234,19 @@ function InstrumentedEditor() {
         cursors.push(<span key={'cursor-'+i} className='instrumented-line'>{execs}</span>);
     }
     return (
-        <div className='code-panel'>
+        <div className='code-panel code-panel-running'>
             <div id="banner">
                 <h1 id='head'>Go Slowmo</h1>
-                <Button className='button-run button-run-running'>Compile & Run</Button>
+                <CompileAndRunButton></CompileAndRunButton>
             </div>
             <div className='golang-editor'>
-                <div id='instrumented-code-linenums'>
+                <div className='instrumented-code-linenums'>
                     {lineNums}
                 </div>
-                <div id='instrumented-code'>
+                <div className='instrumented-code'>
                     {spans}
                 </div>
-                <div id='instrumented-cursors'>
+                <div className='instrumented-cursors'>
                     {cursors}
                 </div>
             </div>
@@ -238,20 +254,17 @@ function InstrumentedEditor() {
     );
 }
 
-interface RunButtonProps {
-    className: string
-    onClick?: MouseEventHandler,
-    children: string,
+interface CompileAndRunButtonProps {
+    onClick?: MouseEventHandler;
 }
 
-function Button({className: classNames, onClick, children}: RunButtonProps) {
-    return onClick? (
-        <button className={classNames} onClick={onClick}>
-            {children}
-        </button>
-    ): (
-        <button className={classNames} disabled={true}>
-            {children}
+function CompileAndRunButton({onClick}: CompileAndRunButtonProps) {
+    const isRequesting = useBoundStore((state) => state.isRequested);
+    const isRunning = !!(isRequesting?.isRunning);
+
+    return(
+        <button className={'button-compile-and-run' + (isRunning? ' button-compile-and-run-running': '')} onClick={onClick} disabled={!isNil(isRequesting)}>
+            Compile & Run
         </button>
     );
 }

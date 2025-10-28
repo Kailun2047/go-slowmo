@@ -9,7 +9,7 @@ message CompileAndRunRequest {
 message CompileAndRunResponse {
     oneof compile_and_run_oneof {
         CompilationError compile_error = 1;
-        RuntimeError runtime_error = 2;
+        RuntimeResult runtime_result = 2;
         ProbeEvent run_event = 3;
         RuntimeOutput runtime_output = 4;
         int32 gomaxprocs = 5;
@@ -20,7 +20,7 @@ message CompilationError  {
     optional string error_message = 1;
 }
 
-message RuntimeError {
+message RuntimeResult {
     optional string error_message = 1;
 }
 
