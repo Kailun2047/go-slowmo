@@ -1,0 +1,20 @@
+syntax = "proto3";
+package slowmoexec;
+option go_package = "github.com/kailun2047/slowmo/proto";
+
+import "slowmo.proto";
+
+message ExecRequest {
+    optional string path = 1;
+}
+
+message ExecResponse {
+    oneof exec_oneof {
+        slowmo.RuntimeOutput runtime_output = 1;
+        slowmo.RuntimeResult runtime_result = 2;
+    };
+}
+
+service ExecService {
+    rpc Exec(ExecRequest) returns (stream ExecResponse);
+}

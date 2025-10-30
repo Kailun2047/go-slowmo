@@ -6,5 +6,6 @@
 *.prof
 
 vmlinux.h
-slowmo-server
+*-server
+
 target/greet

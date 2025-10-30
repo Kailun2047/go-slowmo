@@ -144,7 +144,7 @@ type SlowmoServer struct {
 	proto.UnimplementedSlowmoServiceServer
 }
 
-func NewSlowmoServer() *SlowmoServer {
+func NewSlowmoServer() proto.SlowmoServiceServer {
 	return &SlowmoServer{}
 }
 
