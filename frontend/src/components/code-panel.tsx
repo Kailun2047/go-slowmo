@@ -104,7 +104,7 @@ function AceEditorWrapper() {
                         if (!isNil(errMsg)) {
                             console.log(`Program exited with error: ${errMsg}`);
                         }
-                        outputProgramExit();
+                        outputProgramExit(errMsg);
                         break streamingLoop;
                     case 'runtimeOutput':
                         outputRuntimeOutput(msg.compileAndRunOneof.runtimeOutput.output?? '');

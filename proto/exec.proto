@@ -12,6 +12,7 @@ message ExecResponse {
     oneof exec_oneof {
         slowmo.RuntimeOutput runtime_output = 1;
         slowmo.RuntimeResult runtime_result = 2;
+        int32 gomaxprocs = 3;
     };
 }
 

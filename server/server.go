@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -18,16 +18,16 @@ import (
 	"github.com/kailun2047/slowmo/instrumentation"
 	"github.com/kailun2047/slowmo/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
 	instrumentorProgPath = "./instrumentor.o"
 
-	outputReaderLimit  = 1024
-	executionTimeLimit = 10 * time.Second
+	executionTimeLimit = 60 * time.Second
 )
-
-var gomaxprocs = runtime.GOMAXPROCS(-1)
 
 func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrumentor, *instrumentation.EventReader) {
 	flag.Parse()
@@ -142,10 +142,13 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 
 type SlowmoServer struct {
 	proto.UnimplementedSlowmoServiceServer
+	execServerAddr string
 }
 
-func NewSlowmoServer() proto.SlowmoServiceServer {
-	return &SlowmoServer{}
+func NewSlowmoServer(execServerAddr string) proto.SlowmoServiceServer {
+	return &SlowmoServer{
+		execServerAddr: execServerAddr,
+	}
 }
 
 var (
@@ -165,27 +168,28 @@ func (ce compileError) Is(target error) bool {
 }
 
 func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) (compileAndRunErr error) {
-	log.Println("Received CompileAndRun request")
 	var (
-		internalErr   error
-		wg            sync.WaitGroup
-		respRunErrMsg *string
+		internalErr      error
+		wg               sync.WaitGroup
+		gomaxprocsSentCh = make(chan struct{})
+		execStream       grpc.ServerStreamingClient[proto.ExecResponse]
 	)
 
+	log.Println("Received CompileAndRun request")
 	defer func() {
 		if err := recover(); err != nil {
 			internalErr = errors.Join(internalErr, fmt.Errorf("panic detected: %v", err))
 		}
 		if internalErr != nil {
 			log.Printf("unexpected error during CompileAndRun (error: %v, program: %s)", internalErr, req.GetSource())
-			compileAndRunErr = internalErr
+			compileAndRunErr = fmt.Errorf("internal error")
 		}
 	}()
 
 	outName, err := sandboxedBuild(req.GetSource())
 	if err != nil {
 		if !errors.Is(err, errCompilation) {
-			internalErr = fmt.Errorf("internal error when building the program")
+			internalErr = fmt.Errorf("internal error when building the program: %w", err)
 		} else {
 			errMsg := err.Error()
 			stream.Send(&proto.CompileAndRunResponse{
@@ -196,81 +200,102 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 				},
 			})
 		}
-	} else {
+		return
+	}
+	defer func() {
+		err := os.Remove(outName)
+		if err != nil {
+			log.Printf("Failed to remove temp built output file %s: %v", outName, err)
+		}
+	}()
+
+	conn, err := grpc.NewClient(server.execServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		internalErr = fmt.Errorf("failed to connect to exec server at %s (error: %w)", server.execServerAddr, err)
+		return
+	}
+
+	instrumentor, probeEventReader := startInstrumentation(instrumentorProgPath, outName)
+	log.Printf("Instrumentor started for program %s", outName)
+	defer instrumentor.Close()
+
+	ctx, cancelFunc := context.WithDeadline(context.Background(), time.Now().Add(executionTimeLimit))
+	defer cancelFunc()
+	execClient := proto.NewExecServiceClient(conn)
+	execStream, err = execClient.Exec(ctx, &proto.ExecRequest{
+		Path: &outName,
+	})
+	if err != nil {
+		internalErr = fmt.Errorf("error requesting exec server at %s (error: %w)", server.execServerAddr, err)
+		return
+	}
+	wg.Add(1)
+	go func() {
 		defer func() {
-			err := os.Remove(outName)
-			if err != nil {
-				log.Printf("Failed to remove temp built output file %s: %v", outName, err)
-			}
+			probeEventReader.Close()
+			conn.Close()
+			wg.Done()
 		}()
-		stream.Send(&proto.CompileAndRunResponse{
-			CompileAndRunOneof: &proto.CompileAndRunResponse_Gomaxprocs{
-				Gomaxprocs: int32(gomaxprocs),
-			},
-		})
-		instrumentor, probeEventReader := startInstrumentation(instrumentorProgPath, outName)
-		log.Printf("Instrumentor started for program %s", outName)
-		defer instrumentor.Close()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for event := range probeEventReader.ProbeEventCh {
+		for {
+			execResp, err := execStream.Recv()
+			if errors.Is(err, io.EOF) {
+				log.Println("Finished receiving exec response stream")
+				return
+			}
+			if status.Code(err) == codes.DeadlineExceeded {
+				// Execution has reached executionTimeLimit and the request to
+				// downstream exec server is cancelled.
+				errMsg := "execution time exceeds limit"
+				log.Println(errMsg)
 				stream.Send(&proto.CompileAndRunResponse{
-					CompileAndRunOneof: &proto.CompileAndRunResponse_RunEvent{
-						RunEvent: event,
+					CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeResult{
+						RuntimeResult: &proto.RuntimeResult{
+							ErrorMessage: &errMsg,
+						},
+					},
+				})
+				return
+			}
+			if err != nil {
+				internalErr = fmt.Errorf("error receiving exec response: %w", err)
+				return
+			}
+			if execResp.GetGomaxprocs() != 0 {
+				stream.Send(&proto.CompileAndRunResponse{
+					CompileAndRunOneof: &proto.CompileAndRunResponse_Gomaxprocs{
+						Gomaxprocs: execResp.GetGomaxprocs(),
+					},
+				})
+				close(gomaxprocsSentCh)
+			} else if execResp.GetRuntimeOutput() != nil {
+				stream.Send(&proto.CompileAndRunResponse{
+					CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeOutput{
+						RuntimeOutput: execResp.GetRuntimeOutput(),
+					},
+				})
+			} else if execResp.GetRuntimeResult() != nil {
+				stream.Send(&proto.CompileAndRunResponse{
+					CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeResult{
+						RuntimeResult: execResp.GetRuntimeResult(),
 					},
 				})
 			}
-		}()
+		}
+	}()
 
-		pipeReader, pipeWriter := io.Pipe()
-		runTargetCmd, err := sandboxedRun(outName, pipeWriter)
-		if err != nil {
-			internalErr = fmt.Errorf("internal error when starting the program: %w", err)
-		} else {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				var (
-					n       int
-					readErr error
-					buf     []byte = make([]byte, outputReaderLimit)
-				)
-				for readErr == nil {
-					n, readErr = pipeReader.Read(buf)
-					if n > 0 {
-						out := string(buf)
-						stream.Send(&proto.CompileAndRunResponse{
-							CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeOutput{
-								RuntimeOutput: &proto.RuntimeOutput{
-									Output: &out,
-								},
-							},
-						})
-					}
-				}
-				if !errors.Is(readErr, io.EOF) {
-					log.Printf("Received unexpected error from pipe reader: %v", readErr)
-				}
-			}()
-
-			runErr := runTargetCmd.Wait()
-			pipeWriter.Close()
-			if runErr != nil {
-				runErrMsg := runErr.Error()
-				respRunErrMsg = &runErrMsg
-			}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Synchronize to make sure gomaxprocs is the first stream message sent.
+		<-gomaxprocsSentCh
+		for event := range probeEventReader.ProbeEventCh {
 			stream.Send(&proto.CompileAndRunResponse{
-				CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeResult{
-					RuntimeResult: &proto.RuntimeResult{
-						ErrorMessage: respRunErrMsg,
-					},
+				CompileAndRunOneof: &proto.CompileAndRunResponse_RunEvent{
+					RunEvent: event,
 				},
 			})
-			log.Printf("Program %s exited", outName)
 		}
-		probeEventReader.Close()
-	}
+	}()
 
 	wg.Wait()
 	log.Println("Finished serving CompileAndRun request")
@@ -304,24 +329,4 @@ func sandboxedBuild(source string) (string, error) {
 		}
 	}
 	return outName, nil
-}
-
-// TODO: prevent filesystem and network access in the sandbox.
-// TODO: detect long-running or deadlocked programs.
-// TODO: parameterize GOMAXPROCS for target program in CompileAndRun request.
-func sandboxedRun(targetName string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
-	log.Printf("Start sandbox run of program %s", targetName)
-	// The server has cpu affinity 0-(gomaxprocs-1), which is specified in the
-	// driver script. And we want to give the server and the target program
-	// mutually exclusive cpu affinities, so that the event reader (which runs
-	// along with the server) can be scheduled to consume instrumentation events
-	// as immediately as possible.
-	runTargetCmd := exec.Command("taskset", "-c", fmt.Sprintf("%d-%d", gomaxprocs, 2*gomaxprocs-1), targetName)
-	runTargetCmd.Stdout, runTargetCmd.Stderr = writer, writer
-	runTargetCmd.WaitDelay = executionTimeLimit
-	err = runTargetCmd.Start()
-	if err == nil {
-		startedCmd = runTargetCmd
-	}
-	return
 }

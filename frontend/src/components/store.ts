@@ -98,6 +98,7 @@ type Output = {
 } | {
     type: OutputType.ProgramExited | undefined,
     runtimeOutput: string | undefined,
+    err?: string;
 }
 
 interface OutputState {
@@ -107,7 +108,7 @@ interface OutputState {
     outputCompilatioError: (compilationError: string) => void;
     outputProgramStart: () => void;
     outputRuntimeOutput: (runtimeOutput: string) => void;
-    outputProgramExit: () => void;
+    outputProgramExit: (err?: string) => void;
 }
 
 export const useOutputStore = actualCreate<OutputState>((set, get) => ({
@@ -156,13 +157,13 @@ export const useOutputStore = actualCreate<OutputState>((set, get) => ({
         }
     },
 
-    outputProgramExit: () => {
+    outputProgramExit: (err?: string) => {
         const oldOut = get().output;
         if (isNil(oldOut) || !isNil(oldOut?.type)) {
             throw new Error(`program terminated under invalid output type ${oldOut?.type}`);
         }
         set(() => ({
-            output: {type: OutputType.ProgramExited, runtimeOutput: oldOut.runtimeOutput}
+            output: {type: OutputType.ProgramExited, runtimeOutput: oldOut.runtimeOutput, err},
         }));
     },
 }))

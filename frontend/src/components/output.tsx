@@ -23,7 +23,7 @@ export function Output() {
                         output.type === OutputType.Requesting? 'Waiting for remote server...':
                             output.type === OutputType.RequestError? `Request failed: ${output.requestError}`:
                                 output.type === OutputType.CompilationError? 'Go build failed.':
-                                    'Program exited.'
+                                    `Program exited${!isNil(output.err)? `: ${output.err}`: ''}.`
                     }
                 </span>
             );

@@ -71,6 +71,7 @@ type ExecResponse struct {
 	//
 	//	*ExecResponse_RuntimeOutput
 	//	*ExecResponse_RuntimeResult
+	//	*ExecResponse_Gomaxprocs
 	ExecOneof     isExecResponse_ExecOneof `protobuf_oneof:"exec_oneof"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -131,6 +132,15 @@ func (x *ExecResponse) GetRuntimeResult() *RuntimeResult {
 	return nil
 }
 
+func (x *ExecResponse) GetGomaxprocs() int32 {
+	if x != nil {
+		if x, ok := x.ExecOneof.(*ExecResponse_Gomaxprocs); ok {
+			return x.Gomaxprocs
+		}
+	}
+	return 0
+}
+
 type isExecResponse_ExecOneof interface {
 	isExecResponse_ExecOneof()
 }
@@ -143,9 +153,15 @@ type ExecResponse_RuntimeResult struct {
 	RuntimeResult *RuntimeResult `protobuf:"bytes,2,opt,name=runtime_result,json=runtimeResult,proto3,oneof"`
 }
 
+type ExecResponse_Gomaxprocs struct {
+	Gomaxprocs int32 `protobuf:"varint,3,opt,name=gomaxprocs,proto3,oneof"`
+}
+
 func (*ExecResponse_RuntimeOutput) isExecResponse_ExecOneof() {}
 
 func (*ExecResponse_RuntimeResult) isExecResponse_ExecOneof() {}
+
+func (*ExecResponse_Gomaxprocs) isExecResponse_ExecOneof() {}
 
 var File_exec_proto protoreflect.FileDescriptor
 
@@ -156,10 +172,13 @@ const file_exec_proto_rawDesc = "" +
 	"slowmoexec\x1a\fslowmo.proto\"/\n" +
 	"\vExecRequest\x12\x17\n" +
 	"\x04path\x18\x01 \x01(\tH\x00R\x04path\x88\x01\x01B\a\n" +
-	"\x05_path\"\x9c\x01\n" +
+	"\x05_path\"\xbe\x01\n" +
 	"\fExecResponse\x12>\n" +
 	"\x0eruntime_output\x18\x01 \x01(\v2\x15.slowmo.RuntimeOutputH\x00R\rruntimeOutput\x12>\n" +
-	"\x0eruntime_result\x18\x02 \x01(\v2\x15.slowmo.RuntimeResultH\x00R\rruntimeResultB\f\n" +
+	"\x0eruntime_result\x18\x02 \x01(\v2\x15.slowmo.RuntimeResultH\x00R\rruntimeResult\x12 \n" +
+	"\n" +
+	"gomaxprocs\x18\x03 \x01(\x05H\x00R\n" +
+	"gomaxprocsB\f\n" +
 	"\n" +
 	"exec_oneof2J\n" +
 	"\vExecService\x12;\n" +
@@ -206,6 +225,7 @@ func file_exec_proto_init() {
 	file_exec_proto_msgTypes[1].OneofWrappers = []any{
 		(*ExecResponse_RuntimeOutput)(nil),
 		(*ExecResponse_RuntimeResult)(nil),
+		(*ExecResponse_Gomaxprocs)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

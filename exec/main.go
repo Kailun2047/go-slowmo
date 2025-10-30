@@ -25,6 +25,6 @@ func main() {
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
 	proto.RegisterExecServiceServer(grpcServer, server.NewExecServer())
-	log.Print("Server listening on port ", *port)
+	log.Print("[exec server] Server listening on port ", *port)
 	grpcServer.Serve(lis)
 }
