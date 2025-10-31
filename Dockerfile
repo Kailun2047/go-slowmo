@@ -1,9 +1,21 @@
-FROM ubuntu:noble AS builder
+FROM ubuntu:noble AS ubuntu-go
 
 RUN apt-get update
 RUN apt-get install -y build-essential
 RUN apt-get install -y clang
 RUN apt-get install -y git curl unzip
+
+WORKDIR /build
+
+# Install Go.
+RUN curl -LO https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
+RUN tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
+ENV PATH="${PATH}:/usr/local/go/bin"
+
+
+
+
+FROM ubuntu-go AS builder
 
 WORKDIR /build
 
@@ -13,11 +25,6 @@ ENV NVM_DIR=/root/.nvm
 RUN ["bash", "-c", "source $NVM_DIR/nvm.sh && nvm install 22.16.0"]
 ENV PATH="${PATH}:/root/.nvm/versions/node/v22.16.0/bin"
 RUN npm install --global yarn
-
-# Install Go.
-RUN curl -LO https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
-RUN tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
-ENV PATH="${PATH}:/usr/local/go/bin"
 
 # Build bpftool from source (in case we're building on non-linux host and
 # there's no off-the-shelf linux-tools-$(uname -r) to install).
@@ -43,6 +50,9 @@ RUN make
 
 
 FROM ubuntu:noble AS slowmo-server
+
+COPY --from=ubuntu-go /usr/local/go /usr/local/go
+ENV PATH="${PATH}:/usr/local/go/bin"
 
 WORKDIR /app
 
