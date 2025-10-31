@@ -38,3 +38,13 @@ docker run --name dev --rm --cap-add=BPF --cap-add=SYS_RESOURCE --cap-add=SYS_AD
 docker run --rm -d --name=envoy -v "$(pwd)"/config/envoy.yaml:/etc/envoy/envoy.yaml:ro -v "$(pwd)"/envoy_access_log:/etc/envoy/logs \
     --network=host envoyproxy/envoy:dev-3776520dc26dfc0cf5f7ce2af013977d60e4e373 -c /etc/envoy/envoy.yaml -l debug
 ```
+
+## Build container images
+
+```bash
+docker build --platform=linux/amd64 --target slowmo-server -t slowmo-server:[VERSION_TAG] .
+```
+
+```bash
+docker build --platform=linux/amd64 --target exec-server -t exec-server:[VERSION_TAG] .
+```

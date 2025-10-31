@@ -25,8 +25,8 @@ import (
 
 const (
 	instrumentorProgPath = "./instrumentor.o"
-
-	executionTimeLimit = 60 * time.Second
+	executionTimeLimit   = 60 * time.Second
+	buildDir             = "/tmp/slowmo-builds"
 )
 
 func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrumentor, *instrumentation.EventReader) {
@@ -303,7 +303,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 }
 
 func sandboxedBuild(source string) (string, error) {
-	tempFile, err := os.CreateTemp("", "target-*.go")
+	tempFile, err := os.CreateTemp(buildDir, "target-*.go")
 	if err != nil {
 		log.Printf("Failed to create temp file: %v", err)
 		return "", err

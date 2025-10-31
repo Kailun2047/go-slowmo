@@ -30,7 +30,7 @@ exec_proto_gen_go := $(proto_dir)/exec*.pb.go
 
 vmlinux_header := $(instrumentation_dir)/vmlinux.h
 
-all: proto $(instrumentor_bpf_prog) $(slowmo_server_prog) $(exec_server_prog)
+all: proto libbpf $(instrumentor_bpf_prog) $(slowmo_server_prog) $(exec_server_prog)
 
 $(vmlinux_header):
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(vmlinux_header)
@@ -66,6 +66,10 @@ $(slowmo_proto_gen_ts): $(slowmo_proto_def)
 
 .PHONY: proto
 proto: $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_proto_gen_go)
+
+.PHONY: libbpf
+libbpf:
+	cd $(instrumentation_dir)/libbpf/src && make install && make install_uapi_headers
 
 clean:
 	rm $(instrumentor_bpf_prog) $(slowmo_server_prog) $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_server_prog) $(exec_proto_gen_go)

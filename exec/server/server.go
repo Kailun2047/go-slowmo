@@ -109,7 +109,7 @@ func (server *ExecServer) Exec(req *proto.ExecRequest, stream grpc.ServerStreami
 // TODO: prevent filesystem and network access in the sandbox.
 func sandboxedRun(ctx context.Context, executablePath string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
 	log.Printf("[exec server] Start sandbox run of program %s", executablePath)
-	runTargetCmd := exec.CommandContext(ctx, "taskset", "-c", fmt.Sprintf("%d-%d", gomaxprocs, 2*gomaxprocs-1), executablePath)
+	runTargetCmd := exec.CommandContext(ctx, executablePath)
 	runTargetCmd.Stdout, runTargetCmd.Stderr = writer, writer
 	err = runTargetCmd.Start()
 	if err == nil {
