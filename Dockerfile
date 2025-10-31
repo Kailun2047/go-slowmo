@@ -8,7 +8,7 @@ RUN apt-get install -y git curl unzip
 WORKDIR /build
 
 # Install Node.
-RUN curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 ENV NVM_DIR=/root/.nvm
 RUN ["bash", "-c", "source $NVM_DIR/nvm.sh && nvm install 22.16.0"]
 ENV PATH="${PATH}:/root/.nvm/versions/node/v22.16.0/bin"
