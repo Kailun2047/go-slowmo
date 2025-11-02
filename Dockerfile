@@ -58,7 +58,7 @@ WORKDIR /app
 
 COPY --from=builder /build/go-slowmo/slowmo-server ./slowmo-server
 COPY --from=builder /build/go-slowmo/instrumentor.o ./instrumentor.o
-ENTRYPOINT ["/app/slowmo-server"]
+CMD ["/app/slowmo-server"]
 
 
 
@@ -70,4 +70,4 @@ WORKDIR /app
 COPY --from=builder /build/go-slowmo/exec-server ./exec-server
 RUN groupadd -g 1234 execgroup && useradd -m -u 1234 -g execgroup execuser
 USER execuser
-ENTRYPOINT ["/app/exec-server"]
+CMD ["/app/exec-server"]
