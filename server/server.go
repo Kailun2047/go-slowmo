@@ -142,12 +142,14 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 
 type SlowmoServer struct {
 	proto.UnimplementedSlowmoServiceServer
-	execServerAddr string
+	execServerAddr   string
+	execTimeLimitSec int
 }
 
-func NewSlowmoServer(execServerAddr string) proto.SlowmoServiceServer {
+func NewSlowmoServer(execServerAddr string, execTimeLimitSec int) proto.SlowmoServiceServer {
 	return &SlowmoServer{
-		execServerAddr: execServerAddr,
+		execServerAddr:   execServerAddr,
+		execTimeLimitSec: execTimeLimitSec,
 	}
 }
 
@@ -219,7 +221,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 	log.Printf("Instrumentor started for program %s", outName)
 	defer instrumentor.Close()
 
-	ctx, cancelFunc := context.WithDeadline(context.Background(), time.Now().Add(executionTimeLimit))
+	ctx, cancelFunc := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(server.execTimeLimitSec)*time.Second))
 	defer cancelFunc()
 	execClient := proto.NewExecServiceClient(conn)
 	execStream, err = execClient.Exec(ctx, &proto.ExecRequest{
@@ -243,7 +245,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 				return
 			}
 			if status.Code(err) == codes.DeadlineExceeded {
-				// Execution has reached executionTimeLimit and the request to
+				// Execution has reached max time limit and the request to
 				// downstream exec server is cancelled.
 				errMsg := "execution time exceeds limit"
 				log.Println(errMsg)

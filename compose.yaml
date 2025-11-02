@@ -1,0 +1,45 @@
+services:
+  slowmo-server:
+    build:
+      target: slowmo-server
+    volumes:
+      - slowmo-builds:/tmp/slowmo-builds
+    cpuset: 0-1
+    cap_add:
+      - BPF
+      - SYS_RESOURCE
+      - SYS_ADMIN
+    command: /app/slowmo-server -exec_server_addr=exec-server:50052
+    depends_on: # TODO: healthcheck
+      exec-server:
+        condition: service_started
+
+  exec-server:
+    build:
+      target: exec-server
+    volumes:
+      - slowmo-builds:/tmp/slowmo-builds:ro
+    cpuset: 2-3
+  
+  slowmo-frontend:
+    build:
+      target: slowmo-frontend
+    ports:
+      - "4173:4173"
+    depends_on: # TODO: healthcheck
+      envoy:
+        condition: service_started
+  
+  envoy:
+    image: envoyproxy/envoy:dev-3776520dc26dfc0cf5f7ce2af013977d60e4e373
+    ports:
+      - "8080:8080"
+    volumes:
+      - type: bind
+        source: ./config/envoy.yaml
+        target: /etc/envoy/envoy.yaml
+        bind:
+          create_host_path: false
+
+volumes:
+  slowmo-builds:

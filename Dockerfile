@@ -45,6 +45,8 @@ ENV PATH="${PATH}:/build/protoc/bin:$(yarn global bin):/root/go/bin"
 COPY ./ ./go-slowmo
 WORKDIR /build/go-slowmo
 RUN make
+WORKDIR /build/go-slowmo/frontend
+RUN yarn && VITE_SLOWMO_SERVER_HOSTNAME=http://localhost:8080 yarn build
 
 
 
@@ -71,3 +73,14 @@ COPY --from=builder /build/go-slowmo/exec-server ./exec-server
 RUN groupadd -g 1234 execgroup && useradd -m -u 1234 -g execgroup execuser
 USER execuser
 CMD ["/app/exec-server"]
+
+
+
+
+FROM node:22-alpine AS slowmo-frontend
+
+WORKDIR /app
+
+COPY --from=builder /build/go-slowmo/frontend/dist ./dist
+RUN npm install -D vite
+CMD ["npx", "vite", "preview", "--host", "0.0.0.0"]
