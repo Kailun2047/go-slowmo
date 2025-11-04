@@ -9,7 +9,7 @@ interface AceEditorWrapperState {
 }
 
 export const useAceEditorWrapperStore = actualCreate<AceEditorWrapperState>((set) => ({
-    codeLines: ['// Your Go code'],
+    codeLines: [],
     setCodeLines: (codeLines: string[]) => set(() => ({codeLines})),
 }));
 
@@ -278,7 +278,7 @@ const createSharedSlice: StateCreator<
     CodePanelSlice & ThreadsSlice & SharedSlice & GlobalStructsSlice, [], [], SharedSlice
 > = (set, get) => ({
     handleScheduleEvent: (event: ScheduleEvent) => {
-        let {procId: rawProcId, mId: rawMId} = event;
+        const {procId: rawProcId, mId: rawMId} = event;
         if (rawProcId === undefined) {
             throw new Error('unexpected new M without procId');
         }
@@ -289,7 +289,7 @@ const createSharedSlice: StateCreator<
 
         set((state) => ({
             threads: [...threads.map((thread) => thread.mId === mId? {...thread, executing: undefined, isScheduling: true}: thread)],
-            runningCodeLines: new Map([...state.runningCodeLines].filter(([k, _]) => k !== mId)),
+            runningCodeLines: new Map([...state.runningCodeLines].filter(([k]) => k !== mId)),
         }));
     },
 
@@ -379,7 +379,7 @@ const createSharedSlice: StateCreator<
     },
 
     updateStructures: (structs: Structure[]) => {
-        let updatedState: Partial<ThreadsSlice & GlobalStructsSlice> = {};
+        const updatedState: Partial<ThreadsSlice & GlobalStructsSlice> = {};
 
         let {threads, parked} = get();
         const updatedTypes = new Set<StructureType>();

@@ -4,6 +4,7 @@ import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
 import { isNil } from 'lodash';
 import { useEffect, useRef, type MouseEventHandler } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
@@ -30,8 +31,9 @@ export default function CodePanel() {
     };
 }
 
+const initCode = '// Your Go code';
+
 function AceEditorWrapper() {
-    const codeLines = useAceEditorWrapperStore((state) => state.codeLines);
     const setCodeLines = useAceEditorWrapperStore((state) => state.setCodeLines);
     const setIsRequested = useBoundStore((state) => state.setIsRequested);
     const handleDelayEvent = useBoundStore((state) => state.handleDelayEvent);
@@ -50,6 +52,9 @@ function AceEditorWrapper() {
     const outputRuntimeOutput = useOutputStore((state) => state.outputRuntimeOutput);
     const outputProgramStart = useOutputStore((state) => state.outputProgramStart);
 
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
+
     const elemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
         slowmo?: {
@@ -58,18 +63,33 @@ function AceEditorWrapper() {
         },
     }>(null);
     useEffect(() => {
-        if (!elemRef.current) {
+        if (isNil(elemRef.current?.id)) {
             throw new Error("ref to ace editor wrapper element is null")
         }
-        const elemId = elemRef.current!.id;
-        var editor = ace.edit(elemId);
+
+        if (!searchParams.has('goCode')) {
+            const initGoCodeParam = encodeURIComponent(window.btoa(initCode));
+            navigate('?goCode=' + initGoCodeParam);
+            return;
+        }
+        const goCodeParam = searchParams.get('goCode');
+        if (isNil(goCodeParam)) {
+            throw new Error('app rendered with no go code in params');
+        }
+        const goCode = window.atob(decodeURIComponent(goCodeParam));
+
+        const elemId = elemRef.current.id;
+        const editor = ace.edit(elemId);
         editor.getSession().setMode('ace/mode/golang');
         editor.setTheme('ace/theme/solarized_light');
-        // Set initial content of the editor.
-        editor.setValue(codeLines.join('\n'));
+        editor.focus();
+        editor.setValue(goCode);
         editor.clearSelection();
+        editor.on('blur', () => {
+            setSearchParams({goCode: encodeURIComponent(btoa(editor.getValue()))});
+        })
         elemRef.current.editor = editor;
-    }, [])
+    }, [searchParams, setSearchParams, navigate]);
 
     async function handleClickRun() {
         if (!elemRef.current?.editor) {
@@ -85,7 +105,7 @@ function AceEditorWrapper() {
         const { editor, slowmo } = elemRef.current;
         const { client } = slowmo;
         const source = editor.getValue();
-        var request: CompileAndRunRequest = {
+        const request: CompileAndRunRequest = {
             source,
         };
 
@@ -99,13 +119,14 @@ function AceEditorWrapper() {
                     case 'compileError':
                         outputCompilationError(msg.compileAndRunOneof.compileError.errorMessage?? '');
                         break streamingLoop;
-                    case 'runtimeResult':
+                    case 'runtimeResult': {
                         const errMsg = msg.compileAndRunOneof.runtimeResult.errorMessage;
                         if (!isNil(errMsg)) {
                             console.log(`Program exited with error: ${errMsg}`);
                         }
                         outputProgramExit(errMsg);
                         break streamingLoop;
+                    }
                     case 'runtimeOutput':
                         outputRuntimeOutput(msg.compileAndRunOneof.runtimeOutput.output?? '');
                         break
@@ -114,7 +135,7 @@ function AceEditorWrapper() {
                         outputProgramStart();
                         initThreads(msg.compileAndRunOneof.gomaxprocs);
                         break;
-                    case 'runEvent':
+                    case 'runEvent': {
                         const runEvent = msg.compileAndRunOneof.runEvent;
                         console.debug('run event of type ', runEvent.probeEventOneof.oneofKind);
                         switch (runEvent.probeEventOneof.oneofKind) {
@@ -136,6 +157,7 @@ function AceEditorWrapper() {
                                 break;
                         }
                         break;
+                    }
                     default:
                         console.warn(`unknown stream message type: ${msg.compileAndRunOneof.oneofKind}`);
                 }
