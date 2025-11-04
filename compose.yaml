@@ -2,6 +2,7 @@ services:
   slowmo-server:
     build:
       target: slowmo-server
+    platform: linux/amd64
     volumes:
       - slowmo-builds:/tmp/slowmo-builds
     cpuset: 0-1
@@ -17,6 +18,7 @@ services:
   exec-server:
     build:
       target: exec-server
+    platform: linux/amd64
     volumes:
       - slowmo-builds:/tmp/slowmo-builds:ro
     cpuset: 2-3

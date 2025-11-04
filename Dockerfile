@@ -1,4 +1,4 @@
-FROM ubuntu:noble AS ubuntu-go
+FROM ubuntu:noble AS builder
 
 RUN apt-get update
 RUN apt-get install -y build-essential
@@ -11,13 +11,6 @@ WORKDIR /build
 RUN curl -LO https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
 RUN tar -C /usr/local -xzf go1.22.5.linux-amd64.tar.gz
 ENV PATH="${PATH}:/usr/local/go/bin"
-
-
-
-
-FROM ubuntu-go AS builder
-
-WORKDIR /build
 
 # Install Node.
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
@@ -53,7 +46,7 @@ RUN yarn && VITE_SLOWMO_SERVER_HOSTNAME=http://localhost:8080 yarn build
 
 FROM ubuntu:noble AS slowmo-server
 
-COPY --from=ubuntu-go /usr/local/go /usr/local/go
+COPY --from=builder /usr/local/go /usr/local/go
 ENV PATH="${PATH}:/usr/local/go/bin"
 
 WORKDIR /app
