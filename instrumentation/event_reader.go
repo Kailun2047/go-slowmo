@@ -521,6 +521,9 @@ func findScheduleReason(callstack []*proto.InterpretedPC) proto.ScheduleReason {
 	reason := proto.ScheduleReason_OTHER
 	for i := 1; i < len(callstack); i++ {
 		currFunc := callstack[i].Func
+		if currFunc == nil {
+			break
+		}
 		if r, ok := runtimeFuncToScheduleReason[*currFunc]; ok {
 			reason = r
 			break
