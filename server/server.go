@@ -185,11 +185,13 @@ type userLoginCliam struct {
 }
 
 func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) (compileAndRunErr error) {
-	user, err := getAuthenticatedUser(stream.Context())
-	if err != nil {
-		return err
+	if needAuthentication() {
+		user, err := getAuthenticatedUser(stream.Context())
+		if err != nil {
+			return err
+		}
+		log.Printf("[CompileAndRun] Received request from user [%s]", user)
 	}
-	log.Printf("[CompileAndRun] Received request from user [%s]", user)
 
 	var (
 		internalErr      error
@@ -242,8 +244,12 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 	log.Printf("Instrumentor started for program %s", outName)
 	defer instrumentor.Close()
 
-	ctx, cancelFunc := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(server.execTimeLimitSec)*time.Second))
-	defer cancelFunc()
+	ctx := context.Background()
+	if server.execTimeLimitSec > 0 {
+		var cancelFunc context.CancelFunc
+		ctx, cancelFunc = context.WithDeadline(context.Background(), time.Now().Add(time.Duration(server.execTimeLimitSec)*time.Second))
+		defer cancelFunc()
+	}
 	execClient := proto.NewExecServiceClient(conn)
 	execStream, err = execClient.Exec(ctx, &proto.ExecRequest{
 		Path: &outName,
@@ -325,6 +331,10 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 	return
 }
 
+func needAuthentication() bool {
+	return len(os.Getenv(envVarKeyOAuthClientID)) > 0 && len(os.Getenv(envVarKeyOAuthClientSecret)) > 0
+}
+
 func getAuthenticatedUser(ctx context.Context) (string, error) {
 	sessionToken, err := findHeaderInCookies(ctx, authnHeaderKeySessionToken)
 	if err != nil {
@@ -402,6 +412,8 @@ const (
 	authnHeaderKeyState        = "oauth-state"
 	authnHeaderKeySessionToken = "slowmo-session-token"
 	envVarKeySigningKey        = "JWT_SIGNING_KEY"
+	envVarKeyOAuthClientID     = "OAUTH_CLIENT_ID"
+	envVarKeyOAuthClientSecret = "OAUTH_CLIENT_SECRET"
 	oauthAPIAddr               = "https://github.com/login/oauth/access_token"
 	userProfileAPIAddr         = "https://api.github.com/user"
 )
@@ -466,8 +478,8 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 		return nil, errInternalAuthn
 	}
 	oauthReqBody := oauthRequestBody{
-		ClientID:     os.Getenv("OAUTH_CLIENT_ID"),
-		ClientSecret: os.Getenv("OAUTH_CLIENT_SECRET"),
+		ClientID:     os.Getenv(envVarKeyOAuthClientID),
+		ClientSecret: os.Getenv(envVarKeyOAuthClientSecret),
 		Code:         *req.Params.Code,
 	}
 	oauthReqBodyBytes, err := json.Marshal(oauthReqBody)

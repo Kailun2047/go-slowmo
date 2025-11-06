@@ -35,11 +35,13 @@ RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 ENV PATH="${PATH}:/build/protoc/bin:$(yarn global bin):/root/go/bin"
 
 # Build the project.
+ARG frontend_dev_mode="0"
+ARG oauth_client_id=""
 COPY ./ ./go-slowmo
 WORKDIR /build/go-slowmo
 RUN make
 WORKDIR /build/go-slowmo/frontend
-RUN yarn && VITE_SLOWMO_SERVER_HOSTNAME=http://localhost:8080/api yarn build
+RUN yarn && VITE_DEV_MODE=$frontend_dev_mode VITE_SLOWMO_CLIENT_ID=$oauth_client_id VITE_SLOWMO_SERVER_HOSTNAME=http://127.0.0.1:8080/api yarn build
 
 
 

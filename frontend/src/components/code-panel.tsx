@@ -123,7 +123,7 @@ function AceEditorWrapper() {
 
     async function handleClickRun() {
         setIsRequested({isRunning: false});
-        if (!isAuthenticated) {
+        if (!isAuthenticated && import.meta.env.VITE_DEV_MODE !== '1') {
             setupSlowmoClient();
             const {client} = editoreElemRef.current!.slowmo!;
             if (!searchParams.has('code')) {

@@ -10,7 +10,10 @@ services:
       - BPF
       - SYS_RESOURCE
       - SYS_ADMIN
-    command: /app/slowmo-server -exec_server_addr=exec-server:50052
+    networks:
+      - bridge
+      - default
+    command: /app/slowmo-server -exec_server_addr=exec-server:50052 -exec_time_limit=0
     depends_on: # TODO: healthcheck
       exec-server:
         condition: service_started
@@ -26,8 +29,6 @@ services:
   slowmo-frontend:
     build:
       target: slowmo-frontend
-    ports:
-      - "4173:4173"
     depends_on: # TODO: healthcheck
       envoy:
         condition: service_started
@@ -49,3 +50,7 @@ services:
 
 volumes:
   slowmo-builds:
+
+networks:
+  bridge:
+    external: true
