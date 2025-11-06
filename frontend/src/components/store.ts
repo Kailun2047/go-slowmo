@@ -6,11 +6,15 @@ import {isNil} from 'lodash';
 interface AceEditorWrapperState {
     codeLines: string[];
     setCodeLines: (codeLines: string[]) => void;
+    isAuthenticated: boolean;
+    setIsAuthenticated: (isAuthenticated: boolean) => void;
 }
 
 export const useAceEditorWrapperStore = actualCreate<AceEditorWrapperState>((set) => ({
     codeLines: [],
     setCodeLines: (codeLines: string[]) => set(() => ({codeLines})),
+    isAuthenticated: false,
+    setIsAuthenticated: (isAuthenticated: boolean) => set(() => ({isAuthenticated})),
 }));
 
 const resetStoreFns = new Set<() => void>();
@@ -38,7 +42,7 @@ interface RunningCodeLinePerThread {
 interface CodePanelSlice {
     isRequested: {isRunning: boolean} | undefined;
     runningCodeLines: Map<number, RunningCodeLinePerThread>;
-    setIsRequested: (isRequested: {isRunning: boolean}) => void;
+    setIsRequested: (isRequested: {isRunning: boolean} | undefined) => void;
     handleDelayEvent: (mId: number, lineNumber: number, goId: number) => void;
 }
 
@@ -211,7 +215,7 @@ const createCodePanelSlice: StateCreator<
 > = (set, get) => ({
     isRequested: undefined,
     runningCodeLines: new Map(),
-    setIsRequested: (isRequested: {isRunning: boolean}) => set(() => ({isRequested})),
+    setIsRequested: (isRequested: {isRunning: boolean} | undefined) => set(() => ({isRequested})),
     handleDelayEvent: (mId: number, lineNumber: number, goId: number) => {
         const runningCodeLines = get().runningCodeLines;
         const runningCodeLinesPerThread = runningCodeLines.get(Number(mId));

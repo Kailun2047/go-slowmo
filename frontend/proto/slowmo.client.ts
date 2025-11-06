@@ -4,6 +4,9 @@
 import type { RpcTransport } from "@protobuf-ts/runtime-rpc";
 import type { ServiceInfo } from "@protobuf-ts/runtime-rpc";
 import { SlowmoService } from "./slowmo";
+import type { AuthnResponse } from "./slowmo";
+import type { AuthnRequest } from "./slowmo";
+import type { UnaryCall } from "@protobuf-ts/runtime-rpc";
 import { stackIntercept } from "@protobuf-ts/runtime-rpc";
 import type { CompileAndRunResponse } from "./slowmo";
 import type { CompileAndRunRequest } from "./slowmo";
@@ -17,6 +20,10 @@ export interface ISlowmoServiceClient {
      * @generated from protobuf rpc: CompileAndRun
      */
     compileAndRun(input: CompileAndRunRequest, options?: RpcOptions): ServerStreamingCall<CompileAndRunRequest, CompileAndRunResponse>;
+    /**
+     * @generated from protobuf rpc: Authn
+     */
+    authn(input: AuthnRequest, options?: RpcOptions): UnaryCall<AuthnRequest, AuthnResponse>;
 }
 /**
  * @generated from protobuf service slowmo.SlowmoService
@@ -33,5 +40,12 @@ export class SlowmoServiceClient implements ISlowmoServiceClient, ServiceInfo {
     compileAndRun(input: CompileAndRunRequest, options?: RpcOptions): ServerStreamingCall<CompileAndRunRequest, CompileAndRunResponse> {
         const method = this.methods[0], opt = this._transport.mergeOptions(options);
         return stackIntercept<CompileAndRunRequest, CompileAndRunResponse>("serverStreaming", this._transport, method, opt, input);
+    }
+    /**
+     * @generated from protobuf rpc: Authn
+     */
+    authn(input: AuthnRequest, options?: RpcOptions): UnaryCall<AuthnRequest, AuthnResponse> {
+        const method = this.methods[1], opt = this._transport.mergeOptions(options);
+        return stackIntercept<AuthnRequest, AuthnResponse>("unary", this._transport, method, opt, input);
     }
 }

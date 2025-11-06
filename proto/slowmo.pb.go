@@ -1223,6 +1223,146 @@ func (x *GoreadyEvent) GetRunq() *RunqStatusEvent {
 	return nil
 }
 
+type AuthnRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Params        *AuthnParams           `protobuf:"bytes,1,opt,name=params,proto3" json:"params,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthnRequest) Reset() {
+	*x = AuthnRequest{}
+	mi := &file_slowmo_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthnRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthnRequest) ProtoMessage() {}
+
+func (x *AuthnRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthnRequest.ProtoReflect.Descriptor instead.
+func (*AuthnRequest) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *AuthnRequest) GetParams() *AuthnParams {
+	if x != nil {
+		return x.Params
+	}
+	return nil
+}
+
+type AuthnParams struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          *string                `protobuf:"bytes,1,opt,name=code,proto3,oneof" json:"code,omitempty"`
+	State         *string                `protobuf:"bytes,2,opt,name=state,proto3,oneof" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthnParams) Reset() {
+	*x = AuthnParams{}
+	mi := &file_slowmo_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthnParams) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthnParams) ProtoMessage() {}
+
+func (x *AuthnParams) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthnParams.ProtoReflect.Descriptor instead.
+func (*AuthnParams) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *AuthnParams) GetCode() string {
+	if x != nil && x.Code != nil {
+		return *x.Code
+	}
+	return ""
+}
+
+func (x *AuthnParams) GetState() string {
+	if x != nil && x.State != nil {
+		return *x.State
+	}
+	return ""
+}
+
+type AuthnResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         *string                `protobuf:"bytes,1,opt,name=state,proto3,oneof" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthnResponse) Reset() {
+	*x = AuthnResponse{}
+	mi := &file_slowmo_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthnResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthnResponse) ProtoMessage() {}
+
+func (x *AuthnResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_slowmo_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthnResponse.ProtoReflect.Descriptor instead.
+func (*AuthnResponse) Descriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *AuthnResponse) GetState() string {
+	if x != nil && x.State != nil {
+		return *x.State
+	}
+	return ""
+}
+
 var File_slowmo_proto protoreflect.FileDescriptor
 
 const file_slowmo_proto_rawDesc = "" +
@@ -1326,7 +1466,17 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x05go_id\x18\x02 \x01(\x03H\x01R\x04goId\x88\x01\x01\x12+\n" +
 	"\x04runq\x18\x03 \x01(\v2\x17.slowmo.RunqStatusEventR\x04runqB\a\n" +
 	"\x05_m_idB\b\n" +
-	"\x06_go_id*?\n" +
+	"\x06_go_id\";\n" +
+	"\fAuthnRequest\x12+\n" +
+	"\x06params\x18\x01 \x01(\v2\x13.slowmo.AuthnParamsR\x06params\"T\n" +
+	"\vAuthnParams\x12\x17\n" +
+	"\x04code\x18\x01 \x01(\tH\x00R\x04code\x88\x01\x01\x12\x19\n" +
+	"\x05state\x18\x02 \x01(\tH\x01R\x05state\x88\x01\x01B\a\n" +
+	"\x05_codeB\b\n" +
+	"\x06_state\"4\n" +
+	"\rAuthnResponse\x12\x19\n" +
+	"\x05state\x18\x01 \x01(\tH\x00R\x05state\x88\x01\x01B\b\n" +
+	"\x06_state*?\n" +
 	"\x0eScheduleReason\x12\n" +
 	"\n" +
 	"\x06GOEXIT\x10\x00\x12\n" +
@@ -1334,9 +1484,10 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x06GOPARK\x10\x01\x12\n" +
 	"\n" +
 	"\x06MSTART\x10\x02\x12\t\n" +
-	"\x05OTHER\x10\x142_\n" +
+	"\x05OTHER\x10\x142\x95\x01\n" +
 	"\rSlowmoService\x12N\n" +
-	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01B$Z\"github.com/kailun2047/slowmo/protob\x06proto3"
+	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01\x124\n" +
+	"\x05Authn\x12\x14.slowmo.AuthnRequest\x1a\x15.slowmo.AuthnResponseB$Z\"github.com/kailun2047/slowmo/protob\x06proto3"
 
 var (
 	file_slowmo_proto_rawDescOnce sync.Once
@@ -1351,7 +1502,7 @@ func file_slowmo_proto_rawDescGZIP() []byte {
 }
 
 var file_slowmo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_slowmo_proto_goTypes = []any{
 	(ScheduleReason)(0),           // 0: slowmo.ScheduleReason
 	(*CompileAndRunRequest)(nil),  // 1: slowmo.CompileAndRunRequest
@@ -1371,6 +1522,9 @@ var file_slowmo_proto_goTypes = []any{
 	(*NewProcEvent)(nil),          // 15: slowmo.NewProcEvent
 	(*GoparkEvent)(nil),           // 16: slowmo.GoparkEvent
 	(*GoreadyEvent)(nil),          // 17: slowmo.GoreadyEvent
+	(*AuthnRequest)(nil),          // 18: slowmo.AuthnRequest
+	(*AuthnParams)(nil),           // 19: slowmo.AuthnParams
+	(*AuthnResponse)(nil),         // 20: slowmo.AuthnResponse
 }
 var file_slowmo_proto_depIdxs = []int32{
 	3,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
@@ -1396,13 +1550,16 @@ var file_slowmo_proto_depIdxs = []int32{
 	11, // 20: slowmo.NewProcEvent.start_pc:type_name -> slowmo.InterpretedPC
 	10, // 21: slowmo.GoparkEvent.parked:type_name -> slowmo.RunqEntry
 	9,  // 22: slowmo.GoreadyEvent.runq:type_name -> slowmo.RunqStatusEvent
-	1,  // 23: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
-	2,  // 24: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
-	24, // [24:25] is the sub-list for method output_type
-	23, // [23:24] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	19, // 23: slowmo.AuthnRequest.params:type_name -> slowmo.AuthnParams
+	1,  // 24: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
+	18, // 25: slowmo.SlowmoService.Authn:input_type -> slowmo.AuthnRequest
+	2,  // 26: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
+	20, // 27: slowmo.SlowmoService.Authn:output_type -> slowmo.AuthnResponse
+	26, // [26:28] is the sub-list for method output_type
+	24, // [24:26] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_slowmo_proto_init() }
@@ -1445,13 +1602,15 @@ func file_slowmo_proto_init() {
 	file_slowmo_proto_msgTypes[14].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[15].OneofWrappers = []any{}
 	file_slowmo_proto_msgTypes[16].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[18].OneofWrappers = []any{}
+	file_slowmo_proto_msgTypes[19].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_slowmo_proto_rawDesc), len(file_slowmo_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

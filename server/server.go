@@ -3,11 +3,16 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -15,17 +20,18 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/kailun2047/slowmo/instrumentation"
 	"github.com/kailun2047/slowmo/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
 const (
 	instrumentorProgPath = "./instrumentor.o"
-	executionTimeLimit   = 60 * time.Second
 	buildDir             = "/tmp/slowmo-builds"
 )
 
@@ -142,14 +148,18 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 
 type SlowmoServer struct {
 	proto.UnimplementedSlowmoServiceServer
-	execServerAddr   string
-	execTimeLimitSec int
+	execServerAddr        string
+	execTimeLimitSec      int
+	authnClient           *http.Client
+	createOauthClientOnce sync.Once
+	oauthTimeoutMilli     int
 }
 
-func NewSlowmoServer(execServerAddr string, execTimeLimitSec int) proto.SlowmoServiceServer {
+func NewSlowmoServer(execServerAddr string, execTimeLimitSec, oauthTimeoutMilli int) proto.SlowmoServiceServer {
 	return &SlowmoServer{
-		execServerAddr:   execServerAddr,
-		execTimeLimitSec: execTimeLimitSec,
+		execServerAddr:    execServerAddr,
+		execTimeLimitSec:  execTimeLimitSec,
+		oauthTimeoutMilli: oauthTimeoutMilli,
 	}
 }
 
@@ -169,7 +179,18 @@ func (ce compileError) Is(target error) bool {
 	return target == errCompilation
 }
 
+type userLoginCliam struct {
+	jwt.RegisteredClaims
+	UserLogin string `json:"user"`
+}
+
 func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) (compileAndRunErr error) {
+	user, err := getAuthenticatedUser(stream.Context())
+	if err != nil {
+		return err
+	}
+	log.Printf("[CompileAndRun] Received request from user [%s]", user)
+
 	var (
 		internalErr      error
 		wg               sync.WaitGroup
@@ -304,6 +325,31 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 	return
 }
 
+func getAuthenticatedUser(ctx context.Context) (string, error) {
+	md, hasMD := metadata.FromIncomingContext(ctx)
+	if !hasMD {
+		return "", fmt.Errorf("authentication error: no metadata found")
+	}
+	sessionTokenInMD, ok := md[authnHeaderKeySessionToken]
+	if !ok || len(sessionTokenInMD) <= 0 {
+		return "", fmt.Errorf("authentication error: no session token found")
+	}
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodES256.Alg()}))
+	token, err := parser.ParseWithClaims(sessionTokenInMD[0], &userLoginCliam{}, func(token *jwt.Token) (any, error) {
+		return os.Getenv(envVarKeySigningKey), nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("authentication error: token validation failed (%w)", err)
+	}
+	if claim, ok := token.Claims.(*userLoginCliam); !ok {
+		return "", fmt.Errorf("authentication error: invalid claim")
+	} else {
+		// TODO: rate-limiting for each individual user.
+		// TODO: add session token expiration.
+		return claim.UserLogin, nil
+	}
+}
+
 func sandboxedBuild(source string) (string, error) {
 	tempFile, err := os.CreateTemp(buildDir, "target-*.go")
 	if err != nil {
@@ -331,4 +377,176 @@ func sandboxedBuild(source string) (string, error) {
 		}
 	}
 	return outName, nil
+}
+
+const (
+	authnHeaderKeyState        = "oauth-state"
+	authnHeaderKeySessionToken = "slowmo-session-token"
+	envVarKeySigningKey        = "JWT_SIGNING_KEY"
+	oauthAPIAddr               = "https://github.com/login/oauth/access_token"
+	userProfileAPIAddr         = "https://api.github.com/user"
+)
+
+type oauthResult struct {
+	AccessToken string `json:"access_token"`
+}
+
+type userResult struct {
+	Login string `json:"login"`
+}
+
+type oauthRequestBody struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	Code         string `json:"code"`
+}
+
+var internalAuthnError = fmt.Errorf("internal authentication error")
+
+func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) (*proto.AuthnResponse, error) {
+	if req.Params == nil {
+		// Set state.
+		log.Println("[Authn] Received authn request to set state")
+		buf := make([]byte, 32)
+		rand.Read(buf)
+		encodedState := base64.RawURLEncoding.EncodeToString(buf)
+		header := metadata.Pairs(authnHeaderKeyState, encodedState)
+		grpc.SetHeader(ctx, header)
+		log.Println("[Authn] Finished setting authn state")
+		return &proto.AuthnResponse{State: &encodedState}, nil
+	}
+
+	log.Println("[Authn] Received authn request to generate session token")
+	if req.Params.Code == nil || req.Params.State == nil {
+		return nil, fmt.Errorf("invalid authn params")
+	}
+
+	// Verify that the state param is consistent with what's set in
+	// metadata.
+	md, hasMD := metadata.FromIncomingContext(ctx)
+	if !hasMD {
+		return nil, fmt.Errorf("no authn metadata")
+	}
+	cookiesInMD := md["cookie"]
+	var encodedState string
+	if len(cookiesInMD) > 0 {
+		for _, cookie := range strings.Split(cookiesInMD[0], ";") {
+			cookie = strings.TrimSpace(cookie)
+			kv := strings.Split(cookie, "=")
+			if len(kv) == 2 && kv[0] == authnHeaderKeyState {
+				encodedState = kv[1]
+				break
+			}
+		}
+	}
+	if len(encodedState) == 0 {
+		return nil, fmt.Errorf("authn state not found in metadata")
+	}
+	if encodedState != *req.Params.State {
+		return nil, fmt.Errorf("inconsistent state")
+	}
+
+	// Use authn params to retrieve user identity and generate session token.
+	var (
+		oauthRes oauthResult
+		userRes  userResult
+	)
+	server.createOauthClientOnce.Do(func() {
+		server.authnClient = &http.Client{
+			Timeout: time.Duration(server.oauthTimeoutMilli) * time.Millisecond,
+		}
+	})
+	url, err := url.Parse(oauthAPIAddr)
+	if err != nil {
+		log.Printf("[Authn] Invalid oauth api address %s", oauthAPIAddr)
+		return nil, internalAuthnError
+	}
+	oauthReqBody := oauthRequestBody{
+		ClientID:     os.Getenv("OAUTH_CLIENT_ID"),
+		ClientSecret: os.Getenv("OAUTH_CLIENT_SECRET"),
+		Code:         *req.Params.Code,
+	}
+	oauthReqBodyBytes, err := json.Marshal(oauthReqBody)
+	if err != nil {
+		log.Printf("[Authn] Error marshaling oauth request body: %v", err)
+		return nil, internalAuthnError
+	}
+	buf := bytes.NewBuffer(oauthReqBodyBytes)
+	oauthReq, err := http.NewRequestWithContext(ctx, "POST", url.String(), buf)
+	if err != nil {
+		log.Printf("[Authn] Cannot create oauth request: %v", err)
+		return nil, internalAuthnError
+	}
+	oauthReq.Header.Add("Accept", "application/json")
+	oauthReq.Header.Add("Content-Type", "application/json")
+	oauthResp, err := server.authnClient.Do(oauthReq)
+	if err != nil {
+		log.Printf("[Authn] Failed to request oauth service: %v", err)
+		return nil, internalAuthnError
+	}
+	err = parseResponse(oauthResp, &oauthRes)
+	if err != nil {
+		if !errors.Is(err, internalAuthnError) {
+			err = fmt.Errorf("oauth error: %w", err)
+		}
+		return nil, err
+	}
+	userReq, err := http.NewRequestWithContext(ctx, "GET", userProfileAPIAddr, nil)
+	if err != nil {
+		log.Printf("[Authn] Cannot create oauth user request: %v", err)
+		return nil, internalAuthnError
+	}
+	userReq.Header.Add("Accept", "application/vnd.github+json")
+	userReq.Header.Add("X-GitHub-Api-Version", "2022-11-28")
+	userReq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", oauthRes.AccessToken))
+	userResp, err := server.authnClient.Do(userReq)
+	if err != nil {
+		log.Printf("[Authn] Cannot create user request: %v", err)
+		return nil, internalAuthnError
+	}
+	err = parseResponse(userResp, &userRes)
+	if err != nil {
+		log.Printf("[Authn] Error retriving user result: %v", err)
+		return nil, internalAuthnError
+	}
+	signedToken, err := generateJWT(userRes.Login)
+	if err != nil {
+		log.Printf("[Authn] Failed generating session token: %v", err)
+		return nil, internalAuthnError
+	}
+	header := metadata.Pairs(authnHeaderKeySessionToken, signedToken)
+	grpc.SetHeader(ctx, header)
+
+	log.Printf("[Authn] Finished generating session token for user [%s]", userRes.Login)
+	return &proto.AuthnResponse{}, nil
+}
+
+type responseResult interface {
+	oauthResult | userResult
+}
+
+func parseResponse[T responseResult](resp *http.Response, result *T) error {
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("error response: %s", resp.Status)
+	}
+	respBody, err := io.ReadAll(resp.Body)
+	if err == nil {
+		err = json.Unmarshal(respBody, result)
+	}
+	if err != nil {
+		return internalAuthnError
+	}
+	return nil
+}
+
+func generateJWT(userLogin string) (string, error) {
+	key := os.Getenv(envVarKeySigningKey)
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+		"user": userLogin,
+	})
+	signedToken, err := token.SignedString(key)
+	if err != nil {
+		return "", err
+	}
+	return signedToken, nil
 }

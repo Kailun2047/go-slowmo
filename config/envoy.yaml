@@ -21,11 +21,15 @@ static_resources:
                   - name: local_service
                     domains: ["*"]
                     routes:
-                      - match: { prefix: "/slowmo.SlowmoService" }
+                      - match: { prefix: "/api/" }
                         route:
+                          prefix_rewrite: "/"
                           cluster: slowmo_service
                           max_stream_duration:
                             grpc_timeout_header_max: 0s
+                      - match: { prefix: "/" }
+                        route:
+                          cluster: slowmo_frontend
                     typed_per_filter_config:
                       envoy.filters.http.cors:
                         "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
@@ -65,3 +69,15 @@ static_resources:
                   socket_address:
                     address: slowmo-server
                     port_value: 50051
+    - name: slowmo_frontend
+      connect_timeout: 0.25s
+      type: logical_dns
+      load_assignment:
+        cluster_name: cluster_1
+        endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: builder
+                    port_value: 5173
