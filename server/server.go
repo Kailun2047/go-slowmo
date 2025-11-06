@@ -326,17 +326,13 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 }
 
 func getAuthenticatedUser(ctx context.Context) (string, error) {
-	md, hasMD := metadata.FromIncomingContext(ctx)
-	if !hasMD {
-		return "", fmt.Errorf("authentication error: no metadata found")
+	sessionToken, err := findHeaderInCookies(ctx, authnHeaderKeySessionToken)
+	if err != nil {
+		return "", fmt.Errorf("session error: %w", err)
 	}
-	sessionTokenInMD, ok := md[authnHeaderKeySessionToken]
-	if !ok || len(sessionTokenInMD) <= 0 {
-		return "", fmt.Errorf("authentication error: no session token found")
-	}
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodES256.Alg()}))
-	token, err := parser.ParseWithClaims(sessionTokenInMD[0], &userLoginCliam{}, func(token *jwt.Token) (any, error) {
-		return os.Getenv(envVarKeySigningKey), nil
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	token, err := parser.ParseWithClaims(sessionToken, &userLoginCliam{}, func(token *jwt.Token) (any, error) {
+		return []byte(os.Getenv(envVarKeySigningKey)), nil
 	})
 	if err != nil {
 		return "", fmt.Errorf("authentication error: token validation failed (%w)", err)
@@ -348,6 +344,29 @@ func getAuthenticatedUser(ctx context.Context) (string, error) {
 		// TODO: add session token expiration.
 		return claim.UserLogin, nil
 	}
+}
+
+func findHeaderInCookies(ctx context.Context, targetKey string) (string, error) {
+	var found string
+	md, hasMD := metadata.FromIncomingContext(ctx)
+	if !hasMD {
+		return found, fmt.Errorf("no metadata found")
+	}
+	cookiesInMD := md["cookie"]
+	if len(cookiesInMD) > 0 {
+		for _, cookie := range strings.Split(cookiesInMD[0], ";") {
+			cookie = strings.TrimSpace(cookie)
+			kv := strings.Split(cookie, "=")
+			if len(kv) == 2 && kv[0] == targetKey {
+				found = kv[1]
+				break
+			}
+		}
+	}
+	if len(found) == 0 {
+		return "", fmt.Errorf("header not found in metadata")
+	}
+	return found, nil
 }
 
 func sandboxedBuild(source string) (string, error) {
@@ -401,7 +420,7 @@ type oauthRequestBody struct {
 	Code         string `json:"code"`
 }
 
-var internalAuthnError = fmt.Errorf("internal authentication error")
+var errInternalAuthn = fmt.Errorf("internal authentication error")
 
 func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) (*proto.AuthnResponse, error) {
 	if req.Params == nil {
@@ -423,24 +442,9 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 
 	// Verify that the state param is consistent with what's set in
 	// metadata.
-	md, hasMD := metadata.FromIncomingContext(ctx)
-	if !hasMD {
-		return nil, fmt.Errorf("no authn metadata")
-	}
-	cookiesInMD := md["cookie"]
-	var encodedState string
-	if len(cookiesInMD) > 0 {
-		for _, cookie := range strings.Split(cookiesInMD[0], ";") {
-			cookie = strings.TrimSpace(cookie)
-			kv := strings.Split(cookie, "=")
-			if len(kv) == 2 && kv[0] == authnHeaderKeyState {
-				encodedState = kv[1]
-				break
-			}
-		}
-	}
-	if len(encodedState) == 0 {
-		return nil, fmt.Errorf("authn state not found in metadata")
+	encodedState, err := findHeaderInCookies(ctx, authnHeaderKeyState)
+	if err != nil {
+		return nil, fmt.Errorf("state error: %w", err)
 	}
 	if encodedState != *req.Params.State {
 		return nil, fmt.Errorf("inconsistent state")
@@ -459,7 +463,7 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 	url, err := url.Parse(oauthAPIAddr)
 	if err != nil {
 		log.Printf("[Authn] Invalid oauth api address %s", oauthAPIAddr)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	oauthReqBody := oauthRequestBody{
 		ClientID:     os.Getenv("OAUTH_CLIENT_ID"),
@@ -469,24 +473,24 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 	oauthReqBodyBytes, err := json.Marshal(oauthReqBody)
 	if err != nil {
 		log.Printf("[Authn] Error marshaling oauth request body: %v", err)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	buf := bytes.NewBuffer(oauthReqBodyBytes)
 	oauthReq, err := http.NewRequestWithContext(ctx, "POST", url.String(), buf)
 	if err != nil {
 		log.Printf("[Authn] Cannot create oauth request: %v", err)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	oauthReq.Header.Add("Accept", "application/json")
 	oauthReq.Header.Add("Content-Type", "application/json")
 	oauthResp, err := server.authnClient.Do(oauthReq)
 	if err != nil {
 		log.Printf("[Authn] Failed to request oauth service: %v", err)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	err = parseResponse(oauthResp, &oauthRes)
 	if err != nil {
-		if !errors.Is(err, internalAuthnError) {
+		if !errors.Is(err, errInternalAuthn) {
 			err = fmt.Errorf("oauth error: %w", err)
 		}
 		return nil, err
@@ -494,7 +498,7 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 	userReq, err := http.NewRequestWithContext(ctx, "GET", userProfileAPIAddr, nil)
 	if err != nil {
 		log.Printf("[Authn] Cannot create oauth user request: %v", err)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	userReq.Header.Add("Accept", "application/vnd.github+json")
 	userReq.Header.Add("X-GitHub-Api-Version", "2022-11-28")
@@ -502,17 +506,17 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 	userResp, err := server.authnClient.Do(userReq)
 	if err != nil {
 		log.Printf("[Authn] Cannot create user request: %v", err)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	err = parseResponse(userResp, &userRes)
 	if err != nil {
 		log.Printf("[Authn] Error retriving user result: %v", err)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	signedToken, err := generateJWT(userRes.Login)
 	if err != nil {
 		log.Printf("[Authn] Failed generating session token: %v", err)
-		return nil, internalAuthnError
+		return nil, errInternalAuthn
 	}
 	header := metadata.Pairs(authnHeaderKeySessionToken, signedToken)
 	grpc.SetHeader(ctx, header)
@@ -534,17 +538,17 @@ func parseResponse[T responseResult](resp *http.Response, result *T) error {
 		err = json.Unmarshal(respBody, result)
 	}
 	if err != nil {
-		return internalAuthnError
+		return errInternalAuthn
 	}
 	return nil
 }
 
 func generateJWT(userLogin string) (string, error) {
 	key := os.Getenv(envVarKeySigningKey)
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user": userLogin,
 	})
-	signedToken, err := token.SignedString(key)
+	signedToken, err := token.SignedString([]byte(key))
 	if err != nil {
 		return "", err
 	}
