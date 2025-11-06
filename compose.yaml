@@ -42,6 +42,10 @@ services:
         target: /etc/envoy/envoy.yaml
         bind:
           create_host_path: false
+    #   - type: bind
+    #     source: ./envoy_access_log
+    #     target: /etc/envoy/logs
+    # command: -c /etc/envoy/envoy.yaml -l debug
 
 volumes:
   slowmo-builds:

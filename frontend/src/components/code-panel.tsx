@@ -3,7 +3,7 @@ import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
 import { isNil } from 'lodash';
-import { useEffect, useRef, type MouseEventHandler } from 'react';
+import { useEffect, useRef, type MouseEventHandler, type Ref } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
@@ -35,6 +35,9 @@ const initCode = '// Your Go code';
 
 function AceEditorWrapper() {
     const setCodeLines = useAceEditorWrapperStore((state) => state.setCodeLines);
+    const isAuthenticated = useAceEditorWrapperStore((state) => state.isAuthenticated);
+    const setIsAuthenticated = useAceEditorWrapperStore((state) => state.setIsAuthenticated);
+
     const setIsRequested = useBoundStore((state) => state.setIsRequested);
     const handleDelayEvent = useBoundStore((state) => state.handleDelayEvent);
     const handleScheduleEvent = useBoundStore((state) => state.handleScheduleEvent);
@@ -55,7 +58,7 @@ function AceEditorWrapper() {
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    const elemRef = useRef<HTMLDivElement & {
+    const editoreElemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
         slowmo?: {
             transport: GrpcWebFetchTransport,
@@ -63,8 +66,11 @@ function AceEditorWrapper() {
         },
     }>(null);
     useEffect(() => {
-        if (isNil(elemRef.current?.id)) {
+        if (isNil(editoreElemRef.current?.id)) {
             throw new Error("ref to ace editor wrapper element is null")
+        }
+        if (!isNil(editoreElemRef.current.editor)) {
+            return;
         }
 
         if (!searchParams.has('goCode')) {
@@ -78,7 +84,7 @@ function AceEditorWrapper() {
         }
         const goCode = window.atob(decodeURIComponent(goCodeParam));
 
-        const elemId = elemRef.current.id;
+        const elemId = editoreElemRef.current.id;
         const editor = ace.edit(elemId);
         editor.getSession().setMode('ace/mode/golang');
         editor.setTheme('ace/theme/solarized_light');
@@ -86,34 +92,97 @@ function AceEditorWrapper() {
         editor.setValue(goCode);
         editor.clearSelection();
         editor.on('blur', () => {
-            setSearchParams({goCode: encodeURIComponent(btoa(editor.getValue()))});
+            setSearchParams({'goCode': encodeURIComponent(btoa(editor.getValue()))});
         })
-        elemRef.current.editor = editor;
+        editoreElemRef.current.editor = editor;
     }, [searchParams, setSearchParams, navigate]);
 
-    async function handleClickRun() {
-        if (!elemRef.current?.editor) {
-            throw new Error("ace editor wrapper has no initialized editor")
+    const btnElemRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        if (isNil(btnElemRef.current?.id)) {
+            throw new Error("ref to button element is null");
         }
-        if (!elemRef.current.slowmo) {
+        const btnElem = btnElemRef.current;
+        if (!isAuthenticated && searchParams.has('code') && searchParams.has('state') && !btnElem.disabled) {
+            btnElem.click();
+        }
+    }, [searchParams, isAuthenticated]);
+
+    function setupSlowmoClient() {
+        if (isNil(editoreElemRef.current)) {
+            throw new Error('elemRef not set before setting up slowmo client');
+        }
+        if (isNil(editoreElemRef.current.slowmo)) {
             const transport = new GrpcWebFetchTransport({
                 baseUrl: import.meta.env.VITE_SLOWMO_SERVER_HOSTNAME,
             });
             const client = new SlowmoServiceClient(transport);
-            elemRef.current.slowmo = {transport, client};
+            editoreElemRef.current.slowmo = {transport, client};
         }
-        const { editor, slowmo } = elemRef.current;
-        const { client } = slowmo;
+    }
+
+    async function handleClickRun() {
+        setIsRequested({isRunning: false});
+        if (!isAuthenticated) {
+            setupSlowmoClient();
+            const {client} = editoreElemRef.current!.slowmo!;
+            if (!searchParams.has('code')) {
+                let state = '';
+                try {
+                    const {status, response} = await client.authn({});
+                    if (status.code !== 'OK' || isNil(response.state)) {
+                        throw new Error(status.detail)
+                    }
+                    state = response.state;
+                } catch (e) {
+                    outputRequestError('initiate authentication failed: ' + (e as Error).message);
+                    setIsRequested(undefined);
+                    return;
+                }
+                // Turn to GitHub for retrieving user identity.
+                window.location.assign(`https://github.com/login/oauth/authorize?client_id=${import.meta.env.VITE_SLOWMO_CLIENT_ID}&redirect_uri=${window.location.href}&state=${state}`);
+                return;
+            } else {
+                const encodedState = searchParams.get('state'), code = searchParams.get('code');
+                if (isNil(encodedState) || isNil(code)) {
+                    outputRequestError('missing authentication params');
+                    return;
+                }
+                searchParams.delete('state');
+                searchParams.delete('code');
+                setSearchParams(new URLSearchParams(searchParams))
+                try {
+                    // After user identity can be retrieved, use authn endpoint
+                    // to generate session token based on user identity and set
+                    // Set-Cookie response header to make the client side
+                    // include the token in further requests.
+                    const {status} = await client.authn({params: {state: encodedState!, code: code!}});
+                    if (status.code !== 'OK') {
+                        throw new Error(status.detail);
+                    }
+                    setIsAuthenticated(true);
+                } catch (e) {
+                    outputRequestError('authentication failed: ' + (e as Error).message);
+                    setIsRequested(undefined);
+                    return;
+                }
+            }
+        }
+
+        setupSlowmoClient();
+        const { editor, slowmo } = editoreElemRef.current!;
+        const { client } = slowmo!;
+        if (isNil(editor)) {
+            throw new Error('editor not set before handleClickRun');
+        }
         const source = editor.getValue();
         const request: CompileAndRunRequest = {
             source,
         };
-
         try {
             outputRequesting();
             const stream = client.compileAndRun(request);
             setCodeLines(source.split('\n'));
-            setIsRequested({isRunning: false});
             streamingLoop: for await (const msg of stream.responses) {
                 switch (msg.compileAndRunOneof.oneofKind) {
                     case 'compileError':
@@ -212,9 +281,9 @@ function AceEditorWrapper() {
         <div className='code-panel'>
             <div id="banner">
                 <h1 id='head'>Go Slowmo</h1>
-                <CompileAndRunButton onClick={handleClickRun}></CompileAndRunButton>
+                <CompileAndRunButton onClick={handleClickRun} ref={btnElemRef}></CompileAndRunButton>
             </div>
-            <div ref={elemRef} className='golang-editor' id='ace-editor-wrapper'></div>
+            <div ref={editoreElemRef} className='golang-editor' id='ace-editor-wrapper'></div>
         </div>
     );
 }
@@ -278,14 +347,15 @@ function InstrumentedEditor() {
 
 interface CompileAndRunButtonProps {
     onClick?: MouseEventHandler;
+    ref?: Ref<HTMLButtonElement>;
 }
 
-function CompileAndRunButton({onClick}: CompileAndRunButtonProps) {
-    const isRequesting = useBoundStore((state) => state.isRequested);
-    const isRunning = !!(isRequesting?.isRunning);
+function CompileAndRunButton({onClick, ref}: CompileAndRunButtonProps) {
+    const isRequested = useBoundStore((state) => state.isRequested);
+    const isRunning = !!(isRequested?.isRunning);
 
     return(
-        <button className={'button-compile-and-run' + (isRunning? ' button-compile-and-run-running': '')} onClick={onClick} disabled={!isNil(isRequesting)}>
+        <button id='compile-and-run-btn' ref={ref} className={'button-compile-and-run' + (isRunning? ' button-compile-and-run-running': '')} onClick={onClick} disabled={!isNil(isRequested)}>
             Compile & Run
         </button>
     );

@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	SlowmoService_CompileAndRun_FullMethodName = "/slowmo.SlowmoService/CompileAndRun"
+	SlowmoService_Authn_FullMethodName         = "/slowmo.SlowmoService/Authn"
 )
 
 // SlowmoServiceClient is the client API for SlowmoService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SlowmoServiceClient interface {
 	CompileAndRun(ctx context.Context, in *CompileAndRunRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CompileAndRunResponse], error)
+	Authn(ctx context.Context, in *AuthnRequest, opts ...grpc.CallOption) (*AuthnResponse, error)
 }
 
 type slowmoServiceClient struct {
@@ -56,11 +58,22 @@ func (c *slowmoServiceClient) CompileAndRun(ctx context.Context, in *CompileAndR
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SlowmoService_CompileAndRunClient = grpc.ServerStreamingClient[CompileAndRunResponse]
 
+func (c *slowmoServiceClient) Authn(ctx context.Context, in *AuthnRequest, opts ...grpc.CallOption) (*AuthnResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AuthnResponse)
+	err := c.cc.Invoke(ctx, SlowmoService_Authn_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SlowmoServiceServer is the server API for SlowmoService service.
 // All implementations must embed UnimplementedSlowmoServiceServer
 // for forward compatibility.
 type SlowmoServiceServer interface {
 	CompileAndRun(*CompileAndRunRequest, grpc.ServerStreamingServer[CompileAndRunResponse]) error
+	Authn(context.Context, *AuthnRequest) (*AuthnResponse, error)
 	mustEmbedUnimplementedSlowmoServiceServer()
 }
 
@@ -73,6 +86,9 @@ type UnimplementedSlowmoServiceServer struct{}
 
 func (UnimplementedSlowmoServiceServer) CompileAndRun(*CompileAndRunRequest, grpc.ServerStreamingServer[CompileAndRunResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method CompileAndRun not implemented")
+}
+func (UnimplementedSlowmoServiceServer) Authn(context.Context, *AuthnRequest) (*AuthnResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Authn not implemented")
 }
 func (UnimplementedSlowmoServiceServer) mustEmbedUnimplementedSlowmoServiceServer() {}
 func (UnimplementedSlowmoServiceServer) testEmbeddedByValue()                       {}
@@ -106,13 +122,36 @@ func _SlowmoService_CompileAndRun_Handler(srv interface{}, stream grpc.ServerStr
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SlowmoService_CompileAndRunServer = grpc.ServerStreamingServer[CompileAndRunResponse]
 
+func _SlowmoService_Authn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AuthnRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SlowmoServiceServer).Authn(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SlowmoService_Authn_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SlowmoServiceServer).Authn(ctx, req.(*AuthnRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SlowmoService_ServiceDesc is the grpc.ServiceDesc for SlowmoService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var SlowmoService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "slowmo.SlowmoService",
 	HandlerType: (*SlowmoServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Authn",
+			Handler:    _SlowmoService_Authn_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "CompileAndRun",

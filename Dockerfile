@@ -39,7 +39,7 @@ COPY ./ ./go-slowmo
 WORKDIR /build/go-slowmo
 RUN make
 WORKDIR /build/go-slowmo/frontend
-RUN yarn && VITE_SLOWMO_SERVER_HOSTNAME=http://localhost:8080 yarn build
+RUN yarn && VITE_SLOWMO_SERVER_HOSTNAME=http://localhost:8080/api yarn build
 
 
 
