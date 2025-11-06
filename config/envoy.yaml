@@ -27,22 +27,44 @@ static_resources:
                           cluster: slowmo_service
                           max_stream_duration:
                             grpc_timeout_header_max: 0s
+                        typed_per_filter_config:
+                          envoy.filters.http.lua:
+                            "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.LuaPerRoute
+                            name: response_set_cookie.lua
                       - match: { prefix: "/" }
                         route:
                           cluster: slowmo_frontend
-                    typed_per_filter_config:
-                      envoy.filters.http.cors:
-                        "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
-                        allow_origin_string_match:
-                        - prefix: "*"
-                        allow_methods: POST, OPTIONS
-                        allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout
-                        max_age: "1728000"
-                        expose_headers: custom-header-1,grpc-status,grpc-message
+                    # typed_per_filter_config:
+                    #   envoy.filters.http.cors:
+                    #     "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                    #     allow_origin_string_match:
+                    #     - prefix: "*"
+                    #     allow_methods: POST, OPTIONS
+                    #     allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,custom-header-1,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout
+                    #     max_age: "1728000"
+                    #     expose_headers: custom-header-1,grpc-status,grpc-message
               http_filters:
-                - name: envoy.filters.http.cors
+                # - name: envoy.filters.http.cors
+                #   typed_config:
+                #     "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+                - name: envoy.filters.http.lua
                   typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+                    "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                    source_codes:
+                      response_set_cookie.lua:
+                        inline_string: |
+                          function envoy_on_response(response_handle)
+                            local state = response_handle:headers():get("oauth-state")
+                            if state then
+                              response_handle:headers():add("set-cookie", string.format("oauth-state=%s; HttpOnly; Secure; SameSite=Strict", state))
+                              response_handle:headers():remove("oauth-state")
+                            end
+                            local session_token = response_handle:headers():get("slowmo-session-token")
+                            if session_token then
+                              response_handle:headers():add("set-cookie", string.format("slowmo-session-token=%s; HttpOnly; Secure; SameSite=Strict", session_token))
+                              response_handle:headers():remove("slowmo-session-token")
+                            end
+                          end
                 - name: envoy.filters.http.grpc_web
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
@@ -79,5 +101,5 @@ static_resources:
             - endpoint:
                 address:
                   socket_address:
-                    address: builder
+                    address: slowmo-frontend
                     port_value: 5173
