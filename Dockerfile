@@ -41,7 +41,7 @@ COPY ./ ./go-slowmo
 WORKDIR /build/go-slowmo
 RUN make
 WORKDIR /build/go-slowmo/frontend
-RUN yarn && VITE_DEV_MODE=$frontend_dev_mode VITE_SLOWMO_CLIENT_ID=$oauth_client_id VITE_SLOWMO_SERVER_HOSTNAME=http://127.0.0.1:8080/api yarn build
+RUN yarn && VITE_DEV_MODE=$frontend_dev_mode VITE_SLOWMO_CLIENT_ID=$oauth_client_id VITE_SLOWMO_SERVER_HOSTNAME=http://127.0.0.1:50053/api yarn build
 
 
 
