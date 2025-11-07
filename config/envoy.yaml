@@ -2,7 +2,7 @@ static_resources:
   listeners:
     - name: listener_0
       address:
-        socket_address: { address: 0.0.0.0, port_value: 8080 }
+        socket_address: { address: 0.0.0.0, port_value: 50053 }
       # access_log:
       #   - name: envoy.access_loggers.file
       #     typed_config:
@@ -102,4 +102,4 @@ static_resources:
                 address:
                   socket_address:
                     address: slowmo-frontend
-                    port_value: 5173
+                    port_value: 4173

@@ -10,9 +10,6 @@ services:
       - BPF
       - SYS_RESOURCE
       - SYS_ADMIN
-    networks:
-      - bridge
-      - default
     command: /app/slowmo-server -exec_server_addr=exec-server:50052 -exec_time_limit=0
     depends_on: # TODO: healthcheck
       exec-server:
@@ -36,7 +33,7 @@ services:
   envoy:
     image: envoyproxy/envoy:dev-3776520dc26dfc0cf5f7ce2af013977d60e4e373
     ports:
-      - "8080:8080"
+      - "50053:50053"
     volumes:
       - type: bind
         source: ./config/envoy.yaml
@@ -50,7 +47,3 @@ services:
 
 volumes:
   slowmo-builds:
-
-networks:
-  bridge:
-    external: true

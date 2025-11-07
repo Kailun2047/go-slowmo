@@ -35,7 +35,7 @@ RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 ENV PATH="${PATH}:/build/protoc/bin:$(yarn global bin):/root/go/bin"
 
 # Build the project.
-ARG frontend_dev_mode="0"
+ARG frontend_dev_mode="1"
 ARG oauth_client_id=""
 COPY ./ ./go-slowmo
 WORKDIR /build/go-slowmo
