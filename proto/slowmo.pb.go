@@ -76,16 +76,19 @@ func (ScheduleReason) EnumDescriptor() ([]byte, []int) {
 type AuthnChannel int32
 
 const (
-	AuthnChannel_GITHUB AuthnChannel = 0
+	AuthnChannel_UNKNOWN AuthnChannel = 0
+	AuthnChannel_GITHUB  AuthnChannel = 1
 )
 
 // Enum value maps for AuthnChannel.
 var (
 	AuthnChannel_name = map[int32]string{
-		0: "GITHUB",
+		0: "UNKNOWN",
+		1: "GITHUB",
 	}
 	AuthnChannel_value = map[string]int32{
-		"GITHUB": 0,
+		"UNKNOWN": 0,
+		"GITHUB":  1,
 	}
 )
 
@@ -1367,7 +1370,7 @@ func (x *AuthnParams) GetChannel() AuthnChannel {
 	if x != nil {
 		return x.Channel
 	}
-	return AuthnChannel_GITHUB
+	return AuthnChannel_UNKNOWN
 }
 
 type AuthnResponse struct {
@@ -1536,10 +1539,11 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x06GOPARK\x10\x01\x12\n" +
 	"\n" +
 	"\x06MSTART\x10\x02\x12\t\n" +
-	"\x05OTHER\x10\x14*\x1a\n" +
-	"\fAuthnChannel\x12\n" +
+	"\x05OTHER\x10\x14*'\n" +
+	"\fAuthnChannel\x12\v\n" +
+	"\aUNKNOWN\x10\x00\x12\n" +
 	"\n" +
-	"\x06GITHUB\x10\x002\x95\x01\n" +
+	"\x06GITHUB\x10\x012\x95\x01\n" +
 	"\rSlowmoService\x12N\n" +
 	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01\x124\n" +
 	"\x05Authn\x12\x14.slowmo.AuthnRequest\x1a\x15.slowmo.AuthnResponseB$Z\"github.com/kailun2047/slowmo/protob\x06proto3"

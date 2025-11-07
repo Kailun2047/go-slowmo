@@ -397,9 +397,13 @@ export enum ScheduleReason {
  */
 export enum AuthnChannel {
     /**
-     * @generated from protobuf enum value: GITHUB = 0;
+     * @generated from protobuf enum value: UNKNOWN = 0;
      */
-    GITHUB = 0
+    UNKNOWN = 0,
+    /**
+     * @generated from protobuf enum value: GITHUB = 1;
+     */
+    GITHUB = 1
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {

@@ -148,6 +148,7 @@ type SlowmoServer struct {
 	execServerAddr   string
 	execTimeLimitSec int
 	authenticators   map[proto.AuthnChannel]Authenticator
+	rateLimiter      RateLimiter
 }
 
 type Authenticator interface {
@@ -159,11 +160,17 @@ type UserIdentityProvider interface {
 	UserLogin() string
 }
 
-func NewSlowmoServer(execServerAddr string, execTimeLimitSec int, authenticators map[proto.AuthnChannel]Authenticator) proto.SlowmoServiceServer {
+type RateLimiter interface {
+	CheckGlobalLimit(ctx context.Context) error
+	CheckUserLimit(ctx context.Context, user string, channel proto.AuthnChannel) error
+}
+
+func NewSlowmoServer(execServerAddr string, execTimeLimitSec int, authenticators map[proto.AuthnChannel]Authenticator, rateLimiter RateLimiter) proto.SlowmoServiceServer {
 	return &SlowmoServer{
 		execServerAddr:   execServerAddr,
 		execTimeLimitSec: execTimeLimitSec,
 		authenticators:   authenticators,
+		rateLimiter:      rateLimiter,
 	}
 }
 
@@ -190,12 +197,22 @@ type userLoginClaim struct {
 }
 
 func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) (compileAndRunErr error) {
+	ctx := stream.Context()
 	if needAuthentication() {
 		claim, err := getAuthenticatedUser(stream.Context())
 		if err != nil {
 			return err
 		}
 		log.Printf("[CompileAndRun] Received request from user [%s] (channel: %v)", claim.UserLogin, claim.Channel)
+		err = server.rateLimiter.CheckUserLimit(ctx, claim.UserLogin, claim.Channel)
+		if err == nil {
+			err = server.rateLimiter.CheckGlobalLimit(ctx)
+		}
+		if err != nil {
+			log.Printf("[CompileAndRun] Rate limit hit for use [%s] (channel: %v)", claim.UserLogin, claim.Channel)
+			return err
+		}
+		// TODO: add session token expiration.
 	}
 
 	var (
@@ -212,7 +229,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		}
 		if internalErr != nil {
 			log.Printf("unexpected error during CompileAndRun (error: %v, program: %s)", internalErr, req.GetSource())
-			compileAndRunErr = fmt.Errorf("internal error")
+			compileAndRunErr = ErrInternalExecution
 		}
 	}()
 
@@ -249,7 +266,6 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 	log.Printf("Instrumentor started for program %s", outName)
 	defer instrumentor.Close()
 
-	ctx := context.Background()
 	if server.execTimeLimitSec > 0 {
 		var cancelFunc context.CancelFunc
 		ctx, cancelFunc = context.WithDeadline(context.Background(), time.Now().Add(time.Duration(server.execTimeLimitSec)*time.Second))
@@ -355,8 +371,6 @@ func getAuthenticatedUser(ctx context.Context) (*userLoginClaim, error) {
 	if claim, ok := token.Claims.(*userLoginClaim); !ok {
 		return nil, fmt.Errorf("authentication error: invalid claim")
 	} else {
-		// TODO: rate-limiting for each individual user.
-		// TODO: add session token expiration.
 		return claim, nil
 	}
 }
@@ -419,7 +433,11 @@ const (
 	envVarKeySigningKey        = "JWT_SIGNING_KEY"
 )
 
-var ErrInternalAuthn = fmt.Errorf("internal authentication error")
+var (
+	ErrInternalAuthn     = fmt.Errorf("internal authentication error")
+	ErrInternalExecution = fmt.Errorf("internal execution error")
+	ErrNoAvailableServer = fmt.Errorf("no available server")
+)
 
 func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) (*proto.AuthnResponse, error) {
 	if req.Params == nil {

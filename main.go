@@ -6,7 +6,8 @@ import (
 	"log"
 	"net"
 
-	"github.com/kailun2047/slowmo/auth"
+	"github.com/kailun2047/slowmo/middleware/auth"
+	"github.com/kailun2047/slowmo/middleware/ratelimit"
 	"github.com/kailun2047/slowmo/proto"
 	"github.com/kailun2047/slowmo/server"
 	"google.golang.org/grpc"
@@ -31,7 +32,8 @@ func main() {
 	authenticators := map[proto.AuthnChannel]server.Authenticator{
 		proto.AuthnChannel_GITHUB: auth.NewGitHubAuthenticator(*oauthTimeoutMilli),
 	}
-	proto.RegisterSlowmoServiceServer(grpcServer, server.NewSlowmoServer(*execServerAddr, *execTimeLimitSec, authenticators))
+	redisRateLimiter := ratelimit.NewRedisRateLimiter()
+	proto.RegisterSlowmoServiceServer(grpcServer, server.NewSlowmoServer(*execServerAddr, *execTimeLimitSec, authenticators, redisRateLimiter))
 	log.Print("Server listening on port ", *port)
 	grpcServer.Serve(lis)
 }

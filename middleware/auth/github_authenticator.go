@@ -28,11 +28,15 @@ type GitHubAuthenticator struct {
 	authnClient           *http.Client
 	createOauthClientOnce sync.Once
 	oauthTimeoutMilli     int
+	clientID              string
+	clientSecret          string
 }
 
 func NewGitHubAuthenticator(oauthTimeoutMilli int) *GitHubAuthenticator {
 	return &GitHubAuthenticator{
 		oauthTimeoutMilli: oauthTimeoutMilli,
+		clientID:          os.Getenv(envVarKeyOAuthClientID),
+		clientSecret:      os.Getenv(envVarKeyOAuthClientSecret),
 	}
 }
 
@@ -75,20 +79,24 @@ func parseResponse[T responseResult](resp *http.Response, result *T) error {
 	return nil
 }
 
-func (gh *GitHubAuthenticator) GetAccessToken(ctx context.Context, exchangeCode string) (string, error) {
+func (gh *GitHubAuthenticator) getAuthnClient() *http.Client {
 	gh.createOauthClientOnce.Do(func() {
 		gh.authnClient = &http.Client{
 			Timeout: time.Duration(gh.oauthTimeoutMilli) * time.Millisecond,
 		}
 	})
+	return gh.authnClient
+}
+
+func (gh *GitHubAuthenticator) GetAccessToken(ctx context.Context, exchangeCode string) (string, error) {
 	url, err := url.Parse(oauthAPIAddr)
 	if err != nil {
 		log.Printf("[GitHub Authn] Invalid oauth api address %s", oauthAPIAddr)
 		return "", server.ErrInternalAuthn
 	}
 	oauthReqBody := oauthRequestBody{
-		ClientID:     os.Getenv(envVarKeyOAuthClientID),
-		ClientSecret: os.Getenv(envVarKeyOAuthClientSecret),
+		ClientID:     gh.clientID,
+		ClientSecret: gh.clientSecret,
 		Code:         exchangeCode,
 	}
 	oauthReqBodyBytes, err := json.Marshal(oauthReqBody)
@@ -104,7 +112,7 @@ func (gh *GitHubAuthenticator) GetAccessToken(ctx context.Context, exchangeCode 
 	}
 	oauthReq.Header.Add("Accept", "application/json")
 	oauthReq.Header.Add("Content-Type", "application/json")
-	oauthResp, err := gh.authnClient.Do(oauthReq)
+	oauthResp, err := gh.getAuthnClient().Do(oauthReq)
 	if err != nil {
 		log.Printf("[GitHub Authn] Failed to request oauth service: %v", err)
 		return "", server.ErrInternalAuthn
@@ -123,21 +131,21 @@ func (gh *GitHubAuthenticator) GetAccessToken(ctx context.Context, exchangeCode 
 func (gh *GitHubAuthenticator) GetUserIdentity(ctx context.Context, accessToken string) (server.UserIdentityProvider, error) {
 	userReq, err := http.NewRequestWithContext(ctx, "GET", userProfileAPIAddr, nil)
 	if err != nil {
-		log.Printf("[Authn] Cannot create oauth user request: %v", err)
+		log.Printf("[GitHub Authn] Cannot create oauth user request: %v", err)
 		return (*userResult)(nil), server.ErrInternalAuthn
 	}
 	userReq.Header.Add("Accept", "application/vnd.github+json")
 	userReq.Header.Add("X-GitHub-Api-Version", "2022-11-28")
 	userReq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", accessToken))
-	userResp, err := gh.authnClient.Do(userReq)
+	userResp, err := gh.getAuthnClient().Do(userReq)
 	if err != nil {
-		log.Printf("[Authn] Cannot create user request: %v", err)
+		log.Printf("[GitHub Authn] Cannot create user request: %v", err)
 		return (*userResult)(nil), server.ErrInternalAuthn
 	}
 	var userRes userResult
 	err = parseResponse(userResp, &userRes)
 	if err != nil {
-		log.Printf("[Authn] Error retriving user result: %v", err)
+		log.Printf("[GitHub Authn] Error retriving user result: %v", err)
 		return (*userResult)(nil), server.ErrInternalAuthn
 	}
 	return &userRes, nil
