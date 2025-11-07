@@ -73,6 +73,49 @@ func (ScheduleReason) EnumDescriptor() ([]byte, []int) {
 	return file_slowmo_proto_rawDescGZIP(), []int{0}
 }
 
+type AuthnChannel int32
+
+const (
+	AuthnChannel_GITHUB AuthnChannel = 0
+)
+
+// Enum value maps for AuthnChannel.
+var (
+	AuthnChannel_name = map[int32]string{
+		0: "GITHUB",
+	}
+	AuthnChannel_value = map[string]int32{
+		"GITHUB": 0,
+	}
+)
+
+func (x AuthnChannel) Enum() *AuthnChannel {
+	p := new(AuthnChannel)
+	*p = x
+	return p
+}
+
+func (x AuthnChannel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AuthnChannel) Descriptor() protoreflect.EnumDescriptor {
+	return file_slowmo_proto_enumTypes[1].Descriptor()
+}
+
+func (AuthnChannel) Type() protoreflect.EnumType {
+	return &file_slowmo_proto_enumTypes[1]
+}
+
+func (x AuthnChannel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AuthnChannel.Descriptor instead.
+func (AuthnChannel) EnumDescriptor() ([]byte, []int) {
+	return file_slowmo_proto_rawDescGZIP(), []int{1}
+}
+
 type CompileAndRunRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        *string                `protobuf:"bytes,1,opt,name=source,proto3,oneof" json:"source,omitempty"` // Go source code from user.
@@ -1271,6 +1314,7 @@ type AuthnParams struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          *string                `protobuf:"bytes,1,opt,name=code,proto3,oneof" json:"code,omitempty"`
 	State         *string                `protobuf:"bytes,2,opt,name=state,proto3,oneof" json:"state,omitempty"`
+	Channel       AuthnChannel           `protobuf:"varint,3,opt,name=channel,proto3,enum=slowmo.AuthnChannel" json:"channel,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1317,6 +1361,13 @@ func (x *AuthnParams) GetState() string {
 		return *x.State
 	}
 	return ""
+}
+
+func (x *AuthnParams) GetChannel() AuthnChannel {
+	if x != nil {
+		return x.Channel
+	}
+	return AuthnChannel_GITHUB
 }
 
 type AuthnResponse struct {
@@ -1468,10 +1519,11 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x05_m_idB\b\n" +
 	"\x06_go_id\";\n" +
 	"\fAuthnRequest\x12+\n" +
-	"\x06params\x18\x01 \x01(\v2\x13.slowmo.AuthnParamsR\x06params\"T\n" +
+	"\x06params\x18\x01 \x01(\v2\x13.slowmo.AuthnParamsR\x06params\"\x84\x01\n" +
 	"\vAuthnParams\x12\x17\n" +
 	"\x04code\x18\x01 \x01(\tH\x00R\x04code\x88\x01\x01\x12\x19\n" +
-	"\x05state\x18\x02 \x01(\tH\x01R\x05state\x88\x01\x01B\a\n" +
+	"\x05state\x18\x02 \x01(\tH\x01R\x05state\x88\x01\x01\x12.\n" +
+	"\achannel\x18\x03 \x01(\x0e2\x14.slowmo.AuthnChannelR\achannelB\a\n" +
 	"\x05_codeB\b\n" +
 	"\x06_state\"4\n" +
 	"\rAuthnResponse\x12\x19\n" +
@@ -1484,7 +1536,10 @@ const file_slowmo_proto_rawDesc = "" +
 	"\x06GOPARK\x10\x01\x12\n" +
 	"\n" +
 	"\x06MSTART\x10\x02\x12\t\n" +
-	"\x05OTHER\x10\x142\x95\x01\n" +
+	"\x05OTHER\x10\x14*\x1a\n" +
+	"\fAuthnChannel\x12\n" +
+	"\n" +
+	"\x06GITHUB\x10\x002\x95\x01\n" +
 	"\rSlowmoService\x12N\n" +
 	"\rCompileAndRun\x12\x1c.slowmo.CompileAndRunRequest\x1a\x1d.slowmo.CompileAndRunResponse0\x01\x124\n" +
 	"\x05Authn\x12\x14.slowmo.AuthnRequest\x1a\x15.slowmo.AuthnResponseB$Z\"github.com/kailun2047/slowmo/protob\x06proto3"
@@ -1501,65 +1556,67 @@ func file_slowmo_proto_rawDescGZIP() []byte {
 	return file_slowmo_proto_rawDescData
 }
 
-var file_slowmo_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_slowmo_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_slowmo_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_slowmo_proto_goTypes = []any{
 	(ScheduleReason)(0),           // 0: slowmo.ScheduleReason
-	(*CompileAndRunRequest)(nil),  // 1: slowmo.CompileAndRunRequest
-	(*CompileAndRunResponse)(nil), // 2: slowmo.CompileAndRunResponse
-	(*CompilationError)(nil),      // 3: slowmo.CompilationError
-	(*RuntimeResult)(nil),         // 4: slowmo.RuntimeResult
-	(*RuntimeOutput)(nil),         // 5: slowmo.RuntimeOutput
-	(*ProbeEvent)(nil),            // 6: slowmo.ProbeEvent
-	(*NotificationEvent)(nil),     // 7: slowmo.NotificationEvent
-	(*StructureStateEvent)(nil),   // 8: slowmo.StructureStateEvent
-	(*RunqStatusEvent)(nil),       // 9: slowmo.RunqStatusEvent
-	(*RunqEntry)(nil),             // 10: slowmo.RunqEntry
-	(*InterpretedPC)(nil),         // 11: slowmo.InterpretedPC
-	(*ExecuteEvent)(nil),          // 12: slowmo.ExecuteEvent
-	(*DelayEvent)(nil),            // 13: slowmo.DelayEvent
-	(*ScheduleEvent)(nil),         // 14: slowmo.ScheduleEvent
-	(*NewProcEvent)(nil),          // 15: slowmo.NewProcEvent
-	(*GoparkEvent)(nil),           // 16: slowmo.GoparkEvent
-	(*GoreadyEvent)(nil),          // 17: slowmo.GoreadyEvent
-	(*AuthnRequest)(nil),          // 18: slowmo.AuthnRequest
-	(*AuthnParams)(nil),           // 19: slowmo.AuthnParams
-	(*AuthnResponse)(nil),         // 20: slowmo.AuthnResponse
+	(AuthnChannel)(0),             // 1: slowmo.AuthnChannel
+	(*CompileAndRunRequest)(nil),  // 2: slowmo.CompileAndRunRequest
+	(*CompileAndRunResponse)(nil), // 3: slowmo.CompileAndRunResponse
+	(*CompilationError)(nil),      // 4: slowmo.CompilationError
+	(*RuntimeResult)(nil),         // 5: slowmo.RuntimeResult
+	(*RuntimeOutput)(nil),         // 6: slowmo.RuntimeOutput
+	(*ProbeEvent)(nil),            // 7: slowmo.ProbeEvent
+	(*NotificationEvent)(nil),     // 8: slowmo.NotificationEvent
+	(*StructureStateEvent)(nil),   // 9: slowmo.StructureStateEvent
+	(*RunqStatusEvent)(nil),       // 10: slowmo.RunqStatusEvent
+	(*RunqEntry)(nil),             // 11: slowmo.RunqEntry
+	(*InterpretedPC)(nil),         // 12: slowmo.InterpretedPC
+	(*ExecuteEvent)(nil),          // 13: slowmo.ExecuteEvent
+	(*DelayEvent)(nil),            // 14: slowmo.DelayEvent
+	(*ScheduleEvent)(nil),         // 15: slowmo.ScheduleEvent
+	(*NewProcEvent)(nil),          // 16: slowmo.NewProcEvent
+	(*GoparkEvent)(nil),           // 17: slowmo.GoparkEvent
+	(*GoreadyEvent)(nil),          // 18: slowmo.GoreadyEvent
+	(*AuthnRequest)(nil),          // 19: slowmo.AuthnRequest
+	(*AuthnParams)(nil),           // 20: slowmo.AuthnParams
+	(*AuthnResponse)(nil),         // 21: slowmo.AuthnResponse
 }
 var file_slowmo_proto_depIdxs = []int32{
-	3,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
-	4,  // 1: slowmo.CompileAndRunResponse.runtime_result:type_name -> slowmo.RuntimeResult
-	6,  // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
-	5,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
-	13, // 4: slowmo.ProbeEvent.delay_event:type_name -> slowmo.DelayEvent
-	7,  // 5: slowmo.ProbeEvent.notification_event:type_name -> slowmo.NotificationEvent
-	8,  // 6: slowmo.ProbeEvent.structure_state_event:type_name -> slowmo.StructureStateEvent
-	14, // 7: slowmo.NotificationEvent.schedule_event:type_name -> slowmo.ScheduleEvent
-	15, // 8: slowmo.NotificationEvent.new_proc_event:type_name -> slowmo.NewProcEvent
-	16, // 9: slowmo.NotificationEvent.gopark_event:type_name -> slowmo.GoparkEvent
-	9,  // 10: slowmo.StructureStateEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
-	12, // 11: slowmo.StructureStateEvent.execute_event:type_name -> slowmo.ExecuteEvent
-	17, // 12: slowmo.StructureStateEvent.goready_event:type_name -> slowmo.GoreadyEvent
-	10, // 13: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
-	10, // 14: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
-	11, // 15: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
-	10, // 16: slowmo.ExecuteEvent.found:type_name -> slowmo.RunqEntry
-	9,  // 17: slowmo.ExecuteEvent.runqs:type_name -> slowmo.RunqStatusEvent
-	11, // 18: slowmo.DelayEvent.current_pc:type_name -> slowmo.InterpretedPC
+	4,  // 0: slowmo.CompileAndRunResponse.compile_error:type_name -> slowmo.CompilationError
+	5,  // 1: slowmo.CompileAndRunResponse.runtime_result:type_name -> slowmo.RuntimeResult
+	7,  // 2: slowmo.CompileAndRunResponse.run_event:type_name -> slowmo.ProbeEvent
+	6,  // 3: slowmo.CompileAndRunResponse.runtime_output:type_name -> slowmo.RuntimeOutput
+	14, // 4: slowmo.ProbeEvent.delay_event:type_name -> slowmo.DelayEvent
+	8,  // 5: slowmo.ProbeEvent.notification_event:type_name -> slowmo.NotificationEvent
+	9,  // 6: slowmo.ProbeEvent.structure_state_event:type_name -> slowmo.StructureStateEvent
+	15, // 7: slowmo.NotificationEvent.schedule_event:type_name -> slowmo.ScheduleEvent
+	16, // 8: slowmo.NotificationEvent.new_proc_event:type_name -> slowmo.NewProcEvent
+	17, // 9: slowmo.NotificationEvent.gopark_event:type_name -> slowmo.GoparkEvent
+	10, // 10: slowmo.StructureStateEvent.runq_status_event:type_name -> slowmo.RunqStatusEvent
+	13, // 11: slowmo.StructureStateEvent.execute_event:type_name -> slowmo.ExecuteEvent
+	18, // 12: slowmo.StructureStateEvent.goready_event:type_name -> slowmo.GoreadyEvent
+	11, // 13: slowmo.RunqStatusEvent.runq_entries:type_name -> slowmo.RunqEntry
+	11, // 14: slowmo.RunqStatusEvent.runnext:type_name -> slowmo.RunqEntry
+	12, // 15: slowmo.RunqEntry.execution_context:type_name -> slowmo.InterpretedPC
+	11, // 16: slowmo.ExecuteEvent.found:type_name -> slowmo.RunqEntry
+	10, // 17: slowmo.ExecuteEvent.runqs:type_name -> slowmo.RunqStatusEvent
+	12, // 18: slowmo.DelayEvent.current_pc:type_name -> slowmo.InterpretedPC
 	0,  // 19: slowmo.ScheduleEvent.reason:type_name -> slowmo.ScheduleReason
-	11, // 20: slowmo.NewProcEvent.start_pc:type_name -> slowmo.InterpretedPC
-	10, // 21: slowmo.GoparkEvent.parked:type_name -> slowmo.RunqEntry
-	9,  // 22: slowmo.GoreadyEvent.runq:type_name -> slowmo.RunqStatusEvent
-	19, // 23: slowmo.AuthnRequest.params:type_name -> slowmo.AuthnParams
-	1,  // 24: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
-	18, // 25: slowmo.SlowmoService.Authn:input_type -> slowmo.AuthnRequest
-	2,  // 26: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
-	20, // 27: slowmo.SlowmoService.Authn:output_type -> slowmo.AuthnResponse
-	26, // [26:28] is the sub-list for method output_type
-	24, // [24:26] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	12, // 20: slowmo.NewProcEvent.start_pc:type_name -> slowmo.InterpretedPC
+	11, // 21: slowmo.GoparkEvent.parked:type_name -> slowmo.RunqEntry
+	10, // 22: slowmo.GoreadyEvent.runq:type_name -> slowmo.RunqStatusEvent
+	20, // 23: slowmo.AuthnRequest.params:type_name -> slowmo.AuthnParams
+	1,  // 24: slowmo.AuthnParams.channel:type_name -> slowmo.AuthnChannel
+	2,  // 25: slowmo.SlowmoService.CompileAndRun:input_type -> slowmo.CompileAndRunRequest
+	19, // 26: slowmo.SlowmoService.Authn:input_type -> slowmo.AuthnRequest
+	3,  // 27: slowmo.SlowmoService.CompileAndRun:output_type -> slowmo.CompileAndRunResponse
+	21, // 28: slowmo.SlowmoService.Authn:output_type -> slowmo.AuthnResponse
+	27, // [27:29] is the sub-list for method output_type
+	25, // [25:27] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_slowmo_proto_init() }
@@ -1609,7 +1666,7 @@ func file_slowmo_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_slowmo_proto_rawDesc), len(file_slowmo_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,

@@ -125,6 +125,12 @@ message AuthnRequest {
 message AuthnParams {
     optional string code = 1;
     optional string state = 2;
+    AuthnChannel channel = 3;
+}
+
+enum AuthnChannel {
+    UNKNOWN = 0;
+    GITHUB = 1;
 }
 
 message AuthnResponse {

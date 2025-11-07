@@ -5,7 +5,7 @@ import 'brace/theme/solarized_light';
 import { isNil } from 'lodash';
 import { useEffect, useRef, type MouseEventHandler, type Ref } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
+import { AuthnChannel, CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
 import { resetAllStores, useAceEditorWrapperStore, useBoundStore, useOutputStore } from './store';
@@ -156,7 +156,7 @@ function AceEditorWrapper() {
                     // to generate session token based on user identity and set
                     // Set-Cookie response header to make the client side
                     // include the token in further requests.
-                    const {status} = await client.authn({params: {state: encodedState!, code: code!}});
+                    const {status} = await client.authn({params: {state: encodedState!, code: code!, channel: AuthnChannel.GITHUB}});
                     if (status.code !== 'OK') {
                         throw new Error(status.detail);
                     }

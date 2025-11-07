@@ -5,14 +5,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -148,18 +145,25 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 
 type SlowmoServer struct {
 	proto.UnimplementedSlowmoServiceServer
-	execServerAddr        string
-	execTimeLimitSec      int
-	authnClient           *http.Client
-	createOauthClientOnce sync.Once
-	oauthTimeoutMilli     int
+	execServerAddr   string
+	execTimeLimitSec int
+	authenticators   map[proto.AuthnChannel]Authenticator
 }
 
-func NewSlowmoServer(execServerAddr string, execTimeLimitSec, oauthTimeoutMilli int) proto.SlowmoServiceServer {
+type Authenticator interface {
+	GetAccessToken(ctx context.Context, exchangeCode string) (string, error)
+	GetUserIdentity(ctx context.Context, accessToken string) (UserIdentityProvider, error)
+}
+
+type UserIdentityProvider interface {
+	UserLogin() string
+}
+
+func NewSlowmoServer(execServerAddr string, execTimeLimitSec int, authenticators map[proto.AuthnChannel]Authenticator) proto.SlowmoServiceServer {
 	return &SlowmoServer{
-		execServerAddr:    execServerAddr,
-		execTimeLimitSec:  execTimeLimitSec,
-		oauthTimeoutMilli: oauthTimeoutMilli,
+		execServerAddr:   execServerAddr,
+		execTimeLimitSec: execTimeLimitSec,
+		authenticators:   authenticators,
 	}
 }
 
@@ -179,18 +183,19 @@ func (ce compileError) Is(target error) bool {
 	return target == errCompilation
 }
 
-type userLoginCliam struct {
+type userLoginClaim struct {
 	jwt.RegisteredClaims
-	UserLogin string `json:"user"`
+	UserLogin string             `json:"user"`
+	Channel   proto.AuthnChannel `json:"channel"`
 }
 
 func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) (compileAndRunErr error) {
 	if needAuthentication() {
-		user, err := getAuthenticatedUser(stream.Context())
+		claim, err := getAuthenticatedUser(stream.Context())
 		if err != nil {
 			return err
 		}
-		log.Printf("[CompileAndRun] Received request from user [%s]", user)
+		log.Printf("[CompileAndRun] Received request from user [%s] (channel: %v)", claim.UserLogin, claim.Channel)
 	}
 
 	var (
@@ -332,27 +337,27 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 }
 
 func needAuthentication() bool {
-	return len(os.Getenv(envVarKeyOAuthClientID)) > 0 && len(os.Getenv(envVarKeyOAuthClientSecret)) > 0
+	return len(os.Getenv(envVarKeySigningKey)) > 0
 }
 
-func getAuthenticatedUser(ctx context.Context) (string, error) {
+func getAuthenticatedUser(ctx context.Context) (*userLoginClaim, error) {
 	sessionToken, err := findHeaderInCookies(ctx, authnHeaderKeySessionToken)
 	if err != nil {
-		return "", fmt.Errorf("session error: %w", err)
+		return nil, fmt.Errorf("session error: %w", err)
 	}
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-	token, err := parser.ParseWithClaims(sessionToken, &userLoginCliam{}, func(token *jwt.Token) (any, error) {
+	token, err := parser.ParseWithClaims(sessionToken, &userLoginClaim{}, func(token *jwt.Token) (any, error) {
 		return []byte(os.Getenv(envVarKeySigningKey)), nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("authentication error: token validation failed (%w)", err)
+		return nil, fmt.Errorf("authentication error: token validation failed (%w)", err)
 	}
-	if claim, ok := token.Claims.(*userLoginCliam); !ok {
-		return "", fmt.Errorf("authentication error: invalid claim")
+	if claim, ok := token.Claims.(*userLoginClaim); !ok {
+		return nil, fmt.Errorf("authentication error: invalid claim")
 	} else {
 		// TODO: rate-limiting for each individual user.
 		// TODO: add session token expiration.
-		return claim.UserLogin, nil
+		return claim, nil
 	}
 }
 
@@ -412,27 +417,9 @@ const (
 	authnHeaderKeyState        = "oauth-state"
 	authnHeaderKeySessionToken = "slowmo-session-token"
 	envVarKeySigningKey        = "JWT_SIGNING_KEY"
-	envVarKeyOAuthClientID     = "OAUTH_CLIENT_ID"
-	envVarKeyOAuthClientSecret = "OAUTH_CLIENT_SECRET"
-	oauthAPIAddr               = "https://github.com/login/oauth/access_token"
-	userProfileAPIAddr         = "https://api.github.com/user"
 )
 
-type oauthResult struct {
-	AccessToken string `json:"access_token"`
-}
-
-type userResult struct {
-	Login string `json:"login"`
-}
-
-type oauthRequestBody struct {
-	ClientID     string `json:"client_id"`
-	ClientSecret string `json:"client_secret"`
-	Code         string `json:"code"`
-}
-
-var errInternalAuthn = fmt.Errorf("internal authentication error")
+var ErrInternalAuthn = fmt.Errorf("internal authentication error")
 
 func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) (*proto.AuthnResponse, error) {
 	if req.Params == nil {
@@ -463,102 +450,42 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 	}
 
 	// Use authn params to retrieve user identity and generate session token.
-	var (
-		oauthRes oauthResult
-		userRes  userResult
-	)
-	server.createOauthClientOnce.Do(func() {
-		server.authnClient = &http.Client{
-			Timeout: time.Duration(server.oauthTimeoutMilli) * time.Millisecond,
-		}
-	})
-	url, err := url.Parse(oauthAPIAddr)
-	if err != nil {
-		log.Printf("[Authn] Invalid oauth api address %s", oauthAPIAddr)
-		return nil, errInternalAuthn
+	authenticator, ok := server.authenticators[req.Params.Channel]
+	if !ok {
+		return nil, fmt.Errorf("target authentication method not supported")
 	}
-	oauthReqBody := oauthRequestBody{
-		ClientID:     os.Getenv(envVarKeyOAuthClientID),
-		ClientSecret: os.Getenv(envVarKeyOAuthClientSecret),
-		Code:         *req.Params.Code,
-	}
-	oauthReqBodyBytes, err := json.Marshal(oauthReqBody)
+	accessToken, err := authenticator.GetAccessToken(ctx, *req.Params.Code)
 	if err != nil {
-		log.Printf("[Authn] Error marshaling oauth request body: %v", err)
-		return nil, errInternalAuthn
-	}
-	buf := bytes.NewBuffer(oauthReqBodyBytes)
-	oauthReq, err := http.NewRequestWithContext(ctx, "POST", url.String(), buf)
-	if err != nil {
-		log.Printf("[Authn] Cannot create oauth request: %v", err)
-		return nil, errInternalAuthn
-	}
-	oauthReq.Header.Add("Accept", "application/json")
-	oauthReq.Header.Add("Content-Type", "application/json")
-	oauthResp, err := server.authnClient.Do(oauthReq)
-	if err != nil {
-		log.Printf("[Authn] Failed to request oauth service: %v", err)
-		return nil, errInternalAuthn
-	}
-	err = parseResponse(oauthResp, &oauthRes)
-	if err != nil {
-		if !errors.Is(err, errInternalAuthn) {
-			err = fmt.Errorf("oauth error: %w", err)
+		if !errors.Is(err, ErrInternalAuthn) {
+			err = fmt.Errorf("authentication failed: cannot get access token")
 		}
 		return nil, err
 	}
-	userReq, err := http.NewRequestWithContext(ctx, "GET", userProfileAPIAddr, nil)
+	userIdentity, err := authenticator.GetUserIdentity(ctx, accessToken)
 	if err != nil {
-		log.Printf("[Authn] Cannot create oauth user request: %v", err)
-		return nil, errInternalAuthn
+		if !errors.Is(err, ErrInternalAuthn) {
+			err = fmt.Errorf("authentication failed: cannot get user identity")
+		}
+		return nil, err
 	}
-	userReq.Header.Add("Accept", "application/vnd.github+json")
-	userReq.Header.Add("X-GitHub-Api-Version", "2022-11-28")
-	userReq.Header.Add("Authorization", fmt.Sprintf("Bearer %s", oauthRes.AccessToken))
-	userResp, err := server.authnClient.Do(userReq)
-	if err != nil {
-		log.Printf("[Authn] Cannot create user request: %v", err)
-		return nil, errInternalAuthn
-	}
-	err = parseResponse(userResp, &userRes)
-	if err != nil {
-		log.Printf("[Authn] Error retriving user result: %v", err)
-		return nil, errInternalAuthn
-	}
-	signedToken, err := generateJWT(userRes.Login)
+
+	signedToken, err := generateJWT(userIdentity.UserLogin(), req.Params.Channel)
 	if err != nil {
 		log.Printf("[Authn] Failed generating session token: %v", err)
-		return nil, errInternalAuthn
+		return nil, ErrInternalAuthn
 	}
 	header := metadata.Pairs(authnHeaderKeySessionToken, signedToken)
 	grpc.SetHeader(ctx, header)
 
-	log.Printf("[Authn] Finished generating session token for user [%s]", userRes.Login)
+	log.Printf("[Authn] Finished generating session token for user [%s] (channel: %v)", userIdentity.UserLogin(), req.Params.Channel)
 	return &proto.AuthnResponse{}, nil
 }
 
-type responseResult interface {
-	oauthResult | userResult
-}
-
-func parseResponse[T responseResult](resp *http.Response, result *T) error {
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("error response: %s", resp.Status)
-	}
-	respBody, err := io.ReadAll(resp.Body)
-	if err == nil {
-		err = json.Unmarshal(respBody, result)
-	}
-	if err != nil {
-		return errInternalAuthn
-	}
-	return nil
-}
-
-func generateJWT(userLogin string) (string, error) {
+func generateJWT(userLogin string, channel proto.AuthnChannel) (string, error) {
 	key := os.Getenv(envVarKeySigningKey)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user": userLogin,
+		"user":    userLogin,
+		"channel": channel,
 	})
 	signedToken, err := token.SignedString([]byte(key))
 	if err != nil {

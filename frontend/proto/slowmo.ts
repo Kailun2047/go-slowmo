@@ -357,6 +357,10 @@ export interface AuthnParams {
      * @generated from protobuf field: optional string state = 2
      */
     state?: string;
+    /**
+     * @generated from protobuf field: slowmo.AuthnChannel channel = 3
+     */
+    channel: AuthnChannel;
 }
 /**
  * @generated from protobuf message slowmo.AuthnResponse
@@ -387,6 +391,15 @@ export enum ScheduleReason {
      * @generated from protobuf enum value: OTHER = 20;
      */
     OTHER = 20
+}
+/**
+ * @generated from protobuf enum slowmo.AuthnChannel
+ */
+export enum AuthnChannel {
+    /**
+     * @generated from protobuf enum value: GITHUB = 0;
+     */
+    GITHUB = 0
 }
 // @generated message type with reflection information, may provide speed optimized methods
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
@@ -1473,11 +1486,13 @@ class AuthnParams$Type extends MessageType<AuthnParams> {
     constructor() {
         super("slowmo.AuthnParams", [
             { no: 1, name: "code", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ },
-            { no: 2, name: "state", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
+            { no: 2, name: "state", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ },
+            { no: 3, name: "channel", kind: "enum", T: () => ["slowmo.AuthnChannel", AuthnChannel] }
         ]);
     }
     create(value?: PartialMessage<AuthnParams>): AuthnParams {
         const message = globalThis.Object.create((this.messagePrototype!));
+        message.channel = 0;
         if (value !== undefined)
             reflectionMergePartial<AuthnParams>(this, message, value);
         return message;
@@ -1492,6 +1507,9 @@ class AuthnParams$Type extends MessageType<AuthnParams> {
                     break;
                 case /* optional string state */ 2:
                     message.state = reader.string();
+                    break;
+                case /* slowmo.AuthnChannel channel */ 3:
+                    message.channel = reader.int32();
                     break;
                 default:
                     let u = options.readUnknownField;
@@ -1511,6 +1529,9 @@ class AuthnParams$Type extends MessageType<AuthnParams> {
         /* optional string state = 2; */
         if (message.state !== undefined)
             writer.tag(2, WireType.LengthDelimited).string(message.state);
+        /* slowmo.AuthnChannel channel = 3; */
+        if (message.channel !== 0)
+            writer.tag(3, WireType.Varint).int32(message.channel);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
