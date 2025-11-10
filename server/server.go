@@ -28,8 +28,7 @@ import (
 )
 
 const (
-	instrumentorProgPath = "./instrumentor.o"
-	buildDir             = "/tmp/slowmo-builds"
+	buildDir = "/tmp/slowmo-builds"
 )
 
 func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrumentor, *instrumentation.EventReader) {
@@ -233,7 +232,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		}
 	}()
 
-	outName, err := sandboxedBuild(req.GetSource())
+	outName, err := sandboxedBuild(req.GetSource(), *req.GoVersion)
 	if err != nil {
 		if !errors.Is(err, errCompilation) {
 			internalErr = fmt.Errorf("internal error when building the program: %w", err)
@@ -262,7 +261,11 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		return
 	}
 
-	instrumentor, probeEventReader := startInstrumentation(instrumentorProgPath, outName)
+	if req.GoVersion == nil {
+		compileAndRunErr = fmt.Errorf("missing Go version in request")
+		return
+	}
+	instrumentor, probeEventReader := startInstrumentation(instrumentorProg(*req.GoVersion), outName)
 	log.Printf("Instrumentor started for program %s", outName)
 	defer instrumentor.Close()
 
@@ -398,7 +401,7 @@ func findHeaderInCookies(ctx context.Context, targetKey string) (string, error) 
 	return found, nil
 }
 
-func sandboxedBuild(source string) (string, error) {
+func sandboxedBuild(source, goVersion string) (string, error) {
 	tempFile, err := os.CreateTemp(buildDir, "target-*.go")
 	if err != nil {
 		log.Printf("Failed to create temp file: %v", err)
@@ -414,7 +417,7 @@ func sandboxedBuild(source string) (string, error) {
 	}()
 
 	outName := strings.TrimSuffix(tempFile.Name(), ".go")
-	goBuildCmd := exec.Command("/usr/bin/env", "go", "build", "-gcflags=all=-N -l", "-o", outName, tempFile.Name())
+	goBuildCmd := exec.Command("/usr/bin/env", goBin(goVersion), "build", "-gcflags=all=-N -l", "-o", outName, tempFile.Name())
 	buf := bytes.Buffer{}
 	goBuildCmd.Stdout = &buf
 	goBuildCmd.Stderr = &buf
@@ -425,6 +428,14 @@ func sandboxedBuild(source string) (string, error) {
 		}
 	}
 	return outName, nil
+}
+
+func instrumentorProg(goVersion string) string {
+	return fmt.Sprintf("./instrumentor%s.o", goVersion)
+}
+
+func goBin(goVersion string) string {
+	return fmt.Sprintf("go%s", goVersion)
 }
 
 const (

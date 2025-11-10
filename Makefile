@@ -1,15 +1,20 @@
+SHELL = /usr/bin/bash
 CC = clang
 CFLAGS = -target bpf -O2 -g
 DEBUG_GCFLAGS = -gcflags="all=-N -l"
 debug = off
+go_versions = 1.24.10 1.25.4
 
 instrumentation_dir := ./instrumentation
-server_dir := ./server
 instrumentor_bpf_src := $(instrumentation_dir)/instrumentor.bpf.c
 instrumentor_go_src := $(instrumentation_dir)/*.go
+instrumentation_tools_dir := $(instrumentation_dir)/tools
+server_dir := ./server
 slowmo_server_go_src := $(server_dir)/*.go
+middleware_dir := ./middleware
+middleware_go_src := $(middleware_dir)/*.go
 main_go_src := main.go
-instrumentor_bpf_prog := instrumentor.o
+instrumentor_bpf_progs := instrumentor*.o
 slowmo_server_prog := slowmo-server
 
 exec_dir := ./exec
@@ -29,19 +34,23 @@ exec_proto_def := $(proto_dir)/$(exec_proto_file)
 exec_proto_gen_go := $(proto_dir)/exec*.pb.go
 
 vmlinux_header := $(instrumentation_dir)/vmlinux.h
+instrumentor_header := $(instrumentation_dir)/instrumentor.h
 
-all: proto libbpf $(instrumentor_bpf_prog) $(slowmo_server_prog) $(exec_server_prog)
+all: proto $(instrumentor_bpf_progs) $(slowmo_server_prog) $(exec_server_prog)
 
 $(vmlinux_header):
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(vmlinux_header)
 
-$(instrumentor_bpf_src): $(vmlinux_header)
-
-$(instrumentor_bpf_prog): $(instrumentor_bpf_src)
-	$(CC) $(CFLAGS) -o $(instrumentor_bpf_prog) -c $(instrumentor_bpf_src)
+$(instrumentor_bpf_progs): $(vmlinux_header) $(instrumentor_bpf_src) $(instrumentation_tools_dir)/offsets_to_find.json $(instrumentation_tools_dir)/offset_finder.go $(instrumentation_tools_dir)/hello.go
+	for go_version in $(go_versions); do \
+		pwd=$$(pwd); \
+		go$${go_version} build -C $(instrumentation_tools_dir) -o hello hello.go; \
+		cd $(instrumentation_tools_dir) && go run offset_finder.go; \
+		cd $${pwd} && $(CC) $(CFLAGS) -o instrumentor$${go_version}.o -c $(instrumentor_bpf_src); \
+	done
 	go generate -C $(instrumentation_dir)
 
-$(slowmo_server_prog): $(instrumentor_bpf_prog) $(instrumentor_go_src) $(slowmo_server_go_src) $(main_go_src) $(slowmo_proto_gen_go)
+$(slowmo_server_prog): $(instrumentor_bpf_progs) $(instrumentor_go_src) $(slowmo_server_go_src) $(main_go_src) $(slowmo_proto_gen_go) $(middleware_go_src)
 ifeq ($(debug), on)
 	go build $(DEBUG_GCFLAGS) -o $(slowmo_server_prog)
 else
@@ -71,5 +80,8 @@ proto: $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_proto_gen_go)
 libbpf:
 	cd $(instrumentation_dir)/libbpf/src && make install && make install_uapi_headers
 
+$(instrumentation_tools_dir)/hello.go:
+	echo -e "//go:build ignore\npackage main\nfunc main() {}" > $(instrumentation_tools_dir)/hello.go
+
 clean:
-	rm $(instrumentor_bpf_prog) $(slowmo_server_prog) $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_server_prog) $(exec_proto_gen_go)
+	rm $(instrumentor_bpf_progs) $(slowmo_server_prog) $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_server_prog) $(exec_proto_gen_go) $(vmlinux_header) $(instrumentor_header)

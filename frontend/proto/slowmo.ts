@@ -19,6 +19,10 @@ export interface CompileAndRunRequest {
      * @generated from protobuf field: optional string source = 1
      */
     source?: string; // Go source code from user.
+    /**
+     * @generated from protobuf field: optional string go_version = 2
+     */
+    goVersion?: string;
 }
 /**
  * @generated from protobuf message slowmo.CompileAndRunResponse
@@ -409,7 +413,8 @@ export enum AuthnChannel {
 class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
     constructor() {
         super("slowmo.CompileAndRunRequest", [
-            { no: 1, name: "source", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
+            { no: 1, name: "source", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ },
+            { no: 2, name: "go_version", kind: "scalar", opt: true, T: 9 /*ScalarType.STRING*/ }
         ]);
     }
     create(value?: PartialMessage<CompileAndRunRequest>): CompileAndRunRequest {
@@ -426,6 +431,9 @@ class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
                 case /* optional string source */ 1:
                     message.source = reader.string();
                     break;
+                case /* optional string go_version */ 2:
+                    message.goVersion = reader.string();
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -441,6 +449,9 @@ class CompileAndRunRequest$Type extends MessageType<CompileAndRunRequest> {
         /* optional string source = 1; */
         if (message.source !== undefined)
             writer.tag(1, WireType.LengthDelimited).string(message.source);
+        /* optional string go_version = 2; */
+        if (message.goVersion !== undefined)
+            writer.tag(2, WireType.LengthDelimited).string(message.goVersion);
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);

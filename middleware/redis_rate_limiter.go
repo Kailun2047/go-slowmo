@@ -1,4 +1,4 @@
-package ratelimit
+package middleware
 
 import (
 	"context"
@@ -32,38 +32,25 @@ type RedisRateLimiter struct {
 }
 
 func NewRedisRateLimiter() *RedisRateLimiter {
-	globalTimeWindowStr := os.Getenv(envVarKeyGlobalTimeWindowSec)
-	globalTimeWindowSec, err := strconv.Atoi(globalTimeWindowStr)
-	if err != nil {
-		log.Fatalf("Invalid global time window [%s]", globalTimeWindowStr)
-	}
-	globalLimitStr := os.Getenv(envVarKeyGlobalLimit)
-	globalLimit, err := strconv.Atoi(globalLimitStr)
-	if err != nil {
-		log.Fatalf("Invalid global limit [%s]", globalLimitStr)
-	}
+	return &RedisRateLimiter{}
+}
 
-	userTimeWindowStr := os.Getenv(envVarKeyUserTimeWindowSec)
-	userTimeWindowSec, err := strconv.Atoi(userTimeWindowStr)
+func getIntFromEnvVar(key string) int {
+	valStr := os.Getenv(key)
+	val, err := strconv.Atoi(valStr)
 	if err != nil {
-		log.Fatalf("Invalid user time window [%s]", userTimeWindowStr)
+		log.Fatalf("Invalid %s: [%s]", key, valStr)
 	}
-	userLimitStr := os.Getenv(envVarKeyUserLimit)
-	userLimit, err := strconv.Atoi(userLimitStr)
-	if err != nil {
-		log.Fatalf("Invalid user limit [%s]", userLimitStr)
-	}
-
-	return &RedisRateLimiter{
-		globalTimeWindowSec: globalTimeWindowSec,
-		globalLimit:         globalLimit,
-		userTimeWindowSec:   userTimeWindowSec,
-		userLimit:           userLimit,
-	}
+	return val
 }
 
 func (rl *RedisRateLimiter) getRedisClient() *redis.Client {
 	rl.createRedisClientOnce.Do(func() {
+		rl.globalTimeWindowSec = getIntFromEnvVar(envVarKeyGlobalTimeWindowSec)
+		rl.globalLimit = getIntFromEnvVar(envVarKeyGlobalLimit)
+		rl.userTimeWindowSec = getIntFromEnvVar(envVarKeyUserTimeWindowSec)
+		rl.userLimit = getIntFromEnvVar(envVarKeyUserLimit)
+
 		opts, err := redis.ParseURL(os.Getenv(envVarKeyRedisURL))
 		if err != nil {
 			log.Fatal("invalid redis url")

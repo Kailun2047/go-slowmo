@@ -6,4 +6,6 @@
 *.prof
 
 vmlinux.h
+instrumentor.h
+hello*
 *-server

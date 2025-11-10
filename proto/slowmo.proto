@@ -4,6 +4,7 @@ option go_package = "github.com/kailun2047/slowmo/proto";
 
 message CompileAndRunRequest {
     optional string source = 1; // Go source code from user.
+    optional string go_version = 2;
 }
 
 message CompileAndRunResponse {

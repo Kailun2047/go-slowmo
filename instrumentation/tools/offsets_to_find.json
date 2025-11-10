@@ -1,0 +1,47 @@
+[
+    {
+        "package": "runtime",
+        "target_offsets": [
+            {
+                "struct": "g",
+                "fields": [
+                    "goid",
+                    "m",
+                    "startpc",
+                    "schedlink"
+                ]
+            },
+            {
+                "struct": "m",
+                "fields": [
+                    "p",
+                    "id"
+                ]
+            },
+            {
+                "struct": "p",
+                "fields": [
+                    "id",
+                    "runqhead",
+                    "runqtail",
+                    "runq",
+                    "runnext",
+                    "m",
+                    "sysmontick"
+                ]
+            },
+            {
+                "struct": "sysmontick",
+                "fields": [
+                    "schedwhen"
+                ]
+            },
+            {
+                "struct": "schedt",
+                "fields": [
+                    "runq"
+                ]
+            }
+        ]
+    }
+]

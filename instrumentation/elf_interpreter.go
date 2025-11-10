@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	symTabFieldNameGo12Line = "go12line"
 	lnTabFieldNameFuncTabN  = "nfunctab"
 	lnTabFieldNameTextStart = "textStart"
 

@@ -1,5 +1,6 @@
 //go:build ignore
 #include "vmlinux.h"
+#include "instrumentor.h"
 #include <bpf/bpf_tracing.h>
 #include <stdbool.h>
 
@@ -15,36 +16,19 @@ char __license[] SEC("license") = "Dual MIT/GPL";
 #define MAX_LOOP_ITERS (1U << 23) // This is currently the max number of iterations permitted by eBPF loop.
 #define DELAY_NS 1e9
 
-// TODO: to be compatible with different versions of Go, we should be able to
-// retrieve Go runtime internals such as field offsets depending on the target's
-// Go version.
-#define G_GOID_OFFSET 152
-#define G_M_PTR_OFFSET 48
-#define G_STARTPC_OFFSET 296
-#define G_STATUS_OFFSET 144
-#define G_SCHEDLINK_OFFSET 160
-#define M_P_PTR_OFFSET 208
-#define M_ID_OFFSET 232
 #define P_LOCAL_RUNQ_MAX_LEN 256
-#define P_ID_OFFSET 0
-#define P_RUNQHEAD_OFFSET 400
-#define P_RUNQTAIL_OFFSET 404
-#define P_RUNQ_OFFSET 408
-#define P_RUNNEXT_OFFSET 2456
-#define P_M_PTR_OFFSET 56
-#define GET_GOID_ADDR(g_addr) ((char *)(g_addr) + G_GOID_OFFSET)
-#define GET_M_PTR_ADDR(g_addr) ((char *)(g_addr) + G_M_PTR_OFFSET)
-#define GET_PC_ADDR(g_addr) ((char *)(g_addr) + G_STARTPC_OFFSET)
-#define GET_STATUS_ADDR(g_addr) ((char *)(g_addr) + G_STATUS_OFFSET)
-#define GET_SCHEDLINK_ADDR(g_addr) ((char *)(g_addr) + G_SCHEDLINK_OFFSET)
-#define GET_P_ADDR(m_addr) ((char *)(m_addr) + M_P_PTR_OFFSET)
-#define GET_M_ID_ADDR(m_addr) ((char *)(m_addr) + M_ID_OFFSET)
-#define GET_P_ID_ADDR(p_addr) ((char *)(p_addr) + P_ID_OFFSET)
-#define GET_P_RUNQHEAD_ADDR(p_addr) ((char *)(p_addr) + P_RUNQHEAD_OFFSET)
-#define GET_P_RUNQTAIL_ADDR(p_addr) ((char *)(p_addr) + P_RUNQTAIL_OFFSET)
-#define GET_P_RUNQ_ADDR(p_addr) ((char *)(p_addr) + P_RUNQ_OFFSET)
-#define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + P_RUNNEXT_OFFSET)
-#define GET_P_M_PTR_ADDR(p_addr) ((char *)(p_addr) + P_M_PTR_OFFSET)
+#define GET_GOID_ADDR(g_addr) ((char *)(g_addr) + RUNTIME_G_GOID_OFFSET)
+#define GET_M_PTR_ADDR(g_addr) ((char *)(g_addr) + RUNTIME_G_M_OFFSET)
+#define GET_PC_ADDR(g_addr) ((char *)(g_addr) + RUNTIME_G_STARTPC_OFFSET)
+#define GET_SCHEDLINK_ADDR(g_addr) ((char *)(g_addr) + RUNTIME_G_SCHEDLINK_OFFSET)
+#define GET_P_ADDR(m_addr) ((char *)(m_addr) + RUNTIME_M_P_OFFSET)
+#define GET_M_ID_ADDR(m_addr) ((char *)(m_addr) + RUNTIME_M_ID_OFFSET)
+#define GET_P_ID_ADDR(p_addr) ((char *)(p_addr) + RUNTIME_P_ID_OFFSET)
+#define GET_P_RUNQHEAD_ADDR(p_addr) ((char *)(p_addr) + RUNTIME_P_RUNQHEAD_OFFSET)
+#define GET_P_RUNQTAIL_ADDR(p_addr) ((char *)(p_addr) + RUNTIME_P_RUNQTAIL_OFFSET)
+#define GET_P_RUNQ_ADDR(p_addr) ((char *)(p_addr) + RUNTIME_P_RUNQ_OFFSET)
+#define GET_P_RUNNEXT_ADDR(p_addr) ((char *)(p_addr) + RUNTIME_P_RUNNEXT_OFFSET)
+#define GET_P_M_PTR_ADDR(p_addr) ((char *)(p_addr) + RUNTIME_P_M_OFFSET)
 
 static int report_local_runq_status(uint64_t etype, uint64_t p_ptr_scalar, int64_t grouping_mid);
 static int64_t unwind_stack(char *curr_stack_addr, uint64_t pc, char *curr_fp, uint64_t callstack_pc_list[]);
@@ -157,6 +141,7 @@ static int report_local_runq_status(uint64_t etype, uint64_t p_ptr_scalar, int64
     local_runq = GET_P_RUNQ_ADDR(p_ptr);
     bpf_probe_read_user(&runnext_g_ptr, sizeof(char *), GET_P_RUNNEXT_ADDR(p_ptr));
     bpf_probe_read_user(&m_ptr, sizeof(char *), GET_P_M_PTR_ADDR(p_ptr));
+    bpf_printk("RUNTIME_P_M_OFFSET: %d", RUNTIME_P_M_OFFSET);
     if (!m_ptr) {
         mid = -1;
     } else {
@@ -232,7 +217,7 @@ static bool check_delay_done(uint64_t ns_start) {
 volatile const uint64_t allp_slice_addr;
 
 #define SLICE_LEN_OFFSET 8
-#define P_SCHEDWHEN_OFFSET 32
+#define P_SCHEDWHEN_OFFSET (RUNTIME_P_SYSMONTICK_OFFSET + RUNTIME_SYSMONTICK_SCHEDWHEN_OFFSET)
 
 SEC("uprobe/avoid_preempt")
 int BPF_UPROBE(avoid_preempt) {
@@ -255,10 +240,8 @@ int BPF_UPROBE(avoid_preempt) {
 // and optimized away by compiler.
 volatile const uint64_t runtime_sched_addr;
 
-#define SCHED_RUNQ_HEAD_OFFSET 104
-#define SCHED_RUNQ_SIZE_OFFSET 120
-#define SCHED_GET_RUNQ_HEAD_ADDR(sched_addr) ((char *)(sched_addr) + SCHED_RUNQ_HEAD_OFFSET)
-#define SCHED_GET_RUNQ_SIZE_ADDR(sched_addr) ((char *)(sched_addr) + SCHED_RUNQ_SIZE_OFFSET)
+#define SCHED_GET_RUNQ_HEAD_ADDR(sched_addr) ((char *)(sched_addr) + RUNTIME_SCHEDT_RUNQ_OFFSET)
+#define MAX_GLOBRUNQ_SIZE 16
 
 struct globrunq_status_event {
     uint64_t etype;
@@ -278,9 +261,11 @@ int BPF_UPROBE(go_globrunq_status) {
     struct globrunq_status_event e;
 
     bpf_probe_read_user(&g_ptr, sizeof(char *), SCHED_GET_RUNQ_HEAD_ADDR(runtime_sched_addr));
-    bpf_probe_read_user(&runq_size, sizeof(int32_t), SCHED_GET_RUNQ_SIZE_ADDR(runtime_sched_addr));
 
-    bpf_for(runq_i, 0, runq_size) {
+    bpf_for(runq_i, 0, MAX_GLOBRUNQ_SIZE) {
+        if (!g_ptr) {
+            break;
+        }
         e.etype = EVENT_TYPE_GLOBRUNQ_STATUS;
         e.size = runq_size;
         e.runq_entry_idx = runq_i;

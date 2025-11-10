@@ -122,6 +122,7 @@ func (AuthnChannel) EnumDescriptor() ([]byte, []int) {
 type CompileAndRunRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Source        *string                `protobuf:"bytes,1,opt,name=source,proto3,oneof" json:"source,omitempty"` // Go source code from user.
+	GoVersion     *string                `protobuf:"bytes,2,opt,name=go_version,json=goVersion,proto3,oneof" json:"go_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -159,6 +160,13 @@ func (*CompileAndRunRequest) Descriptor() ([]byte, []int) {
 func (x *CompileAndRunRequest) GetSource() string {
 	if x != nil && x.Source != nil {
 		return *x.Source
+	}
+	return ""
+}
+
+func (x *CompileAndRunRequest) GetGoVersion() string {
+	if x != nil && x.GoVersion != nil {
+		return *x.GoVersion
 	}
 	return ""
 }
@@ -1421,10 +1429,13 @@ var File_slowmo_proto protoreflect.FileDescriptor
 
 const file_slowmo_proto_rawDesc = "" +
 	"\n" +
-	"\fslowmo.proto\x12\x06slowmo\">\n" +
+	"\fslowmo.proto\x12\x06slowmo\"q\n" +
 	"\x14CompileAndRunRequest\x12\x1b\n" +
-	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01B\t\n" +
-	"\a_source\"\xc6\x02\n" +
+	"\x06source\x18\x01 \x01(\tH\x00R\x06source\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"go_version\x18\x02 \x01(\tH\x01R\tgoVersion\x88\x01\x01B\t\n" +
+	"\a_sourceB\r\n" +
+	"\v_go_version\"\xc6\x02\n" +
 	"\x15CompileAndRunResponse\x12?\n" +
 	"\rcompile_error\x18\x01 \x01(\v2\x18.slowmo.CompilationErrorH\x00R\fcompileError\x12>\n" +
 	"\x0eruntime_result\x18\x02 \x01(\v2\x15.slowmo.RuntimeResultH\x00R\rruntimeResult\x121\n" +
