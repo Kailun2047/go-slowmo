@@ -3,8 +3,8 @@ import * as ace from 'brace';
 import 'brace/mode/golang';
 import 'brace/theme/solarized_light';
 import { isNil } from 'lodash';
-import { useEffect, useRef, type MouseEventHandler, type Ref } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useEffect, useRef, type ChangeEvent, type ChangeEventHandler, type MouseEventHandler, type Ref } from 'react';
+import { useSearchParams } from 'react-router';
 import { AuthnChannel, CompileAndRunRequest, NotificationEvent, StructureStateEvent } from '../../proto/slowmo';
 import { SlowmoServiceClient } from '../../proto/slowmo.client';
 import { asStyleStr, clearUsedColors, mixPastelColors, type HSL } from '../lib/color-picker';
@@ -56,7 +56,6 @@ function AceEditorWrapper() {
     const outputProgramStart = useOutputStore((state) => state.outputProgramStart);
 
     const [searchParams, setSearchParams] = useSearchParams();
-    const navigate = useNavigate();
 
     const editoreElemRef = useRef<HTMLDivElement & {
         editor?: ace.Editor,
@@ -65,19 +64,30 @@ function AceEditorWrapper() {
             client: SlowmoServiceClient,
         },
     }>(null);
+    const goVersionSelectorRef = useRef<HTMLSelectElement>(null);
     useEffect(() => {
         if (isNil(editoreElemRef.current?.id)) {
-            throw new Error("ref to ace editor wrapper element is null")
+            throw new Error("ref to ace editor wrapper element not found")
         }
-        if (!isNil(editoreElemRef.current.editor)) {
+        if (isNil(goVersionSelectorRef.current?.id)) {
+            throw new Error('ref to go version selector element not found')
+        }
+        if (!searchParams.has('goCode') || !searchParams.has('goVersion')) {
+            if (!searchParams.has('goCode')) {
+                const initGoCodeParam = encodeURIComponent(window.btoa(initCode));
+                searchParams.append('goCode', initGoCodeParam);
+            }
+            if (!searchParams.has('goVersion')) {
+                searchParams.append('goVersion', goVersionSelectorRef.current.value);
+            }
+            setSearchParams(new URLSearchParams(searchParams));
             return;
         }
 
-        if (!searchParams.has('goCode')) {
-            const initGoCodeParam = encodeURIComponent(window.btoa(initCode));
-            navigate('?goCode=' + initGoCodeParam);
+        if (!isNil(editoreElemRef.current?.editor)) {
             return;
         }
+
         const goCodeParam = searchParams.get('goCode');
         if (isNil(goCodeParam)) {
             throw new Error('app rendered with no go code in params');
@@ -92,10 +102,11 @@ function AceEditorWrapper() {
         editor.setValue(goCode);
         editor.clearSelection();
         editor.on('blur', () => {
-            setSearchParams({'goCode': encodeURIComponent(btoa(editor.getValue()))});
+            searchParams.set('goCode', encodeURIComponent(btoa(editor.getValue())));
+            setSearchParams(new URLSearchParams(searchParams));
         })
         editoreElemRef.current.editor = editor;
-    }, [searchParams, setSearchParams, navigate]);
+    }, [searchParams, setSearchParams]);
 
     const btnElemRef = useRef<HTMLButtonElement>(null);
     useEffect(() => {
@@ -176,8 +187,12 @@ function AceEditorWrapper() {
             throw new Error('editor not set before handleClickRun');
         }
         const source = editor.getValue();
+        if (isNil(goVersionSelectorRef.current)) {
+            throw new Error('go version selector not mounted before handleClickRun');
+        }
         const request: CompileAndRunRequest = {
             source,
+            goVersion: goVersionSelectorRef.current.value,
         };
         try {
             outputRequesting();
@@ -277,10 +292,16 @@ function AceEditorWrapper() {
         }
     }
 
+    function handleGoVersionSelectionChange(event: ChangeEvent<HTMLSelectElement>) {
+        searchParams.set('goVersion', event.target.value);
+        setSearchParams(new URLSearchParams(searchParams));
+    }
+
     return (
         <div className='code-panel'>
             <div id="banner">
                 <h1 id='head'>Go Slowmo</h1>
+                <GoVersionSelector onChange={handleGoVersionSelectionChange} ref={goVersionSelectorRef}></GoVersionSelector>
                 <CompileAndRunButton onClick={handleClickRun} ref={btnElemRef}></CompileAndRunButton>
             </div>
             <div ref={editoreElemRef} className='golang-editor' id='ace-editor-wrapper'></div>
@@ -328,6 +349,7 @@ function InstrumentedEditor() {
         <div className='code-panel code-panel-running'>
             <div id="banner">
                 <h1 id='head'>Go Slowmo</h1>
+                <GoVersionSelector></GoVersionSelector>
                 <CompileAndRunButton></CompileAndRunButton>
             </div>
             <div className='golang-editor'>
@@ -361,3 +383,25 @@ function CompileAndRunButton({onClick, ref}: CompileAndRunButtonProps) {
     );
 }
 
+interface GoVersionSelectorProps {
+    onChange?: ChangeEventHandler;
+    ref?: Ref<HTMLSelectElement>;
+}
+
+function GoVersionSelector({onChange, ref}: GoVersionSelectorProps) {
+    const isRequested = useBoundStore((state) => state.isRequested);
+    const goVersionOptions = ((import.meta.env.VITE_GO_VERSIONS as string)?? '')
+    .split(' ')
+    .sort()
+    .reverse()
+    .map((goVersion) => {
+        return (
+            <option value={goVersion} key={goVersion}>Go {goVersion}</option>
+        )
+    });
+    return (
+        <select id='go-version-selector' onChange={onChange} ref={ref} className='go-version-select' disabled={!isNil(isRequested)}>
+            {goVersionOptions}
+        </select>
+    );
+}
