@@ -34,27 +34,37 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.6
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 ENV PATH="${PATH}:/build/protoc/bin:$(yarn global bin):/root/go/bin"
 
+# Install the target Go versions to support.
+ARG go_versions="1.24.10 1.25.4"
+RUN for go_version in $go_versions; do \
+    go install golang.org/dl/go${go_version}@latest; \
+    go${go_version} download; \
+  done
+
 # Build the project.
 ARG frontend_dev_mode="1"
 ARG oauth_client_id=""
+ARG proxy_addr="127.0.0.1:50053"
 COPY ./ ./go-slowmo
 WORKDIR /build/go-slowmo
-RUN make
+RUN make libbpf && make go_versions="$go_versions"
 WORKDIR /build/go-slowmo/frontend
-RUN yarn && VITE_DEV_MODE=$frontend_dev_mode VITE_SLOWMO_CLIENT_ID=$oauth_client_id VITE_SLOWMO_SERVER_HOSTNAME=http://127.0.0.1:50053/api yarn build
+RUN yarn && VITE_DEV_MODE=$frontend_dev_mode VITE_SLOWMO_CLIENT_ID=$oauth_client_id VITE_SLOWMO_SERVER_HOSTNAME=http://$proxy_addr/api VITE_GO_VERSIONS="$go_versions" yarn build
 
 
 
 
 FROM ubuntu:noble AS slowmo-server
 
-COPY --from=builder /usr/local/go /usr/local/go
-ENV PATH="${PATH}:/usr/local/go/bin"
+COPY --from=builder /root/go/bin/go1* /root/go/bin/
+# TODO: copy binary only and resolve GOROOT for each Go version.
+COPY --from=builder /root/sdk /root/sdk
+ENV PATH="${PATH}:/root/go/bin"
 
 WORKDIR /app
 
 COPY --from=builder /build/go-slowmo/slowmo-server ./slowmo-server
-COPY --from=builder /build/go-slowmo/instrumentor.o ./instrumentor.o
+COPY --from=builder /build/go-slowmo/instrumentor*.o ./
 CMD ["/app/slowmo-server"]
 
 
