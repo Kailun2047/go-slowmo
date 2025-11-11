@@ -390,6 +390,8 @@ interface GoVersionSelectorProps {
 
 function GoVersionSelector({onChange, ref}: GoVersionSelectorProps) {
     const isRequested = useBoundStore((state) => state.isRequested);
+    const [searchParams] = useSearchParams();
+
     const goVersionOptions = ((import.meta.env.VITE_GO_VERSIONS as string)?? '')
     .split(' ')
     .sort()
@@ -400,7 +402,7 @@ function GoVersionSelector({onChange, ref}: GoVersionSelectorProps) {
         )
     });
     return (
-        <select id='go-version-selector' onChange={onChange} ref={ref} className='go-version-select' disabled={!isNil(isRequested)}>
+        <select id='go-version-selector' onChange={onChange} ref={ref} className='go-version-select' value={searchParams.get('goVersion')?? undefined} disabled={!isNil(isRequested)}>
             {goVersionOptions}
         </select>
     );
