@@ -24,6 +24,10 @@
   flex: 1;
   border-radius: 6px;
   overflow-y: auto;
+  /* Use background-image to have fixed (to viewport) background for
+  instrumented code lines and code. For ace editor this property is simply
+  overriden. */
+  background-image: linear-gradient(to right, #fbf1d3, #fbf1d3 6%, #fdf6e3 6%, #fdf6e3 89%, white 89%);
 }
 
 #banner {
@@ -94,16 +98,16 @@
 }
 
 .instrumented-code {
-  background: #fdf6e3;
   position: absolute;
   left: 6%;
   width: 85%;
+  height: 100%;
   font-family: monospace;
   font-size: 12px;
   line-height: 16px;
   white-space: pre;
+  tab-size: 4;
   overflow-x: clip;
-  height: 100%;
 }
 
 .instrumented-line {
@@ -120,7 +124,6 @@
   position: absolute;
   width: 5%;
   text-align: right;
-  background: #fbf1d3;
   padding-right: 1%;
   height: 100%;
 }
@@ -219,7 +222,9 @@
   position: absolute;
   height: 30px;
   width: 30px;
-  top: 10px;
+  top: 5px;
+  right: 5px;
+  bottom: 5px;
   left: 5px;
   border-radius: 30px;
   border: 5px coral solid;
@@ -227,7 +232,7 @@
 
 .schedule-spinner-arrow {
   position: absolute;
-  top: 50%;
+  top: 21px;
   width: 0px;
   height: 0px;
   border-width: 0px 8px 8px 8px;
