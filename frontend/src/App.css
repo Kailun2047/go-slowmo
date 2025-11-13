@@ -27,7 +27,7 @@
   /* Use background-image to have fixed (to viewport) background for
   instrumented code lines and code. For ace editor this property is simply
   overriden. */
-  background-image: linear-gradient(to right, #fbf1d3, #fbf1d3 6%, #fdf6e3 6%, #fdf6e3 89%, white 89%);
+  background-image: linear-gradient(to right, #fbf1d3, #fbf1d3 6%, #fdf6e3 6%, #fdf6e3 91%, white 91%);
 }
 
 #banner {
