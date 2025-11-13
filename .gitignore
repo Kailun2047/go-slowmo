@@ -9,3 +9,6 @@ vmlinux.h
 instrumentor.h
 hello*
 *-server
+
+**/proto/*.ts
+**/proto/*.go
