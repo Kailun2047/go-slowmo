@@ -31,7 +31,41 @@ export default function CodePanel() {
     };
 }
 
-const initCode = '// Your Go code';
+const initCode = `// You can edit this code!
+package main
+
+import (
+	"log"
+	"math/rand"
+	"sync"
+	"time"
+)
+
+func greet(word string) {
+	log.Println(word)
+}
+
+func main() {
+	var wg sync.WaitGroup
+
+	startTime := time.Now().UnixMilli()
+	defer func() {
+		endTime := time.Now().UnixMilli()
+		log.Printf("Time elapsed: %d ms", endTime-startTime)
+	}()
+
+	words := []string{"welcome","to","go-slowmo"}
+
+	for range 5 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			greet(words[rand.Intn(len(words))])
+		}()
+	}
+
+	wg.Wait()
+}`;
 
 function AceEditorWrapper() {
     const setCodeLines = useAceEditorWrapperStore((state) => state.setCodeLines);
