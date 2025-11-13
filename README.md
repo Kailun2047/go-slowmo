@@ -1,4 +1,4 @@
-# Running locally
+## Running locally
 
 Build and start all containers:
 
@@ -8,9 +8,15 @@ docker compose up
 
 Then open `http://127.0.0.1:50053` in browser.
 
-# Development
+## Development
 
-## Build and start development container
+### Build and start other containerized components
+
+```bash
+docker compose up [components_needing_no_development]
+```
+
+### Build and start development container
 
 Build image for development container (which will have all dev dependencies ready):
 
@@ -18,10 +24,16 @@ Build image for development container (which will have all dev dependencies read
 docker build --platform=linux/amd64 --target=builder -t builder:latest .
 ```
 
-Start the development container:
+Start the development container (need to mount `go-slowmo_slowmo-builds` volume created by compose, which is used to share compiled binaries between slowmo-server and exec-server):
 
 ```bash
-docker run --rm -d --name builder --cap-add CAP_SYS_ADMIN --cap-add CAP_BPF --cap-add CAP_SYS_RESOURCE -v ${SHARED_VOLUME_WITH_EXEC_CONTAINER}:/tmp/slowmo-builds builder:latest sleep 256d
+docker run --rm -d --name builder --cap-add CAP_SYS_ADMIN --cap-add CAP_BPF --cap-add CAP_SYS_RESOURCE -v go-slowmo_slowmo-builds:/tmp/slowmo-builds builder:latest sleep 256d
 ```
 
-`SHARED_VOLUME_WITH_EXEC_CONTAINER` is the volume shared with exec container to pass the compiled binary. For example, if the exec container is already built and started from the compose file, then this volume is created by compose and should be named `go-slowmo_slowmo-builds`.
+Here `go-slowmo_slowmo-builds` is the volume created by compose and should be used to share compiled binary between slowmo-server and exec-server.
+
+Connect the development container to the network created by compose:
+
+```bash
+docker network connect go-slowmo_default builder
+```
