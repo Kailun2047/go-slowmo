@@ -321,6 +321,11 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 				})
 				close(gomaxprocsSentCh)
 			} else if execResp.GetRuntimeOutput() != nil {
+				output := execResp.GetRuntimeOutput().GetOutput()
+				if strings.Contains(output, outName) {
+					output = strings.ReplaceAll(output, outName, "main")
+					execResp.GetRuntimeOutput().Output = &output
+				}
 				stream.Send(&proto.CompileAndRunResponse{
 					CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeOutput{
 						RuntimeOutput: execResp.GetRuntimeOutput(),
