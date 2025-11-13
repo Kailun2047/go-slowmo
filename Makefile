@@ -42,7 +42,7 @@ $(vmlinux_header):
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(vmlinux_header)
 
 $(instrumentor_bpf_progs): $(vmlinux_header) $(instrumentor_bpf_src) $(instrumentation_tools_dir)/offsets_to_find.json $(instrumentation_tools_dir)/offset_finder.go $(instrumentation_tools_dir)/hello.go
-	for go_version in $(go_versions); do \
+	set -e; for go_version in $(go_versions); do \
 		pwd=$$(pwd); \
 		go$${go_version} build -C $(instrumentation_tools_dir) -o hello hello.go; \
 		cd $(instrumentation_tools_dir) && go run offset_finder.go; \
