@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/kailun2047/slowmo/instrumentation"
+	"github.com/kailun2047/slowmo/logging"
 	"github.com/kailun2047/slowmo/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -68,7 +68,7 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		// any KV acts as updating an existing entry.
 		err := functabMap.Update(uint32(i), funcInfo, ebpf.UpdateExist)
 		if err != nil {
-			log.Fatalf("error writing function info into go_functab map; key: %d, value %+v, error: %v", i, funcInfo, err)
+			logging.Logger().Fatalf("error writing function info into go_functab map; key: %d, value %+v, error: %v", i, funcInfo, err)
 		}
 	}
 
@@ -202,13 +202,13 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		if err != nil {
 			return err
 		}
-		log.Printf("[CompileAndRun] Received request from user [%s] (channel: %v)", claim.UserLogin, claim.Channel)
+		logging.Logger().Infof("[CompileAndRun] Received request from user [%s] (channel: %v)", claim.UserLogin, claim.Channel)
 		err = server.rateLimiter.CheckUserLimit(ctx, claim.UserLogin, claim.Channel)
 		if err == nil {
 			err = server.rateLimiter.CheckGlobalLimit(ctx)
 		}
 		if err != nil {
-			log.Printf("[CompileAndRun] Rate limit hit for use [%s] (channel: %v)", claim.UserLogin, claim.Channel)
+			logging.Logger().Warnf("[CompileAndRun] Rate limit hit for user [%s] (channel: %v)", claim.UserLogin, claim.Channel)
 			return err
 		}
 		// TODO: add session token expiration.
@@ -221,13 +221,13 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		execStream       grpc.ServerStreamingClient[proto.ExecResponse]
 	)
 
-	log.Println("Received CompileAndRun request")
+	logging.Logger().Debug("Received CompileAndRun request")
 	defer func() {
 		if err := recover(); err != nil {
 			internalErr = errors.Join(internalErr, fmt.Errorf("panic detected: %v", err))
 		}
 		if internalErr != nil {
-			log.Printf("unexpected error during CompileAndRun (error: %v, program: %s)", internalErr, req.GetSource())
+			logging.Logger().Errorf("unexpected error during CompileAndRun (error: %v, program: %s)", internalErr, req.GetSource())
 			compileAndRunErr = ErrInternalExecution
 		}
 	}()
@@ -251,7 +251,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 	defer func() {
 		err := os.Remove(outName)
 		if err != nil {
-			log.Printf("Failed to remove temp built output file %s: %v", outName, err)
+			logging.Logger().Errorf("Failed to remove temp built output file %s: %v", outName, err)
 		}
 	}()
 
@@ -266,7 +266,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		return
 	}
 	instrumentor, probeEventReader := startInstrumentation(instrumentorProg(*req.GoVersion), outName)
-	log.Printf("Instrumentor started for program %s", outName)
+	logging.Logger().Debugf("Instrumentor started for program %s", outName)
 	defer instrumentor.Close()
 
 	if server.execTimeLimitSec > 0 {
@@ -292,14 +292,14 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 		for {
 			execResp, err := execStream.Recv()
 			if errors.Is(err, io.EOF) {
-				log.Println("Finished receiving exec response stream")
+				logging.Logger().Debug("Finished receiving exec response stream")
 				return
 			}
 			if status.Code(err) == codes.DeadlineExceeded {
 				// Execution has reached max time limit and the request to
 				// downstream exec server is cancelled.
 				errMsg := "execution time exceeds limit"
-				log.Println(errMsg)
+				logging.Logger().Warn(errMsg)
 				stream.Send(&proto.CompileAndRunResponse{
 					CompileAndRunOneof: &proto.CompileAndRunResponse_RuntimeResult{
 						RuntimeResult: &proto.RuntimeResult{
@@ -356,7 +356,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 	}()
 
 	wg.Wait()
-	log.Println("Finished serving CompileAndRun request")
+	logging.Logger().Debug("Finished serving CompileAndRun request")
 	return
 }
 
@@ -409,7 +409,7 @@ func findHeaderInCookies(ctx context.Context, targetKey string) (string, error) 
 func sandboxedBuild(source, goVersion string) (string, error) {
 	tempFile, err := os.CreateTemp(buildDir, "target-*.go")
 	if err != nil {
-		log.Printf("Failed to create temp file: %v", err)
+		logging.Logger().Errorf("Failed to create temp file: %v", err)
 		return "", err
 	}
 	tempFile.WriteString(source)
@@ -417,7 +417,7 @@ func sandboxedBuild(source, goVersion string) (string, error) {
 		tempFile.Close()
 		err := os.Remove(tempFile.Name())
 		if err != nil {
-			log.Printf("Failed to remove temp source file %s: %v", tempFile.Name(), err)
+			logging.Logger().Errorf("Failed to remove temp source file %s: %v", tempFile.Name(), err)
 		}
 	}()
 
@@ -458,17 +458,17 @@ var (
 func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) (*proto.AuthnResponse, error) {
 	if req.Params == nil {
 		// Set state.
-		log.Println("[Authn] Received authn request to set state")
+		logging.Logger().Debug("[Authn] Received authn request to set state")
 		buf := make([]byte, 32)
 		rand.Read(buf)
 		encodedState := base64.RawURLEncoding.EncodeToString(buf)
 		header := metadata.Pairs(authnHeaderKeyState, encodedState)
 		grpc.SetHeader(ctx, header)
-		log.Println("[Authn] Finished setting authn state")
+		logging.Logger().Debug("[Authn] Finished setting authn state")
 		return &proto.AuthnResponse{State: &encodedState}, nil
 	}
 
-	log.Println("[Authn] Received authn request to generate session token")
+	logging.Logger().Debug("[Authn] Received authn request to generate session token")
 	if req.Params.Code == nil || req.Params.State == nil {
 		return nil, fmt.Errorf("invalid authn params")
 	}
@@ -505,13 +505,13 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 
 	signedToken, err := generateJWT(userIdentity.UserLogin(), req.Params.Channel)
 	if err != nil {
-		log.Printf("[Authn] Failed generating session token: %v", err)
+		logging.Logger().Errorf("[Authn] Failed generating session token: %v", err)
 		return nil, ErrInternalAuthn
 	}
 	header := metadata.Pairs(authnHeaderKeySessionToken, signedToken)
 	grpc.SetHeader(ctx, header)
 
-	log.Printf("[Authn] Finished generating session token for user [%s] (channel: %v)", userIdentity.UserLogin(), req.Params.Channel)
+	logging.Logger().Infof("[Authn] Finished generating session token for user [%s] (channel: %v)", userIdentity.UserLogin(), req.Params.Channel)
 	return &proto.AuthnResponse{}, nil
 }
 

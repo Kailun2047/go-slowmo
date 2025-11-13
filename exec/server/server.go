@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 	"runtime"
 
+	"github.com/kailun2047/slowmo/logging"
 	"github.com/kailun2047/slowmo/proto"
 	"google.golang.org/grpc"
 )
@@ -35,7 +35,7 @@ func (server *ExecServer) Exec(req *proto.ExecRequest, stream grpc.ServerStreami
 	)
 	defer func() {
 		if internalErr != nil {
-			log.Printf("[exec server] Internal error: %v", internalErr)
+			logging.Logger().Errorf("[exec server] Internal error: %v", internalErr)
 		}
 	}()
 
@@ -63,6 +63,7 @@ func (server *ExecServer) Exec(req *proto.ExecRequest, stream grpc.ServerStreami
 				n, readErr = pipeReader.Read(buf)
 				if n > 0 {
 					out := string(buf)
+					logging.Logger().Debugf("[exec server] Received new output from program [%s]: [%s]", req.GetPath(), out)
 					sendErr := stream.Send(&proto.ExecResponse{
 						ExecOneof: &proto.ExecResponse_RuntimeOutput{
 							RuntimeOutput: &proto.RuntimeOutput{
@@ -71,7 +72,7 @@ func (server *ExecServer) Exec(req *proto.ExecRequest, stream grpc.ServerStreami
 						},
 					})
 					if sendErr != nil {
-						log.Printf("[exec server] Error when sending runtime output to stream: %v", sendErr)
+						logging.Logger().Errorf("[exec server] Error when sending runtime output to stream: %v", sendErr)
 						// Cancel the command and return upon send error (could
 						// be upstream client cancelling request). Note that
 						// this doesn't guarantee immediate shutdown when client
@@ -82,7 +83,7 @@ func (server *ExecServer) Exec(req *proto.ExecRequest, stream grpc.ServerStreami
 				}
 			}
 			if !errors.Is(readErr, io.EOF) {
-				log.Printf("[exec server] Received error from pipe reader: %v", readErr)
+				logging.Logger().Errorf("[exec server] Received error from pipe reader: %v", readErr)
 			}
 		}()
 
@@ -100,14 +101,14 @@ func (server *ExecServer) Exec(req *proto.ExecRequest, stream grpc.ServerStreami
 				},
 			},
 		})
-		log.Printf("[exec server] Program %s exited", req.GetPath())
+		logging.Logger().Debugf("[exec server] Program %s exited", req.GetPath())
 	}
 
 	return nil
 }
 
 func sandboxedRun(ctx context.Context, executablePath string, writer io.Writer) (startedCmd *exec.Cmd, err error) {
-	log.Printf("[exec server] Start sandbox run of program %s", executablePath)
+	logging.Logger().Debugf("[exec server] Start sandbox run of program %s", executablePath)
 	runTargetCmd := exec.CommandContext(ctx, executablePath)
 	runTargetCmd.Stdout, runTargetCmd.Stderr = writer, writer
 	err = runTargetCmd.Start()

@@ -3,12 +3,12 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/kailun2047/slowmo/logging"
 	"github.com/kailun2047/slowmo/proto"
 	"github.com/kailun2047/slowmo/server"
 	"github.com/redis/go-redis/v9"
@@ -39,7 +39,7 @@ func getIntFromEnvVar(key string) int {
 	valStr := os.Getenv(key)
 	val, err := strconv.Atoi(valStr)
 	if err != nil {
-		log.Fatalf("Invalid %s: [%s]", key, valStr)
+		logging.Logger().Fatalf("Invalid %s: [%s]", key, valStr)
 	}
 	return val
 }
@@ -53,7 +53,7 @@ func (rl *RedisRateLimiter) getRedisClient() *redis.Client {
 
 		opts, err := redis.ParseURL(os.Getenv(envVarKeyRedisURL))
 		if err != nil {
-			log.Fatal("invalid redis url")
+			logging.Logger().Fatal("invalid redis url")
 		}
 		rl.redisClient = redis.NewClient(opts)
 	})
@@ -82,7 +82,7 @@ func (rl *RedisRateLimiter) checkRateLimit(ctx context.Context, key string, limi
 	pipe.Expire(ctx, key, time.Duration(expSec)*time.Second)
 	_, err := pipe.Exec(ctx)
 	if err != nil {
-		log.Printf("[Redis Rate Limiter] Limit check failed for key [%s]: %v", key, err)
+		logging.Logger().Errorf("[Redis Rate Limiter] Limit check failed for key [%s]: %v", key, err)
 		return server.ErrInternalExecution
 	}
 	if inc.Val() > int64(limit) {

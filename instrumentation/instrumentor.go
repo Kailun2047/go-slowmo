@@ -3,12 +3,12 @@ package instrumentation
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
+	"github.com/kailun2047/slowmo/logging"
 )
 
 type Instrumentor struct {
@@ -32,7 +32,7 @@ func WithGlobalVariable[T GlobalVariableValue](variable GlobalVariable[T]) Instr
 	return func(interpreter *ELFInterpreter, spec *ebpf.CollectionSpec) {
 		varSpec := spec.Variables[variable.NameInBPFProg]
 		if varSpec == nil {
-			log.Fatalf("Global variable %s not found in loaded BPF specification", variable.NameInBPFProg)
+			logging.Logger().Fatalf("Global variable %s not found in loaded BPF specification", variable.NameInBPFProg)
 		}
 		varSpec.Set(variable.Value)
 	}
@@ -40,15 +40,15 @@ func WithGlobalVariable[T GlobalVariableValue](variable GlobalVariable[T]) Instr
 
 func NewInstrumentor(interpreter *ELFInterpreter, bpfProg, targetPath string, opts ...InstrumentorOption) *Instrumentor {
 	if err := rlimit.RemoveMemlock(); err != nil {
-		log.Fatal("RemoveMemlock: ", err)
+		logging.Logger().Fatal("RemoveMemlock: ", err)
 	}
 	exe, err := link.OpenExecutable(targetPath)
 	if err != nil {
-		log.Fatal("OpenExecutable for tracee: ", err)
+		logging.Logger().Fatal("OpenExecutable for tracee: ", err)
 	}
 	spec, err := ebpf.LoadCollectionSpec(bpfProg)
 	if err != nil {
-		log.Fatal("LoadCollectionSpec: ", err)
+		logging.Logger().Fatal("LoadCollectionSpec: ", err)
 	}
 	for _, opt := range opts {
 		opt(interpreter, spec)
@@ -57,9 +57,9 @@ func NewInstrumentor(interpreter *ELFInterpreter, bpfProg, targetPath string, op
 	if err != nil {
 		var verifierErr *ebpf.VerifierError
 		if errors.As(err, &verifierErr) {
-			log.Fatalf("LoadCollection verifier error: %+v\n", verifierErr)
+			logging.Logger().Fatalf("LoadCollection verifier error: %+v\n", verifierErr)
 		} else {
-			log.Fatal("LoadCollection: ", err)
+			logging.Logger().Fatal("LoadCollection: ", err)
 		}
 	}
 	return &Instrumentor{
@@ -104,14 +104,14 @@ func (in *Instrumentor) instrumentFunctionEntry(targetPkg, targetFn string, bpfF
 	targetSym := strings.Join([]string{targetPkg, targetFn}, ".")
 	startOffset, err := in.interpreter.GetFunctionStartOffset(targetSym)
 	if err != nil {
-		log.Fatalf("Could not get start offset for target %s\n", targetSym)
+		logging.Logger().Fatalf("Could not get start offset for target %s\n", targetSym)
 	}
 	for _, bpfFn := range bpfFns {
 		_, err = in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[bpfFn], &link.UprobeOptions{
 			Offset: startOffset,
 		})
 		if err != nil {
-			log.Fatalf("Attach uprobe %s to entry for %s:%s: %v", bpfFn, targetPkg, targetFn, err)
+			logging.Logger().Fatalf("Attach uprobe %s to entry for %s:%s: %v", bpfFn, targetPkg, targetFn, err)
 		}
 	}
 }
@@ -120,16 +120,16 @@ func (in *Instrumentor) instrumentFunctionReturns(targetPkg, targetFn string, bp
 	targetSym := strings.Join([]string{targetPkg, targetFn}, ".")
 	retOffsets, err := in.interpreter.GetFunctionReturnOffset(targetSym)
 	if err != nil {
-		log.Fatalf("Could not get return offsets for function %s\n", targetSym)
+		logging.Logger().Fatalf("Could not get return offsets for function %s\n", targetSym)
 	}
-	log.Printf("Return offsets for function %s to instrument: %+v", fmt.Sprintf("%s.%s", targetPkg, targetFn), retOffsets)
+	logging.Logger().Debugf("Return offsets for function %s to instrument: %+v", fmt.Sprintf("%s.%s", targetPkg, targetFn), retOffsets)
 	for _, offset := range retOffsets {
 		for _, bpfFn := range bpfFns {
 			_, err := in.targetExe.Uprobe(targetSym, in.bpfColl.Programs[bpfFn], &link.UprobeOptions{
 				Offset: offset,
 			})
 			if err != nil {
-				log.Fatal("Attach go_newproc_return uprobe: ", err, ", offset: ", offset)
+				logging.Logger().Fatal("Attach go_newproc_return uprobe: ", err, ", offset: ", offset)
 			}
 		}
 	}
@@ -137,7 +137,7 @@ func (in *Instrumentor) instrumentFunctionReturns(targetPkg, targetFn string, bp
 
 func (in *Instrumentor) InstrumentPackage(spec PackageSpec) {
 	pkgOffsets := in.interpreter.GetInstrumentableOffsetsForPackage(spec.TargetPkg)
-	log.Printf("Delayable offsets for package %s: %+v", spec.TargetPkg, pkgOffsets)
+	logging.Logger().Debugf("Delayable offsets for package %s: %+v", spec.TargetPkg, pkgOffsets)
 	for fnSym, offsets := range pkgOffsets {
 		for _, offset := range offsets {
 			for _, bpfFn := range spec.BpfFns {
@@ -145,7 +145,7 @@ func (in *Instrumentor) InstrumentPackage(spec PackageSpec) {
 					Offset: offset,
 				})
 				if err != nil {
-					log.Fatal("Attach delay uprobe: ", err)
+					logging.Logger().Fatal("Attach delay uprobe: ", err)
 				}
 			}
 		}

@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"reflect"
 	"slices"
 	"unsafe"
 
+	"github.com/kailun2047/slowmo/logging"
 	"golang.org/x/arch/x86/x86asm"
 )
 
@@ -40,11 +40,11 @@ type ELFInterpreter struct {
 func NewELFInterpreter(prog string) *ELFInterpreter {
 	exe, err := elf.Open(prog)
 	if err != nil {
-		log.Fatal("Open ELF file: ", err)
+		logging.Logger().Fatal("Open ELF file: ", err)
 	}
 	symbols, err := exe.Symbols()
 	if err != nil {
-		log.Fatalf("Load ELF symbols for file %s: %v\n", prog, err)
+		logging.Logger().Fatalf("Load ELF symbols for file %s: %v", prog, err)
 	}
 	slices.SortFunc(symbols, func(a, b elf.Symbol) int {
 		if a.Value < b.Value {
@@ -68,18 +68,18 @@ func getGoSymbolTable(exe *elf.File) (*gosym.LineTable, *gosym.Table) {
 	lnTabSeg := getSection(exe, ".gopclntab")
 	lnTabData, err := lnTabSeg.Data()
 	if err != nil {
-		log.Fatal("Read line table data: ", err)
+		logging.Logger().Fatal("Read line table data: ", err)
 	}
 
 	lnTab := gosym.NewLineTable(lnTabData, textSeg.Addr)
 	symTabSeg := getSection(exe, ".gosymtab")
 	symTabData, err := symTabSeg.Data()
 	if err != nil {
-		log.Fatal("Read symbol table data: ", err)
+		logging.Logger().Fatal("Read symbol table data: ", err)
 	}
 	tab, err := gosym.NewTable(symTabData, lnTab)
 	if err != nil {
-		log.Fatal("Create symbol table: ", err)
+		logging.Logger().Fatal("Create symbol table: ", err)
 	}
 	return lnTab, tab
 }
@@ -87,7 +87,7 @@ func getGoSymbolTable(exe *elf.File) (*gosym.LineTable, *gosym.Table) {
 func getSection(exe *elf.File, name string) *elf.Section {
 	sec := exe.Section(name)
 	if sec == nil {
-		log.Fatalf("Segment %s not found\n", name)
+		logging.Logger().Fatalf("Segment %s not found", name)
 	}
 	return sec
 }
@@ -122,7 +122,7 @@ func (ei *ELFInterpreter) GetInstrumentableOffsetsForPackage(pkgName string) Sym
 		// For starting line, skip the prologue.
 		startOffset, err := ei.GetFunctionStartOffset(fn.Name)
 		if err != nil {
-			log.Fatalf("Fails to find start offset for function %s\n", fn.Name)
+			logging.Logger().Fatalf("Fails to find start offset for function %s", fn.Name)
 		}
 		symOffsets[fn.Name] = append(symOffsets[fn.Name], startOffset)
 
@@ -131,7 +131,7 @@ func (ei *ELFInterpreter) GetInstrumentableOffsetsForPackage(pkgName string) Sym
 			var unknownLnErr *gosym.UnknownLineError
 			if err != nil {
 				if !errors.As(err, &unknownLnErr) {
-					log.Fatalf("getInstrumentablePCsForFunc: error finding PC for line %d in file %s: %v", ln, file, err)
+					logging.Logger().Fatalf("getInstrumentablePCsForFunc: error finding PC for line %d in file %s: %v", ln, file, err)
 				}
 			} else if curFn != nil && curFn.Name == fn.Name {
 				symOffsets[curFn.Name] = append(symOffsets[curFn.Name], pc-curFn.Entry)
@@ -154,7 +154,7 @@ func (ei *ELFInterpreter) getInstsFromTextSection(fnName string) ([]byte, error)
 		}
 	}
 	if len(fnSym.Name) == 0 {
-		return buf, fmt.Errorf("symbol table entry for function %s not found\n", fnName)
+		return buf, fmt.Errorf("symbol table entry for function %s not found", fnName)
 	}
 	buf = make([]byte, fnSym.Size)
 	_, err := ei.text.ReadAt(buf, int64(fnSym.Value-ei.text.Addr))
@@ -170,7 +170,7 @@ func (ei *ELFInterpreter) GetFunctionReturnOffset(fnName string) ([]uint64, erro
 	for offset := 0; offset < len(buf); {
 		inst, err := x86asm.Decode(buf[offset:], 64)
 		if err != nil {
-			log.Fatalf("Decode instruction for symbol %s at offset %d: %v\n", fnName, offset, err)
+			logging.Logger().Fatalf("Decode instruction for symbol %s at offset %d: %v", fnName, offset, err)
 		}
 		if inst.Op == x86asm.RET {
 			retOffsets = append(retOffsets, uint64(offset))
@@ -193,7 +193,7 @@ func (ei *ELFInterpreter) GetFunctionStartOffset(fnName string) (uint64, error) 
 	for offset < len(buf) {
 		inst, err := x86asm.Decode(buf[offset:], 64)
 		if err != nil {
-			log.Fatalf("Decode instruction for symbol %s at offset %d: %v\n", fnName, offset, err)
+			logging.Logger().Fatalf("Decode instruction for symbol %s at offset %d: %v", fnName, offset, err)
 		}
 		if prologueIdxToMatch == 0 {
 			nextSearchStart = offset + inst.Len
@@ -209,7 +209,7 @@ func (ei *ELFInterpreter) GetFunctionStartOffset(fnName string) (uint64, error) 
 		}
 	}
 	if prologueIdxToMatch < len(prologueOpSequence) {
-		log.Fatalf("Prologue sequence not found in function %s\n", fnName)
+		logging.Logger().Fatalf("Prologue sequence not found in function %s", fnName)
 	}
 	return uint64(offset), nil
 }
@@ -223,7 +223,7 @@ func (ei *ELFInterpreter) GetGlobalVariableAddr(varName string) uint64 {
 		}
 	}
 	if targetSym.Value == 0 {
-		log.Fatalf("Global variable %s not found in target program", varName)
+		logging.Logger().Fatalf("Global variable %s not found in target program", varName)
 	}
 	return targetSym.Value
 }

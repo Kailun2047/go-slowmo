@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"slices"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
+	"github.com/kailun2047/slowmo/logging"
 	"github.com/kailun2047/slowmo/proto"
 )
 
@@ -95,7 +95,7 @@ func (r *EventReader) interpretRunqEntry(entry runqEntry) *proto.RunqEntry {
 func (r *EventReader) interpretPC(pc uint64) *proto.InterpretedPC {
 	file, line, fn := r.interpreter.PCToLine(pc)
 	if fn == nil {
-		log.Printf("Cannot interpret PC %x", pc)
+		logging.Logger().Warnf("Cannot interpret PC %x", pc)
 		return &proto.InterpretedPC{}
 	}
 	ln := int32(line)
@@ -173,7 +173,7 @@ type EventReader struct {
 func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventReader {
 	ringbufReader, err := ringbuf.NewReader(ringbufMap)
 	if err != nil {
-		log.Fatal("Create ring buffer reader: ", err)
+		logging.Logger().Fatal("Create ring buffer reader: ", err)
 	}
 	return &EventReader{
 		interpreter:           interpreter,
@@ -202,11 +202,11 @@ func (r *EventReader) Start() {
 			record, err := r.ringbufReader.Read()
 			if err != nil {
 				if errors.Is(err, ringbuf.ErrClosed) {
-					log.Println("Event reader closed")
+					logging.Logger().Debug("Event reader closed")
 					return
 				}
 				if !errors.Is(err, os.ErrDeadlineExceeded) {
-					log.Fatal("Read ring buffer: ", err)
+					logging.Logger().Fatal("Read ring buffer: ", err)
 				}
 			} else {
 				r.eventCh <- record
@@ -221,11 +221,11 @@ func (r *EventReader) Start() {
 			bytesReader := bytes.NewReader(record.RawSample)
 			err := binary.Read(bytesReader, r.byteOrder, &etype)
 			if err != nil {
-				log.Fatal("Decode event type: ", err)
+				logging.Logger().Fatal("Decode event type: ", err)
 			}
 			err = r.readEvent(bytesReader, etype)
 			if err != nil {
-				log.Fatalf("Decode event type %v: %v\n", etype, err)
+				logging.Logger().Fatalf("Decode event type %v: %v", etype, err)
 			}
 		}
 	}()
@@ -251,7 +251,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		interpretedPC := r.interpretPC(event.PC)
 		if interpretedPC.Func == nil {
-			log.Fatalf("Read newproc event: invalid PC %x", event.PC)
+			logging.Logger().Fatalf("Read newproc event: invalid PC %x", event.PC)
 		}
 		creatorGoId := int64(event.CreatorGoID)
 		probeEvent = &proto.ProbeEvent{
@@ -275,7 +275,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		interpretedPC := r.interpretPC(event.PC)
 		if interpretedPC.Func == nil {
-			log.Fatalf("Read delay event: invalid PC %x", event.PC)
+			logging.Logger().Fatalf("Read delay event: invalid PC %x", event.PC)
 		}
 		goId := int64(event.GoID)
 		probeEvent = &proto.ProbeEvent{
@@ -344,7 +344,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 			break
 		}
 		if event.RunqEntryIdx == uint64(event.Size) {
-			log.Printf("Global runq status: %v", r.interpretRunqEntries(r.globrunq))
+			logging.Logger().Debugf("Global runq status: %v", r.interpretRunqEntries(r.globrunq))
 			r.globrunq = []runqEntry{}
 		} else {
 			r.globrunq = append(r.globrunq, event.RunqEntry)
@@ -386,7 +386,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		interpretedCallerPC := r.interpretPC(event.CallerPC)
 		if interpretedCallerPC.Func == nil || *interpretedCallerPC.Func != "runtime.schedule" {
-			log.Printf("Execute event from non-target callsite (%s), skipping...", *interpretedCallerPC.Func)
+			logging.Logger().Infof("Execute event from non-target callsite (%s), skipping...", *interpretedCallerPC.Func)
 			break
 		}
 		r.bufferedExecuteEvents[event.MID] = &executeEventBuffer{
@@ -408,7 +408,7 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 	}
 
 	if probeEvent != nil {
-		log.Printf("Upon receiving event of type %v, probe event created: %+v", etype, probeEvent)
+		logging.Logger().Debugf("Upon receiving event of type %v, probe event created: %+v", etype, probeEvent)
 		r.ProbeEventCh <- probeEvent
 	}
 
@@ -436,7 +436,7 @@ func (r *EventReader) tryCompleteExecuteEvent(groupingMID int64, runqStatus *pro
 
 	buf := r.bufferedExecuteEvents[groupingMID]
 	if buf == nil {
-		log.Fatalf("No buffered execute event found for grouping mID %d", groupingMID)
+		logging.Logger().Fatalf("No buffered execute event found for grouping mID %d", groupingMID)
 	}
 	buf.runqStatuses = append(buf.runqStatuses, runqStatus)
 	if buf.isCompleted() {
@@ -467,7 +467,7 @@ func (r *EventReader) tryCompleteExecuteEvent(groupingMID int64, runqStatus *pro
 func (r *EventReader) completeGoreadyEvent(mID int64, runqStatus *proto.RunqStatusEvent) *proto.ProbeEvent {
 	buf := r.bufferedGoreadyEvents[mID]
 	if buf == nil {
-		log.Fatalf("No buffered goready event found for mID %d", mID)
+		logging.Logger().Fatalf("No buffered goready event found for mID %d", mID)
 	}
 	buf.Runq = runqStatus
 	return &proto.ProbeEvent{
@@ -489,9 +489,9 @@ func (r *EventReader) interpretScheduleCallstack(event scheduleEvent) (probeEven
 	}
 	triggerFunc := interpretedCallstack[0].Func
 	if triggerFunc == nil || *triggerFunc != "runtime.schedule" {
-		log.Fatalf("Invalid trigger func for PC %x", callstack[0])
+		logging.Logger().Fatalf("Invalid trigger func for PC %x", callstack[0])
 	}
-	log.Printf("%s called for MID %d, callstack: %+v, pc list: %v", *triggerFunc, event.MID, interpretedCallstack, callstack)
+	logging.Logger().Debugf("%s called for MID %d, callstack: %+v, pc list: %v", *triggerFunc, event.MID, interpretedCallstack, callstack)
 
 	probeEvent = &proto.ProbeEvent{
 		ProbeEventOneof: &proto.ProbeEvent_NotificationEvent{
