@@ -62,7 +62,7 @@ func (server *ExecServer) Exec(req *proto.ExecRequest, stream grpc.ServerStreami
 			for readErr == nil {
 				n, readErr = pipeReader.Read(buf)
 				if n > 0 {
-					out := string(buf)
+					out := string(buf[:n])
 					logging.Logger().Debugf("[exec server] Received new output from program [%s]: [%s]", req.GetPath(), out)
 					sendErr := stream.Send(&proto.ExecResponse{
 						ExecOneof: &proto.ExecResponse_RuntimeOutput{
