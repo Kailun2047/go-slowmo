@@ -71,6 +71,7 @@ $(exec_proto_gen_go): $(exec_proto_def)
 	protoc --proto_path=$(proto_dir) --go_out=$(proto_dir) --go_opt=paths=source_relative --go-grpc_out=$(proto_dir) --go-grpc_opt=paths=source_relative --experimental_allow_proto3_optional $(exec_proto_file)
 
 $(slowmo_proto_gen_ts): $(slowmo_proto_def)
+	mkdir $(slowmo_client_proto_dir)
 	npx protoc@32.1.0 -I=$(proto_dir) --ts_out=$(slowmo_client_proto_dir) --experimental_allow_proto3_optional $(slowmo_proto_file)
 
 .PHONY: proto
