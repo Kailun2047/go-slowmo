@@ -12,3 +12,5 @@ hello*
 
 **/proto/*.ts
 **/proto/*.go
+
+*_bpf*.go
