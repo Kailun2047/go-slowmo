@@ -371,7 +371,8 @@ func getAuthenticatedUser(ctx context.Context) (*userLoginClaim, error) {
 	}
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	token, err := parser.ParseWithClaims(sessionToken, &userLoginClaim{}, func(token *jwt.Token) (any, error) {
-		return []byte(os.Getenv(envVarKeySigningKey)), nil
+		key, err := base64.RawStdEncoding.DecodeString(os.Getenv(envVarKeySigningKey))
+		return []byte(key), err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("authentication error: token validation failed (%w)", err)
@@ -516,12 +517,16 @@ func (server *SlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) 
 }
 
 func generateJWT(userLogin string, channel proto.AuthnChannel) (string, error) {
-	key := os.Getenv(envVarKeySigningKey)
+	encodedKey := os.Getenv(envVarKeySigningKey)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user":    userLogin,
 		"channel": channel,
 	})
-	signedToken, err := token.SignedString([]byte(key))
+	key, err := base64.RawStdEncoding.DecodeString(encodedKey)
+	if err != nil {
+		return "", err
+	}
+	signedToken, err := token.SignedString(key)
 	if err != nil {
 		return "", err
 	}

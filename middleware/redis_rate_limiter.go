@@ -23,12 +23,13 @@ const (
 )
 
 type RedisRateLimiter struct {
-	redisClient           *redis.Client
-	createRedisClientOnce sync.Once
-	globalTimeWindowSec   int
-	globalLimit           int
-	userTimeWindowSec     int
-	userLimit             int
+	redisClient               *redis.Client
+	createRedisClientOnce     sync.Once
+	retrieveLimiterConfigOnce sync.Once
+	globalTimeWindowSec       int
+	globalLimit               int
+	userTimeWindowSec         int
+	userLimit                 int
 }
 
 func NewRedisRateLimiter() *RedisRateLimiter {
@@ -46,11 +47,6 @@ func getIntFromEnvVar(key string) int {
 
 func (rl *RedisRateLimiter) getRedisClient() *redis.Client {
 	rl.createRedisClientOnce.Do(func() {
-		rl.globalTimeWindowSec = getIntFromEnvVar(envVarKeyGlobalTimeWindowSec)
-		rl.globalLimit = getIntFromEnvVar(envVarKeyGlobalLimit)
-		rl.userTimeWindowSec = getIntFromEnvVar(envVarKeyUserTimeWindowSec)
-		rl.userLimit = getIntFromEnvVar(envVarKeyUserLimit)
-
 		opts, err := redis.ParseURL(os.Getenv(envVarKeyRedisURL))
 		if err != nil {
 			logging.Logger().Fatal("invalid redis url")
@@ -66,12 +62,23 @@ func formatLimitKey(prefix string, timeWindowSec int) string {
 	return fmt.Sprintf("%s-%d", prefix, startOfTimeWindow)
 }
 
+func (rl *RedisRateLimiter) retrieveLimiterConfig() {
+	rl.retrieveLimiterConfigOnce.Do(func() {
+		rl.globalTimeWindowSec = getIntFromEnvVar(envVarKeyGlobalTimeWindowSec)
+		rl.globalLimit = getIntFromEnvVar(envVarKeyGlobalLimit)
+		rl.userTimeWindowSec = getIntFromEnvVar(envVarKeyUserTimeWindowSec)
+		rl.userLimit = getIntFromEnvVar(envVarKeyUserLimit)
+	})
+}
+
 func (rl *RedisRateLimiter) CheckGlobalLimit(ctx context.Context) error {
+	rl.retrieveLimiterConfig()
 	key := formatLimitKey("global_limt", rl.globalTimeWindowSec)
 	return rl.checkRateLimit(ctx, key, rl.globalLimit, rl.globalTimeWindowSec)
 }
 
 func (rl *RedisRateLimiter) CheckUserLimit(ctx context.Context, user string, channel proto.AuthnChannel) error {
+	rl.retrieveLimiterConfig()
 	key := formatLimitKey(fmt.Sprintf("%s-%v", user, channel), rl.userTimeWindowSec)
 	return rl.checkRateLimit(ctx, key, rl.userLimit, rl.userTimeWindowSec)
 }
