@@ -28,7 +28,7 @@ type WrappedSlowmoServer struct {
 }
 
 type SlowmoServerConnector interface {
-	CompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (grpc.ServerStreamingClient[proto.CompileAndRunResponse], error)
+	GetCompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (grpc.ServerStreamingClient[proto.CompileAndRunResponse], error)
 }
 
 type Authenticator interface {
@@ -76,7 +76,7 @@ func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest
 	}
 	// TODO: add session token expiration.
 
-	compileAndRunStream, err := server.connector.CompileAndRunResponseStream(ctx, req)
+	compileAndRunStream, err := server.connector.GetCompileAndRunResponseStream(ctx, req)
 	if err != nil {
 		logging.Logger().Errorf("[CompileAndRun] Error getting response stream from core: %v", err)
 		return err

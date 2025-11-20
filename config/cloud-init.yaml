@@ -1,0 +1,35 @@
+#cloud-config
+
+write_files:
+- path: /etc/systemd/system/exec-server.service
+  permissions: 0644
+  owner: root
+  content: |
+    [Unit]
+    Description=go-slowmo exec-server
+
+    [Service]
+    Environment="HOME=/home/slowmo"
+    ExecStart=/usr/bin/docker run --rm --name=exec-server -v slowmo-builds:/tmp/slowmo-builds:ro us-central1-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
+    ExecStop=/usr/bin/docker stop exec-server
+    ExecStopPost=/usr/bin/docker rm exec-server
+- path: /etc/systemd/system/slowmo-server.service
+  permissions: 0644
+  owner: root
+  content: |
+    [Unit]
+    Description=go-slowmo slowmo-server
+    Requires=network-online.target exec-server.service
+
+    [Service]
+    Environment="HOME=/home/slowmo"
+    ExecStart=/usr/bin/docker run --rm --name=slowmo-server --cap-add CAP_SYS_ADMIN --cap-add CAP_BPF --cap-add CAP_SYS_RESOURCE -v slowmo-builds:/tmp/slowmo-builds -p 50051:50051 us-central1-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+    ExecStop=/usr/bin/docker stop slowmo-server
+    ExecStopPost=/usr/bin/docker rm slowmo-server
+
+runcmd:
+- export HOME=/home/slowmo
+- docker-credential-gcr configure-docker --registries="us-central1-docker.pkg.dev"
+- /usr/bin/docker volume create --name slowmo-builds --driver local --opt type=tmpfs --opt device=tmpfs --opt o=size=2m
+- systemctl daemon-reload
+- systemctl start exec-server.service slowmo-server.service

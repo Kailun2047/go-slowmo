@@ -57,7 +57,6 @@ RUN yarn && VITE_DEV_MODE=$frontend_dev_mode VITE_SLOWMO_CLIENT_ID=$oauth_client
 FROM ubuntu:noble AS slowmo-server
 
 COPY --from=builder /root/go/bin/go1* /root/go/bin/
-# TODO: copy binary only and resolve GOROOT for each Go version.
 COPY --from=builder /root/sdk /root/sdk
 ENV PATH="${PATH}:/root/go/bin"
 
@@ -65,6 +64,7 @@ WORKDIR /app
 
 COPY --from=builder /build/go-slowmo/slowmo-server ./slowmo-server
 COPY --from=builder /build/go-slowmo/instrumentor*.o ./
+COPY --from=builder /build/go-slowmo/config/cloud-init.yaml ./config/cloud-init.yaml
 CMD ["/app/slowmo-server"]
 
 
