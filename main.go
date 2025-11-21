@@ -36,8 +36,8 @@ func main() {
 		flags := flag.NewFlagSet("server", flag.PanicOnError)
 		port = flags.Int("port", 50051, "port number the server will listen on")
 		logMode = flags.String("log_mode", "production", "logging mode (development or production)")
-		execServerAddr := flag.String("exec_server_addr", "localhost:50052", "exec server address")
-		execTimeLimitSec := flag.Int("exec_time_limit", 70, "max time in second the tracee program can execute")
+		execServerAddr := flags.String("exec_server_addr", "localhost:50052", "exec server address")
+		execTimeLimitSec := flags.Int("exec_time_limit", 70, "max time in second the tracee program can execute")
 
 		flags.Parse(args)
 		slowmoServer = server.NewSlowmoServer(*execServerAddr, *execTimeLimitSec)
