@@ -56,6 +56,9 @@ RUN yarn && VITE_DEV_MODE=$frontend_dev_mode VITE_SLOWMO_CLIENT_ID=$oauth_client
 
 FROM ubuntu:noble AS slowmo-server
 
+# Add the certificate bundle to enable potential outbound https traffic.
+RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates
+
 COPY --from=builder /root/go/bin/go1* /root/go/bin/
 COPY --from=builder /root/sdk /root/sdk
 ENV PATH="${PATH}:/root/go/bin"
