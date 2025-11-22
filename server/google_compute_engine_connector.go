@@ -189,11 +189,10 @@ func poll(ctx context.Context, op *compute.Operation, opErrCh chan error) {
 				return
 			}
 			if op.Done() {
-				opErr = context.DeadlineExceeded
 				return
 			}
 		case <-ctx.Done():
-			opErr = ErrNoAvailableServer
+			opErr = context.DeadlineExceeded
 			return
 		}
 	}
