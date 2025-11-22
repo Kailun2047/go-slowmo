@@ -28,7 +28,13 @@ type WrappedSlowmoServer struct {
 }
 
 type SlowmoServerConnector interface {
-	GetCompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (grpc.ServerStreamingClient[proto.CompileAndRunResponse], error)
+	GetCompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (StreamWithID, error)
+	CloseStream(ctx context.Context, streamID string) error
+}
+
+type StreamWithID interface {
+	Stream() grpc.ServerStreamingClient[proto.CompileAndRunResponse]
+	ID() string
 }
 
 type Authenticator interface {
@@ -76,13 +82,13 @@ func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest
 	}
 	// TODO: add session token expiration.
 
-	compileAndRunStream, err := server.connector.GetCompileAndRunResponseStream(ctx, req)
+	streamWithID, err := server.connector.GetCompileAndRunResponseStream(ctx, req)
 	if err != nil {
 		logging.Logger().Errorf("[CompileAndRun] Error getting response stream from core: %v", err)
 		return err
 	}
 	for {
-		compileAndRunResp, err := compileAndRunStream.Recv()
+		compileAndRunResp, err := streamWithID.Stream().Recv()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				logging.Logger().Debug("Finished receiving exec response stream")
@@ -93,7 +99,7 @@ func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest
 		}
 		stream.Send(compileAndRunResp)
 	}
-	return nil
+	return server.connector.CloseStream(ctx, streamWithID.ID())
 }
 
 func getAuthenticatedUser(ctx context.Context) (*userLoginClaim, error) {
@@ -149,6 +155,7 @@ var (
 	ErrInternalAuthn     = fmt.Errorf("internal authentication error")
 	ErrInternalExecution = fmt.Errorf("internal execution error")
 	ErrNoAvailableServer = fmt.Errorf("no available server")
+	ErrInternalCleanup   = fmt.Errorf("internal cleanup error")
 )
 
 func (server *WrappedSlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) (*proto.AuthnResponse, error) {

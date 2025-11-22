@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	compute "cloud.google.com/go/compute/apiv1"
@@ -14,11 +15,12 @@ import (
 	"github.com/kailun2047/slowmo/proto"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
-	instancePollPeriod  = 2 * time.Second
-	cloudInitConfigPath = "./config/cloud-init.yaml"
+	instanceOpPollPeriod = 2 * time.Second
+	cloudInitConfigPath  = "./config/cloud-init.yaml"
 )
 
 type GoogleComputeEngineConnector struct {
@@ -29,9 +31,23 @@ type GoogleComputeEngineConnector struct {
 	machineType     string
 	cloudInitConfig string
 	serviceAccount  string
+	port            int
 }
 
-func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (grpc.ServerStreamingClient[proto.CompileAndRunResponse], error) {
+type GoogleCloudEngineStream struct {
+	instanceName string
+	stream       grpc.ServerStreamingClient[proto.CompileAndRunResponse]
+}
+
+func (gceStream *GoogleCloudEngineStream) Stream() grpc.ServerStreamingClient[proto.CompileAndRunResponse] {
+	return gceStream.stream
+}
+
+func (gceStream *GoogleCloudEngineStream) ID() string {
+	return gceStream.instanceName
+}
+
+func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (StreamWithID, error) {
 	var (
 		instanceName       = fmt.Sprintf("slowmo-%s", uuid.NewString())
 		machineTypeSpec    = fmt.Sprintf("zones/%s/machineTypes/%s", gce.zone, gce.machineType)
@@ -93,45 +109,94 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error starting instance creation operation: %v", err)
 		return nil, ErrInternalExecution
 	}
-
-	// Implement polling by ourselves since op.Wait() uses backoff-with-jitter
-	// style polling, which may increase the wait time even more.
 	opErrCh := make(chan error)
-	go func(ctx context.Context, op *compute.Operation) {
-		var opErr error
-		defer func() {
-			opErrCh <- opErr
-		}()
-		ticker := time.NewTicker(instancePollPeriod)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				err := op.Poll(ctx)
-				if err != nil {
-					logging.Logger().Errorf("[GoogleComputeEngineConnector] Error polling instance creation: %v", err)
-					opErr = ErrInternalExecution
-					return
-				}
-				if op.Done() {
-					return
-				}
-			case <-ctx.Done():
-				logging.Logger().Errorf("[GoogleComputeEngineConnector] Timeout waiting for instance creation")
-				opErr = ErrNoAvailableServer
-				return
-			}
-		}
-	}(ctx, op)
-
+	go poll(ctx, op, opErrCh)
 	err = <-opErrCh
 	if err != nil {
-		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error creating instance: %v", err)
-		return nil, err
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error creating instance %s: %v", instanceName, err)
+		return nil, ErrInternalExecution
 	}
 	logging.Logger().Debugf("[GoogleComputeEngineConnector] Created instance with name: %s", instanceName)
 
-	return nil, fmt.Errorf("unimplemented")
+	instance, err := gce.client.Get(ctx, &computepb.GetInstanceRequest{
+		Instance: instanceName,
+		Project:  gce.project,
+		Zone:     gce.zone,
+	})
+	if err != nil {
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error retrieving info of instance %s: %v", instanceName, err)
+		return nil, ErrInternalExecution
+	}
+	if len(instance.NetworkInterfaces) <= 0 || instance.NetworkInterfaces[0].NetworkIP == nil {
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Cannot retrieve internal IP address of instance %s", instanceName)
+		return nil, ErrInternalExecution
+	}
+	internalIP := *instance.NetworkInterfaces[0].NetworkIP
+	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", internalIP, gce.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error creating gRPC connection to instance %s: %v", instanceName, err)
+		return nil, ErrInternalExecution
+	}
+	slowmoClient := proto.NewSlowmoServiceClient(conn)
+	compileAndRunStream, err := slowmoClient.CompileAndRun(ctx, req)
+	if err != nil {
+		logging.Logger().Error("[GoogleComputeEngineConnector] Error making CompileAndRun request: %v", err)
+		return nil, ErrInternalExecution
+	}
+	return &GoogleCloudEngineStream{
+		instanceName: instanceName,
+		stream:       compileAndRunStream,
+	}, nil
+}
+
+func (gce *GoogleComputeEngineConnector) CloseStream(ctx context.Context, streamID string) error {
+	logging.Logger().Debugf("[GoogleComputeEngineConnector] Start deleting instance %s", streamID)
+	op, err := gce.client.Delete(ctx, &computepb.DeleteInstanceRequest{
+		Instance: streamID,
+		Project:  gce.project,
+		Zone:     gce.zone,
+	})
+	if err != nil {
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error starting delete instance operation for %s: %v", streamID, err)
+		return ErrInternalCleanup
+	}
+	opErrCh := make(chan error)
+	go poll(ctx, op, opErrCh)
+	err = <-opErrCh
+	if err != nil {
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error deleting instance %s: %v", streamID, err)
+		return ErrInternalCleanup
+	}
+	logging.Logger().Debugf("[GoogleComputeEngineConnector] Deleted instance %s", streamID)
+	return nil
+}
+
+// Implement polling by ourselves since op.Wait() uses backoff-with-jitter style
+// polling, which may increase the wait time even more.
+func poll(ctx context.Context, op *compute.Operation, opErrCh chan error) {
+	var opErr error
+	defer func() {
+		opErrCh <- opErr
+	}()
+	ticker := time.NewTicker(instanceOpPollPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			err := op.Poll(ctx)
+			if err != nil {
+				opErr = err
+				return
+			}
+			if op.Done() {
+				opErr = context.DeadlineExceeded
+				return
+			}
+		case <-ctx.Done():
+			opErr = ErrNoAvailableServer
+			return
+		}
+	}
 }
 
 func NewGoogleComputeEngineConnector() *GoogleComputeEngineConnector {
@@ -140,8 +205,13 @@ func NewGoogleComputeEngineConnector() *GoogleComputeEngineConnector {
 	zone := os.Getenv("GCE_ZONE")
 	machineType := os.Getenv("GCE_MACHINE_TYPE")
 	serviceAccount := os.Getenv("GCE_SERVICE_ACCOUNT")
-	if len(project) == 0 || len(imageURL) == 0 || len(zone) == 0 || len(machineType) == 0 {
+	portStr := os.Getenv("GCE_PORT")
+	if len(project) == 0 || len(imageURL) == 0 || len(zone) == 0 || len(machineType) == 0 || len(portStr) == 0 {
 		panic("one or more GCE config is missing from env var")
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		panic("invalid GCE port number")
 	}
 	f, err := os.Open(cloudInitConfigPath)
 	if err != nil {
@@ -163,5 +233,6 @@ func NewGoogleComputeEngineConnector() *GoogleComputeEngineConnector {
 		machineType:     machineType,
 		cloudInitConfig: string(cloudInitConfigBytes),
 		serviceAccount:  serviceAccount,
+		port:            port,
 	}
 }

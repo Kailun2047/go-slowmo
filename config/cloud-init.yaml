@@ -28,6 +28,9 @@ write_files:
     ExecStopPost=/usr/bin/docker rm slowmo-server
 
 runcmd:
+# Enable all incoming and routed traffic
+- iptables -A INPUT -j ACCEPT
+- iptables -A FORWARD -j ACCEPT
 - export HOME=/home/slowmo
 - docker-credential-gcr configure-docker --registries="us-central1-docker.pkg.dev"
 - /usr/bin/docker volume create --name slowmo-builds --driver local --opt type=tmpfs --opt device=tmpfs --opt o=size=2m
