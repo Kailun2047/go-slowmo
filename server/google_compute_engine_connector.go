@@ -12,6 +12,7 @@ import (
 	compute "cloud.google.com/go/compute/apiv1"
 	"cloud.google.com/go/compute/apiv1/computepb"
 	"github.com/google/uuid"
+	"github.com/googleapis/gax-go/v2"
 	"github.com/kailun2047/slowmo/logging"
 	"github.com/kailun2047/slowmo/proto"
 	"google.golang.org/api/option"
@@ -48,6 +49,12 @@ func (gceStream *GoogleCloudEngineStream) Stream() grpc.ServerStreamingClient[pr
 
 func (gceStream *GoogleCloudEngineStream) ID() string {
 	return gceStream.instanceName
+}
+
+var gceAPIRetryer = func() gax.Retryer {
+	return gax.OnErrorFunc(gax.Backoff{
+		Max: 5 * time.Second,
+	}, func(err error) bool { return true })
 }
 
 func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (StreamWithID, error) {
@@ -118,26 +125,29 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 		return nil, ErrInternalExecution
 	}
 	logging.Logger().Debugf("[GoogleComputeEngineConnector] Created instance with name: %s", instanceName)
+	ret := &GoogleCloudEngineStream{
+		instanceName: instanceName,
+	}
 
 	instance, err := gce.client.Get(ctx, &computepb.GetInstanceRequest{
 		Instance: instanceName,
 		Project:  gce.project,
 		Zone:     gce.zone,
-	})
+	}, gax.WithRetry(gceAPIRetryer))
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error retrieving info of instance %s: %v", instanceName, err)
-		return nil, ErrInternalExecution
+		return ret, ErrInternalExecution
 	}
 	if len(instance.NetworkInterfaces) <= 0 || instance.NetworkInterfaces[0].NetworkIP == nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Cannot retrieve internal IP address of instance %s", instanceName)
-		return nil, ErrInternalExecution
+		return ret, ErrInternalExecution
 	}
 	internalIP := *instance.NetworkInterfaces[0].NetworkIP
 
 	// When InstancesClient.Insert() call returns, it only ensures that the VM
 	// instance is provisioned, but doesn't wait until cloud-init finishes
 	// execution. We need to poll connection to the instance to make sure a grpc
-	// connection is ready to be be established before issuing a request.
+	// connection is ready to be established before issuing a request.
 	// grpc.NewClient() cannot be used for this polling purpose, since it only
 	// configures the dialing options and then lazily dial when a request is
 	// made using the returned grpc.ClientConn.
@@ -145,24 +155,22 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 	err = pollConn(ctx, addr)
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error checking connectivity with instance %s: %v", instanceName, err)
-		return nil, ErrInternalExecution
+		return ret, ErrInternalExecution
 	}
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error creating gRPC connection to instance %s: %v", instanceName, err)
-		return nil, ErrInternalExecution
+		return ret, ErrInternalExecution
 	}
 	slowmoClient := proto.NewSlowmoServiceClient(conn)
 	compileAndRunStream, err := slowmoClient.CompileAndRun(ctx, req)
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error making CompileAndRun request: %v", err)
-		return nil, ErrInternalExecution
+		return ret, ErrInternalExecution
 	}
-	return &GoogleCloudEngineStream{
-		instanceName: instanceName,
-		stream:       compileAndRunStream,
-	}, nil
+	ret.stream = compileAndRunStream
+	return ret, nil
 }
 
 func (gce *GoogleComputeEngineConnector) CloseStream(ctx context.Context, streamID string) error {
@@ -171,7 +179,7 @@ func (gce *GoogleComputeEngineConnector) CloseStream(ctx context.Context, stream
 		Instance: streamID,
 		Project:  gce.project,
 		Zone:     gce.zone,
-	})
+	}, gax.WithRetry(gceAPIRetryer))
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error starting delete instance operation for %s: %v", streamID, err)
 		return ErrInternalCleanup
@@ -201,7 +209,7 @@ func pollOp(ctx context.Context, op *compute.Operation) error {
 				return nil
 			}
 		case <-ctx.Done():
-			return context.DeadlineExceeded
+			return ctx.Err()
 		}
 	}
 }
@@ -222,7 +230,7 @@ func pollConn(ctx context.Context, address string) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return context.DeadlineExceeded
+			return ctx.Err()
 		case <-ticker.C:
 			dialCtx, cancelFunc := context.WithTimeout(ctx, dialTimeout)
 			conn, err = dialer.DialContext(dialCtx, "tcp", address)

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/kailun2047/slowmo/logging"
@@ -65,6 +66,10 @@ type userLoginClaim struct {
 	Channel   proto.AuthnChannel `json:"channel"`
 }
 
+const (
+	cleanupTimeout = 10 * time.Second
+)
+
 func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, stream grpc.ServerStreamingServer[proto.CompileAndRunResponse]) error {
 	ctx := stream.Context()
 	claim, err := getAuthenticatedUser(stream.Context())
@@ -83,13 +88,21 @@ func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest
 	// TODO: add session token expiration.
 
 	streamWithID, err := server.connector.GetCompileAndRunResponseStream(ctx, req)
+	if streamWithID != nil && len(streamWithID.ID()) > 0 {
+		// Use background context as parent context to close the connector
+		// stream so that the cleanup is executed regardless of the status of
+		// this request.
+		//
+		// TODO: guarantee the eventual termination of the instance by setting
+		// the max instance duration.
+		cleanupCtx, cancelFunc := context.WithTimeout(context.Background(), cleanupTimeout)
+		defer cancelFunc()
+		defer server.connector.CloseStream(cleanupCtx, streamWithID.ID())
+	}
 	if err != nil {
 		logging.Logger().Errorf("[CompileAndRun] Error getting response stream from core: %v", err)
 		return err
 	}
-	// Use background context to close the connector stream so that the cleanup
-	// is executed regardless of the status of this request.
-	defer server.connector.CloseStream(context.Background(), streamWithID.ID())
 	for {
 		compileAndRunResp, err := streamWithID.Stream().Recv()
 		if err != nil {
