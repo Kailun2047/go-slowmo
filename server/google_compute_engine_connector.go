@@ -21,10 +21,12 @@ import (
 )
 
 const (
-	instanceOpPollPeriod = 2 * time.Second
-	connPollPeriod       = 1 * time.Second
-	dialTimeout          = 1 * time.Second
-	cloudInitConfigPath  = "./config/cloud-init.yaml"
+	instanceOpPollPeriod   = 2 * time.Second
+	connPollPeriod         = 1 * time.Second
+	dialTimeout            = 1 * time.Second
+	cloudInitConfigPath    = "./config/cloud-init.yaml"
+	cleanupTimeout         = 30 * time.Second
+	maxInstanceDurationSec = 180
 )
 
 type GoogleComputeEngineConnector struct {
@@ -59,16 +61,18 @@ var gceAPIRetryer = func() gax.Retryer {
 
 func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx context.Context, req *proto.CompileAndRunRequest) (StreamWithID, error) {
 	var (
-		instanceName       = fmt.Sprintf("slowmo-%s", uuid.NewString())
-		machineTypeSpec    = fmt.Sprintf("zones/%s/machineTypes/%s", gce.zone, gce.machineType)
-		bootDiskType       = "PERSISTENT"
-		isBootDisk         = true
-		autoDeleteDisk     = true
-		netConfigType      = "ONE_TO_ONE_NAT"
-		netConfigName      = "External NAT"
-		globalNetwork      = "global/networks/default"
-		cloudInitConfigKey = "user-data"
-		scopeFullAccess    = "https://www.googleapis.com/auth/cloud-platform" // cloud-platform scope allows full access to all cloud APIs permitted by IAM role
+		instanceName             = fmt.Sprintf("slowmo-%s", uuid.NewString())
+		machineTypeSpec          = fmt.Sprintf("zones/%s/machineTypes/%s", gce.zone, gce.machineType)
+		bootDiskType             = "PERSISTENT"
+		isBootDisk               = true
+		autoDeleteDisk           = true
+		netConfigType            = "ONE_TO_ONE_NAT"
+		netConfigName            = "External NAT"
+		globalNetwork            = "global/networks/default"
+		cloudInitConfigKey       = "user-data"
+		scopeFullAccess          = "https://www.googleapis.com/auth/cloud-platform" // cloud-platform scope allows full access to all cloud APIs permitted by IAM role
+		maxRunDurationSec  int64 = maxInstanceDurationSec
+		terminationAction        = "DELETE"
 	)
 
 	logging.Logger().Debugf("[GoogleComputeEngineConnector] Start creating instance with name: %s", instanceName)
@@ -111,6 +115,12 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 					Email:  &gce.serviceAccount,
 					Scopes: []string{scopeFullAccess},
 				},
+			},
+			Scheduling: &computepb.Scheduling{
+				MaxRunDuration: &computepb.Duration{
+					Seconds: &maxRunDurationSec,
+				},
+				InstanceTerminationAction: &terminationAction,
 			},
 		},
 		Zone: gce.zone,
@@ -175,7 +185,9 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 
 func (gce *GoogleComputeEngineConnector) CloseStream(ctx context.Context, streamID string) error {
 	logging.Logger().Debugf("[GoogleComputeEngineConnector] Start deleting instance %s", streamID)
-	op, err := gce.client.Delete(ctx, &computepb.DeleteInstanceRequest{
+	closeCtx, cancelFunc := context.WithTimeout(ctx, cleanupTimeout)
+	defer cancelFunc()
+	op, err := gce.client.Delete(closeCtx, &computepb.DeleteInstanceRequest{
 		Instance: streamID,
 		Project:  gce.project,
 		Zone:     gce.zone,
@@ -184,9 +196,9 @@ func (gce *GoogleComputeEngineConnector) CloseStream(ctx context.Context, stream
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error starting delete instance operation for %s: %v", streamID, err)
 		return ErrInternalCleanup
 	}
-	err = pollOp(ctx, op)
+	err = pollOp(closeCtx, op)
 	if err != nil {
-		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error deleting instance %s: %v", streamID, err)
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error polling instance deletion for %s: %v", streamID, err)
 		return ErrInternalCleanup
 	}
 	logging.Logger().Debugf("[GoogleComputeEngineConnector] Deleted instance %s", streamID)
