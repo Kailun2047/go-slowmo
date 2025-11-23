@@ -39,7 +39,7 @@ instrumentor_header := $(instrumentation_dir)/instrumentor.h
 all: proto $(instrumentor_bpf_progs) $(slowmo_server_prog) $(exec_server_prog)
 
 $(vmlinux_header):
-	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(vmlinux_header)
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $@
 
 $(instrumentor_bpf_progs): $(vmlinux_header) $(instrumentor_bpf_src) $(instrumentation_tools_dir)/offsets_to_find.json $(instrumentation_tools_dir)/offset_finder.go $(instrumentation_tools_dir)/hello.go
 	set -e; for go_version in $(go_versions); do \
@@ -85,4 +85,5 @@ $(instrumentation_tools_dir)/hello.go:
 	echo -e "//go:build ignore\npackage main\nfunc main() {}" > $(instrumentation_tools_dir)/hello.go
 
 clean:
-	rm $(instrumentor_bpf_progs) $(slowmo_server_prog) $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_server_prog) $(exec_proto_gen_go) $(vmlinux_header) $(instrumentor_header)
+	rm -r $(slowmo_client_proto_dir)
+	rm $(instrumentor_bpf_progs) $(slowmo_server_prog) $(slowmo_proto_gen_go) $(exec_server_prog) $(exec_proto_gen_go) $(vmlinux_header) $(instrumentor_header)
