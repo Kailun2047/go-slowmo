@@ -10,7 +10,7 @@ write_files:
 
     [Service]
     Environment="HOME=/home/slowmo"
-    ExecStart=/usr/bin/docker run --rm --name=exec-server -v slowmo-builds:/tmp/slowmo-builds:ro --cpuset-cpus=2-3 us-central1-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
+    ExecStart=/usr/bin/docker run --rm --name=exec-server -v slowmo-builds:/tmp/slowmo-builds:ro --cpuset-cpus=2-3 --network=go-slowmo us-central1-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
     ExecStop=/usr/bin/docker stop exec-server
     ExecStopPost=/usr/bin/docker rm exec-server
 - path: /etc/systemd/system/slowmo-server.service
@@ -23,7 +23,7 @@ write_files:
 
     [Service]
     Environment="HOME=/home/slowmo"
-    ExecStart=/usr/bin/docker run --rm --name=slowmo-server --cap-add CAP_SYS_ADMIN --cap-add CAP_BPF --cap-add CAP_SYS_RESOURCE -v slowmo-builds:/tmp/slowmo-builds -p 50051:50051 --cpuset-cpus=0-1 us-central1-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+    ExecStart=/usr/bin/docker run --rm --name=slowmo-server --cap-add CAP_SYS_ADMIN --cap-add CAP_BPF --cap-add CAP_SYS_RESOURCE -v slowmo-builds:/tmp/slowmo-builds -p 50051:50051 --cpuset-cpus=0-1 --network=go-slowmo us-central1-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
     ExecStop=/usr/bin/docker stop slowmo-server
     ExecStopPost=/usr/bin/docker rm slowmo-server
 
@@ -33,6 +33,7 @@ runcmd:
 - iptables -A FORWARD -j ACCEPT
 - export HOME=/home/slowmo
 - docker-credential-gcr configure-docker --registries="us-central1-docker.pkg.dev"
+- /usr/bin/docker network create go-slowmo
 - /usr/bin/docker volume create --name slowmo-builds --driver local --opt type=tmpfs --opt device=tmpfs --opt o=size=16m
 - systemctl daemon-reload
 - systemctl start exec-server.service slowmo-server.service

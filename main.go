@@ -36,7 +36,7 @@ func main() {
 		flags := flag.NewFlagSet("server", flag.PanicOnError)
 		port = flags.Int("port", 50051, "port number the server will listen on")
 		logMode = flags.String("log_mode", "production", "logging mode (development or production)")
-		execServerAddr := flags.String("exec_server_addr", "localhost:50052", "exec server address")
+		execServerAddr := flags.String("exec_server_addr", "exec-server:50052", "exec server address")
 		execTimeLimitSec := flags.Int("exec_time_limit", 70, "max time in second the tracee program can execute")
 
 		flags.Parse(args)
