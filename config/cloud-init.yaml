@@ -33,6 +33,6 @@ runcmd:
 - iptables -A FORWARD -j ACCEPT
 - export HOME=/home/slowmo
 - docker-credential-gcr configure-docker --registries="us-central1-docker.pkg.dev"
-- /usr/bin/docker volume create --name slowmo-builds --driver local --opt type=tmpfs --opt device=tmpfs --opt o=size=2m
+- /usr/bin/docker volume create --name slowmo-builds --driver local --opt type=tmpfs --opt device=tmpfs --opt o=size=16m
 - systemctl daemon-reload
 - systemctl start exec-server.service slowmo-server.service
