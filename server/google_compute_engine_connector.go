@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strconv"
 	"time"
@@ -20,6 +21,8 @@ import (
 
 const (
 	instanceOpPollPeriod = 2 * time.Second
+	connPollPeriod       = 1 * time.Second
+	dialTimeout          = 1 * time.Second
 	cloudInitConfigPath  = "./config/cloud-init.yaml"
 )
 
@@ -109,9 +112,7 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error starting instance creation operation: %v", err)
 		return nil, ErrInternalExecution
 	}
-	opErrCh := make(chan error)
-	go poll(ctx, op, opErrCh)
-	err = <-opErrCh
+	err = pollOp(ctx, op)
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error creating instance %s: %v", instanceName, err)
 		return nil, ErrInternalExecution
@@ -132,7 +133,22 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 		return nil, ErrInternalExecution
 	}
 	internalIP := *instance.NetworkInterfaces[0].NetworkIP
-	conn, err := grpc.NewClient(fmt.Sprintf("%s:%d", internalIP, gce.port), grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	// When InstancesClient.Insert() call returns, it only ensures that the VM
+	// instance is provisioned, but doesn't wait until cloud-init finishes
+	// execution. We need to poll connection to the instance to make sure a grpc
+	// connection is ready to be be established before issuing a request.
+	// grpc.NewClient() cannot be used for this polling purpose, since it only
+	// configures the dialing options and then lazily dial when a request is
+	// made using the returned grpc.ClientConn.
+	addr := fmt.Sprintf("%s:%d", internalIP, gce.port)
+	err = pollConn(ctx, addr)
+	if err != nil {
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error checking connectivity with instance %s: %v", instanceName, err)
+		return nil, ErrInternalExecution
+	}
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error creating gRPC connection to instance %s: %v", instanceName, err)
 		return nil, ErrInternalExecution
@@ -140,7 +156,7 @@ func (gce *GoogleComputeEngineConnector) GetCompileAndRunResponseStream(ctx cont
 	slowmoClient := proto.NewSlowmoServiceClient(conn)
 	compileAndRunStream, err := slowmoClient.CompileAndRun(ctx, req)
 	if err != nil {
-		logging.Logger().Error("[GoogleComputeEngineConnector] Error making CompileAndRun request: %v", err)
+		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error making CompileAndRun request: %v", err)
 		return nil, ErrInternalExecution
 	}
 	return &GoogleCloudEngineStream{
@@ -160,9 +176,7 @@ func (gce *GoogleComputeEngineConnector) CloseStream(ctx context.Context, stream
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error starting delete instance operation for %s: %v", streamID, err)
 		return ErrInternalCleanup
 	}
-	opErrCh := make(chan error)
-	go poll(ctx, op, opErrCh)
-	err = <-opErrCh
+	err = pollOp(ctx, op)
 	if err != nil {
 		logging.Logger().Errorf("[GoogleComputeEngineConnector] Error deleting instance %s: %v", streamID, err)
 		return ErrInternalCleanup
@@ -173,11 +187,7 @@ func (gce *GoogleComputeEngineConnector) CloseStream(ctx context.Context, stream
 
 // Implement polling by ourselves since op.Wait() uses backoff-with-jitter style
 // polling, which may increase the wait time even more.
-func poll(ctx context.Context, op *compute.Operation, opErrCh chan error) {
-	var opErr error
-	defer func() {
-		opErrCh <- opErr
-	}()
+func pollOp(ctx context.Context, op *compute.Operation) error {
 	ticker := time.NewTicker(instanceOpPollPeriod)
 	defer ticker.Stop()
 	for {
@@ -185,15 +195,41 @@ func poll(ctx context.Context, op *compute.Operation, opErrCh chan error) {
 		case <-ticker.C:
 			err := op.Poll(ctx)
 			if err != nil {
-				opErr = err
-				return
+				return err
 			}
 			if op.Done() {
-				return
+				return nil
 			}
 		case <-ctx.Done():
-			opErr = context.DeadlineExceeded
-			return
+			return context.DeadlineExceeded
+		}
+	}
+}
+
+func pollConn(ctx context.Context, address string) error {
+	var (
+		dialer net.Dialer
+		conn   net.Conn
+		ticker = time.NewTicker(connPollPeriod)
+		err    error
+	)
+	defer func() {
+		if conn != nil {
+			conn.Close()
+		}
+		ticker.Stop()
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return context.DeadlineExceeded
+		case <-ticker.C:
+			dialCtx, cancelFunc := context.WithTimeout(ctx, dialTimeout)
+			conn, err = dialer.DialContext(dialCtx, "tcp", address)
+			cancelFunc()
+			if err == nil {
+				return nil
+			}
 		}
 	}
 }

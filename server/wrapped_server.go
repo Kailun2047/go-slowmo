@@ -87,6 +87,9 @@ func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest
 		logging.Logger().Errorf("[CompileAndRun] Error getting response stream from core: %v", err)
 		return err
 	}
+	// Use background context to close the connector stream so that the cleanup
+	// is executed regardless of the status of this request.
+	defer server.connector.CloseStream(context.Background(), streamWithID.ID())
 	for {
 		compileAndRunResp, err := streamWithID.Stream().Recv()
 		if err != nil {
@@ -99,7 +102,7 @@ func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest
 		}
 		stream.Send(compileAndRunResp)
 	}
-	return server.connector.CloseStream(ctx, streamWithID.ID())
+	return nil
 }
 
 func getAuthenticatedUser(ctx context.Context) (*userLoginClaim, error) {
