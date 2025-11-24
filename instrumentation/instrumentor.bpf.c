@@ -284,7 +284,7 @@ int BPF_UPROBE(go_globrunq_status) {
     return 0;
 }
 
-#define NUM_WAITREASON 37
+#define NUM_WAITREASON 60 // reserve space for more than the number of wait reasons in the latest go version
 #define WAITREASON_STRING_MAX_LEN 40
 #define GO_STRING_LEN_OFFSET 8
 #define GO_STRING_SIZE 16
@@ -311,7 +311,7 @@ int BPF_UPROBE(get_waitreason_strings) {
     char *reason_strings_elem_ptr, *reason_str_ptr;
     struct waitreason reason;
 
-    bpf_for(i, 0, NUM_WAITREASON) {
+    bpf_for(i, 0, RUNTIME_WAITREASONSTRINGS_LENGTH) {
         reason_strings_elem_ptr = (char *)(waitreason_strings_addr + GO_STRING_SIZE * i);
         bpf_probe_read_user(&reason_str_ptr, sizeof(char *), reason_strings_elem_ptr);
         bpf_probe_read_user(&reason_str_len, sizeof(int64_t), GO_STRING_LEN_ADDR(reason_strings_elem_ptr));

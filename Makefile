@@ -41,11 +41,11 @@ all: proto $(instrumentor_bpf_progs) $(slowmo_server_prog) $(exec_server_prog)
 $(vmlinux_header):
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $@
 
-$(instrumentor_bpf_progs): $(vmlinux_header) $(instrumentor_bpf_src) $(instrumentation_tools_dir)/offsets_to_find.json $(instrumentation_tools_dir)/offset_finder.go $(instrumentation_tools_dir)/hello.go
+$(instrumentor_bpf_progs): $(vmlinux_header) $(instrumentor_bpf_src) $(instrumentation_tools_dir)/targets_to_find.json $(instrumentation_tools_dir)/target_finder.go $(instrumentation_tools_dir)/hello.go
 	set -e; for go_version in $(go_versions); do \
 		pwd=$$(pwd); \
 		go$${go_version} build -C $(instrumentation_tools_dir) -o hello hello.go; \
-		cd $(instrumentation_tools_dir) && go run offset_finder.go; \
+		cd $(instrumentation_tools_dir) && go run target_finder.go; \
 		cd $${pwd} && $(CC) $(CFLAGS) -o instrumentor$${go_version}.o -c $(instrumentor_bpf_src); \
 	done
 	go generate -C $(instrumentation_dir)

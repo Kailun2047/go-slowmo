@@ -42,6 +42,9 @@
                     "runq"
                 ]
             }
+        ],
+        "target_arrays": [
+            "waitReasonStrings"
         ]
     }
 ]
