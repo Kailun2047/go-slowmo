@@ -181,6 +181,7 @@
   font-size: 14px;
   overflow-wrap: break-word;
   text-align: center;
+  overflow-y: auto;
 }
 
 .thread {
@@ -308,7 +309,8 @@
   display: flex;
   flex-direction: column;
   left: 40%;
-  top: calc(50% + 30px);
+  top: 50%;
+  margin-top: 60px;
   height: 30%;
   font-family: monospace;
   font-size: 14px;
