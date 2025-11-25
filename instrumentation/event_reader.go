@@ -2,6 +2,7 @@ package instrumentation
 
 import (
 	"bytes"
+	"debug/gosym"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"slices"
 
-	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/kailun2047/slowmo/logging"
 	"github.com/kailun2047/slowmo/proto"
@@ -158,9 +158,18 @@ type goreadyEvent struct {
 	GoID  uint64
 }
 
+type pcInterpreter interface {
+	PCToLine(pc uint64) (file string, line int, fn *gosym.Func)
+}
+
+type ringbufReadCloser interface {
+	Read() (ringbuf.Record, error)
+	Close() error
+}
+
 type EventReader struct {
-	interpreter           *ELFInterpreter
-	ringbufReader         *ringbuf.Reader
+	interpreter           pcInterpreter
+	ringbufReader         ringbufReadCloser
 	eventCh               chan ringbuf.Record
 	byteOrder             binary.ByteOrder
 	localRunqs            map[string][]runqEntry
@@ -170,11 +179,7 @@ type EventReader struct {
 	ProbeEventCh          chan *proto.ProbeEvent
 }
 
-func NewEventReader(interpreter *ELFInterpreter, ringbufMap *ebpf.Map) *EventReader {
-	ringbufReader, err := ringbuf.NewReader(ringbufMap)
-	if err != nil {
-		logging.Logger().Fatal("Create ring buffer reader: ", err)
-	}
+func NewEventReader(interpreter pcInterpreter, ringbufReader ringbufReadCloser) *EventReader {
 	return &EventReader{
 		interpreter:           interpreter,
 		ringbufReader:         ringbufReader,
@@ -306,19 +311,21 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 		}
 		if event.RunqEntryIdx == uint64(event.Runqtail) {
 			convertedEvent := r.convertRunqStatusEvent(event)
-			if event.EType == EVENT_TYPE_RUNQ_STATUS {
-				// Update any existing entry in buffered execute event in case of
-				// concurrency,
-				for _, buf := range r.bufferedExecuteEvents {
-					existingIdx := slices.IndexFunc(buf.runqStatuses, func(runq *proto.RunqStatusEvent) bool {
-						return runq.ProcId == convertedEvent.ProcId
-					})
-					if existingIdx != -1 {
-						buf.runqStatuses[existingIdx] = convertedEvent
-					}
+			// Update any existing entry in buffered execute event in case
+			// of concurrency.
+			for _, buf := range r.bufferedExecuteEvents {
+				existingIdx := slices.IndexFunc(buf.runqStatuses, func(runq *proto.RunqStatusEvent) bool {
+					return *runq.ProcId == *convertedEvent.ProcId
+				})
+				if existingIdx != -1 {
+					buf.runqStatuses[existingIdx] = convertedEvent
 				}
+			}
 
-				if event.GroupingMID < 0 {
+			if event.GroupingMID < 0 {
+				if event.EType == EVENT_TYPE_GOREADY_RUNQ_STATUS {
+					probeEvent = r.completeGoreadyEvent(event.MID, convertedEvent)
+				} else {
 					probeEvent = &proto.ProbeEvent{
 						ProbeEventOneof: &proto.ProbeEvent_StructureStateEvent{
 							StructureStateEvent: &proto.StructureStateEvent{
@@ -328,11 +335,9 @@ func (r *EventReader) readEvent(readSeeker io.ReadSeeker, etype eventType) error
 							},
 						},
 					}
-				} else {
-					probeEvent = r.tryCompleteExecuteEvent(event.GroupingMID, convertedEvent)
 				}
 			} else {
-				probeEvent = r.completeGoreadyEvent(event.MID, convertedEvent)
+				probeEvent = r.tryCompleteExecuteEvent(event.GroupingMID, convertedEvent)
 			}
 		} else {
 			r.localRunqs[localRunqKey] = append(r.localRunqs[localRunqKey], event.RunqEntry)

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/ringbuf"
 	"github.com/kailun2047/slowmo/instrumentation"
 	"github.com/kailun2047/slowmo/logging"
 	"github.com/kailun2047/slowmo/proto"
@@ -130,7 +131,11 @@ func startInstrumentation(bpfProg, targetPath string) (*instrumentation.Instrume
 		BpfFns:       []string{"get_waitreason_strings"},
 	})
 
-	eventReader := instrumentation.NewEventReader(interpreter, instrumentor.GetMap("instrumentor_event"))
+	ringbufReader, err := ringbuf.NewReader(instrumentor.GetMap("instrumentor_event"))
+	if err != nil {
+		logging.Logger().Fatal("Create ring buffer reader: ", err)
+	}
+	eventReader := instrumentation.NewEventReader(interpreter, ringbufReader)
 	eventReader.Start()
 	return instrumentor, eventReader
 }
