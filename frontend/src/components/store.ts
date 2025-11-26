@@ -1,4 +1,4 @@
-import { create as actualCreate, type StateCreator } from "zustand";
+import { create as actualCreate, type ExtractState, type StateCreator } from "zustand";
 import { ExecuteEvent, GoparkEvent, GoreadyEvent, NewProcEvent, RunqStatusEvent, ScheduleEvent } from "../../proto/slowmo";
 import { pickPastelColor, type HSL } from "../lib/color-picker";
 import {isNil} from 'lodash';
@@ -239,7 +239,7 @@ const createThreadsSlice: StateCreator<
 > = (set) => ({
     threads: [],
 
-    // initThreads is called once upon receiving num_cpu from server.
+    // initThreads is called once upon receiving gomaxprocs from server.
     initThreads: (gomaxprocs: number) => {
         const threads: Thread[] = [];
         for (let i = 0; i < gomaxprocs; i++) {
@@ -480,3 +480,5 @@ export const useBoundStore = create<CodePanelSlice & ThreadsSlice & GlobalStruct
         ...createSharedSlice(...args),
     })
 );
+
+export type BoundState = ExtractState<typeof useBoundStore>;
