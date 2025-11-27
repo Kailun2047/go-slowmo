@@ -20,7 +20,7 @@ export function Output() {
             systemOutput = (
                 <span className='system-output'>
                     {
-                        output.type === OutputType.Requesting? 'Waiting for remote server...':
+                        output.type === OutputType.Requesting? `Waiting for remote server${import.meta.env.VITE_REMOTE_SERVER_WAIT_TIME? ` (this could take up to ${import.meta.env.VITE_REMOTE_SERVER_WAIT_TIME})`: ''}...`:
                             output.type === OutputType.RequestError? `Request failed: ${output.requestError}`:
                                 output.type === OutputType.CompilationError? 'Go build failed.':
                                     `Program exited${!isNil(output.err)? `: ${output.err}`: ''}.`
