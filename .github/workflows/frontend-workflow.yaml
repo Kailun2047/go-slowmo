@@ -6,6 +6,7 @@ on:
       - dev/cicd
     paths:
       - 'frontend/**'
+      - '.github/workflows/frontend-workflow.yaml'
 
 jobs:
   job1:
