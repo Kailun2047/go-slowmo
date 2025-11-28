@@ -38,7 +38,7 @@ function WaitPrompt({waitTimeStr}: {waitTimeStr: string}) {
     if (waitTimeStr) {
         return (<span className='system-output'>
             {`Waiting for remote server. This could take up to ${waitTimeStr} (you can try `}
-            <a href='https://github.com/Kailun2047/go-slowmo?tab=readme-ov-file#running-locally'>running locally</a>
+            <a href='https://github.com/Kailun2047/go-slowmo?tab=readme-ov-file#running-locally' target="_blank" rel="noopener noreferrer">running locally</a>
             {' instead).'}
         </span>)
     } else {
