@@ -17,16 +17,10 @@ export function Output() {
             );
         }
         if (output.type !== undefined) {
-            systemOutput = (
-                <span className='system-output'>
-                    {
-                        output.type === OutputType.Requesting? `Waiting for remote server${import.meta.env.VITE_REMOTE_SERVER_WAIT_TIME? ` (this could take up to ${import.meta.env.VITE_REMOTE_SERVER_WAIT_TIME})`: ''}...`:
-                            output.type === OutputType.RequestError? `Request failed: ${output.requestError}`:
-                                output.type === OutputType.CompilationError? 'Go build failed.':
-                                    `Program exited${!isNil(output.err)? `: ${output.err}`: ''}.`
-                    }
-                </span>
-            );
+            systemOutput = output.type === OutputType.Requesting? (<WaitPrompt waitTimeStr={import.meta.env.VITE_REMOTE_SERVER_WAIT_TIME}></WaitPrompt>):
+            output.type === OutputType.RequestError? (<span className='system-output'>{`Request failed: ${output.requestError}`}</span>)
+            : output.type === OutputType.CompilationError? (<span className='system-output'>Go build failed.</span>)
+            : <span className='system-output'>`Program exited${!isNil(output.err)? `: ${output.err}`: ''}.`</span>;
         }
     }
 
@@ -38,4 +32,18 @@ export function Output() {
             </pre>
         </div>
     );
+}
+
+function WaitPrompt({waitTimeStr}: {waitTimeStr: string}) {
+    if (waitTimeStr) {
+        return (<span className='system-output'>
+            {`Waiting for remote server. This could take up to ${waitTimeStr} (you can try `}
+            <a href='https://github.com/Kailun2047/go-slowmo?tab=readme-ov-file#running-locally'>running locally</a>
+            {' instead).'}
+        </span>)
+    } else {
+        return (<span className='system-output'>
+            Waiting for remote server...
+        </span>)
+    }
 }
