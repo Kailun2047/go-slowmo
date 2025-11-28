@@ -21,7 +21,7 @@ runs:
         PROTOC_VERSION: ${{ inputs.protoc_version }}
         PB_REL: 'https://github.com/protocolbuffers/protobuf/releases'
       run: |
-        curl -LO $PB_REL/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip && unzip protoc-${PROTOC_VERSION}-linux-x86_64.zip -d ./protoc
+        curl -LO $PB_REL/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip && unzip protoc-${PROTOC_VERSION}-linux-x86_64.zip -d ./protoc && echo "$(pwd)/protoc/bin" >> $GITHUB_PATH
     - name: 'Install protobuf-ts plugin'
       shell: bash
       env:

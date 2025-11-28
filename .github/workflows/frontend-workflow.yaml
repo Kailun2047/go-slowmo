@@ -32,7 +32,7 @@ jobs:
       
       - name: Generate TypeScript code from .proto files
         run: |
-          make proto
+          make proto_ts
 
       - name: Run tests
         run: yarn test

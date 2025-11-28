@@ -77,6 +77,9 @@ $(slowmo_proto_gen_ts): $(slowmo_proto_def)
 .PHONY: proto
 proto: $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_proto_gen_go)
 
+.PHONY: proto_ts
+proto_ts: $(slowmo_proto_gen_ts)
+
 .PHONY: libbpf
 libbpf:
 	cd $(instrumentation_dir)/libbpf/src && make install && make install_uapi_headers
