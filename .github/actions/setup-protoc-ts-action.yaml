@@ -1,0 +1,30 @@
+name: 'Setup Protoc TS'
+inputs:
+  protoc_version:
+    description: 'Version of protoc to install'
+    required: false
+    default: '3.12.4'
+  protoc_gen_ts_version:
+    description: 'Version of protoc-gen-ts plugin to install'
+    required: false
+    default: '2.11.1'
+runs:
+  using: 'composite'
+  steps:
+    - name: 'Install unzip'
+      shell: bash
+      run: |
+        sudo apt-get update && sudo apt-get install -y unzip
+    - name: 'Install Protoc'
+      shell: bash
+      env:
+        PROTOC_VERSION: ${{ inputs.protoc_version }}
+        PB_REL: 'https://github.com/protocolbuffers/protobuf/releases'
+      run: |
+        curl -LO $PB_REL/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip && unzip protoc-${PROTOC_VERSION}-linux-x86_64.zip -d ./protoc
+    - name: 'Install protobuf-ts plugin'
+      shell: bash
+      env:
+        PROTOC_GEN_TS_VERSION: ${{ inputs.protoc_gen_ts_version }}
+      run: |
+        yarn global add @protobuf-ts/plugin@${PROTOC_GEN_TS_VERSION}
