@@ -107,6 +107,9 @@ type Output = {
 
 interface OutputState {
     output: Output | undefined;
+    requestingWaitCount: number;
+    incrementRequestingWaitCount: (inc: number) => void;
+    resetRequestingWaitCount: () => void;
     outputRequesting: () => void;
     outputRequestError: (requestError: string) => void;
     outputCompilatioError: (compilationError: string) => void;
@@ -117,6 +120,20 @@ interface OutputState {
 
 export const useOutputStore = actualCreate<OutputState>((set, get) => ({
     output: undefined,
+
+    requestingWaitCount: 0,
+
+    incrementRequestingWaitCount: (inc: number) => {
+        set((state) => ({
+            requestingWaitCount: state.requestingWaitCount + inc,
+        }));
+    },
+
+    resetRequestingWaitCount: () => {
+        set(() => ({
+            requestingWaitCount: 0,
+        }));
+    },
 
     outputRequesting: () => {
         set(() => ({
