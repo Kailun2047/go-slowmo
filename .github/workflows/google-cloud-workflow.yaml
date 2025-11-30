@@ -72,7 +72,7 @@ jobs:
             --zone "$GCP_ZONE" \
             --image-family "cos-125-lts" \
             --image-project cos-cloud \
-            --metadata-from-file=cos-startup-script=startup.sh
+            --metadata-from-file=startup-script=startup.sh
 
       # -------------------------------
       # Poll serial port until startup script finishes
