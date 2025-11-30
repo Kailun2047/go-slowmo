@@ -21,7 +21,6 @@ jobs:
       COS_IMAGE_BUILDER_INSTANCE_NAME: custom-cos-image-helper
       GCP_REGION: us-central1
       GCP_ZONE: us-central1-a
-      COS_CUSTOM_IMAGE_NAME: image-1 # TODO: use image family instead
       COS_CUSTOM_IMAGE_FAMILY: go-slowmo-custom
     steps:
       - name: Checkout repository
@@ -31,8 +30,8 @@ jobs:
 
       - name: Build container images
         run: |
-          docker build -t ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest --target slowmo-server .
-          docker build -t ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest --target exec-server .
+          docker build -t $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest --target slowmo-server .
+          docker build -t $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest --target exec-server .
       
       - name: Google Cloud authentication
         uses: 'google-github-actions/auth@v3'
@@ -46,15 +45,15 @@ jobs:
 
       - name: Push container images to Artifact Registry
         run: |
-          gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev
-          docker push ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
-          docker push ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
+          gcloud auth configure-docker $GCP_REGION-docker.pkg.dev
+          docker push $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+          docker push $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
       
       - name: Deploy Cloud Run service
         uses: 'google-github-actions/deploy-cloudrun@v3'
         with:
           service: go-slowmo
-          image: ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+          image: $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
 
       # -------------------------------
       # Start COS VM that will bake custom image
@@ -67,8 +66,8 @@ jobs:
             --image-project cos-cloud \
             --metadata=startup-script='#!/bin/bash
               echo "Pulling images..." > /dev/ttyS1
-              docker pull ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
-              docker pull ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
+              docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+              docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
               echo "STARTUP DONE" > /dev/ttyS1
             '
 
@@ -99,7 +98,8 @@ jobs:
       # -------------------------------
       - name: Create custom COS image
         run: |
-          gcloud compute images create "$COS_CUSTOM_IMAGE_NAME" \
+          gcloud compute images create "$COS_CUSTOM_IMAGE_FAMILY-${{ github.sha }}" \
+            --family="$COS_CUSTOM_IMAGE_FAMILY" \
             --source-disk="$COS_IMAGE_BUILDER_INSTANCE_NAME" \
             --source-disk-zone="$GCP_ZONE" \
             --storage-location="$GCP_REGION"
