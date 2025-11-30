@@ -60,7 +60,7 @@ jobs:
       # -------------------------------
       - name: Start bake VM
         run: |
-          cat > startup.sh << 'EOF'
+          cat > startup.sh << EOF
           #!/bin/bash
           set -ex
           echo "Pulling images..." > /dev/ttyS0
