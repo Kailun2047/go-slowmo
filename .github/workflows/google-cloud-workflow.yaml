@@ -69,7 +69,8 @@ jobs:
             echo "Pulling images..." > /dev/ttyS0
             docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
             docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
-            echo "STARTUP DONE"' > /dev/ttyS0
+            echo "STARTUP DONE" > /dev/ttyS0
+            '
 
       # -------------------------------
       # Poll serial port until startup script finishes
