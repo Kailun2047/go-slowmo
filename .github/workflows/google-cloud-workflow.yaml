@@ -65,11 +65,11 @@ jobs:
             --image-family "cos-125-lts" \
             --image-project cos-cloud \
             --metadata=startup-script='#!/bin/bash
-              echo "Pulling images..." > /dev/ttyS1
-              docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
-              docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
-              echo "STARTUP DONE" > /dev/ttyS1
-            '
+            set -e
+            echo "Pulling images..." > /dev/ttyS0
+            docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+            docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
+            echo "STARTUP DONE"' > /dev/ttyS0
 
       # -------------------------------
       # Poll serial port until startup script finishes
@@ -78,7 +78,7 @@ jobs:
         run: |
           echo "Waiting for COS startup to finish..."
           while true; do
-            LOG=$(gcloud compute instances get-serial-port-output "$COS_IMAGE_BUILDER_INSTANCE_NAME" --zone "$GCP_ZONE" --port=1 || true)
+            LOG=$(gcloud compute instances get-serial-port-output "$COS_IMAGE_BUILDER_INSTANCE_NAME" --zone "$GCP_ZONE" || true)
             if echo "$LOG" | grep -q "STARTUP DONE"; then
               echo "Startup script finished!"
               break
