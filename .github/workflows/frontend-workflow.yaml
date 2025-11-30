@@ -3,7 +3,13 @@ name: Frontend CI/CD Pipeline
 on:
   push:
     branches:
-      - dev/cicd
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-workflow.yaml'
+  pull_request:
+    branches:
+      - main
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-workflow.yaml'

@@ -3,7 +3,15 @@ name: Google Cloud CI/CD Pipeline
 on:
   push:
     branches:
-      - dev/cicd
+      - main
+    paths-ignore:
+      - 'frontend/**'
+      - '.github/workflows/frontend-workflow.yaml'
+      - README.md
+      - config/envoy.yaml
+  pull_request:
+    branches:
+      - main
     paths-ignore:
       - 'frontend/**'
       - '.github/workflows/frontend-workflow.yaml'
