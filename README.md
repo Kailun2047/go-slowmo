@@ -33,6 +33,12 @@ By uncovering and visualizing some of the core Go runtime concepts, this project
 
 ## Running Locally
 
+Clone this repo with submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/Kailun2047/go-slowmo.git
+```
+
 Make sure docker is available on your machine, and there are at least 4 CPUs available for use by docker.
 
 Build and start all containers with:

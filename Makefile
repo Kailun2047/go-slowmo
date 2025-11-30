@@ -36,7 +36,9 @@ exec_proto_gen_go := $(proto_dir)/exec*.pb.go
 vmlinux_header := $(instrumentation_dir)/vmlinux.h
 instrumentor_header := $(instrumentation_dir)/instrumentor.h
 
-all: proto $(instrumentor_bpf_progs) $(slowmo_server_prog) $(exec_server_prog)
+all: proto_go $(instrumentor_bpf_progs) $(slowmo_server_prog) $(exec_server_prog)
+
+dev: proto $(instrumentor_bpf_progs) $(slowmo_server_prog) $(exec_server_prog)
 
 $(vmlinux_header):
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $@
@@ -76,6 +78,12 @@ $(slowmo_proto_gen_ts): $(slowmo_proto_def)
 
 .PHONY: proto
 proto: $(slowmo_proto_gen_go) $(slowmo_proto_gen_ts) $(exec_proto_gen_go)
+
+.PHONY: proto_go
+proto_go: $(slowmo_proto_gen_go) $(exec_proto_gen_go)
+
+.PHONY: proto_ts
+proto_ts: $(slowmo_proto_gen_ts)
 
 .PHONY: libbpf
 libbpf:

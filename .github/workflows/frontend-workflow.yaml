@@ -1,0 +1,56 @@
+name: Frontend CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-workflow.yaml'
+
+jobs:
+  job1:
+    name: build-test-deploy
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+
+      - name: Install dependencies
+        run: npm install --global yarn && yarn
+        working-directory: ./frontend
+
+      - name: Set up protoc and protobuf-ts plugin
+        uses: ./.github/actions/setup-protoc-ts-action
+        with:
+          protoc_version: '3.12.4'
+          protoc_gen_ts_version: '2.11.1'
+      
+      - name: Generate TypeScript code from .proto files
+        run: |
+          make proto_ts
+
+      - name: Run tests
+        run: yarn test
+        working-directory: ./frontend
+
+      - name: Vite build
+        env:
+          VITE_SLOWMO_CLIENT_ID: ${{ secrets.VITE_SLOWMO_CLIENT_ID }}
+          VITE_SLOWMO_SERVER_HOSTNAME: https://kailunli.me/go-slowmo/api
+          VITE_GO_VERSIONS: '1.24.10 1.25.4'
+          VITE_REMOTE_SERVER_WAIT_TIME: '1 minute'
+        run: yarn build --base=/go-slowmo/
+        working-directory: ./frontend
+
+      - name: Netlify deploy
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: npm install -g netlify-cli && netlify deploy --prod --dir=./dist --site=$NETLIFY_SITE_ID --auth=$NETLIFY_AUTH_TOKEN --no-build
+        working-directory: ./frontend
