@@ -17,6 +17,12 @@ jobs:
     permissions:
       contents: 'read'
       id-token: 'write'
+    env:
+      COS_IMAGE_BUILDER_INSTANCE_NAME: custom-cos-image-helper
+      GCP_REGION: us-central1
+      GCP_ZONE: us-central1-a
+      COS_CUSTOM_IMAGE_NAME: image-1 # TODO: use image family instead
+      COS_CUSTOM_IMAGE_FAMILY: go-slowmo-custom
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,27 +31,84 @@ jobs:
 
       - name: Build container images
         run: |
-          docker build -t us-central1-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest --target slowmo-server .
-          docker build -t us-central1-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest --target exec-server .
+          docker build -t ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest --target slowmo-server .
+          docker build -t ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest --target exec-server .
       
       - name: Google Cloud authentication
         uses: 'google-github-actions/auth@v3'
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Push container images to Artifact Registry
-        run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev
-          docker push us-central1-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
-          docker push us-central1-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
-
+      
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
         with:
           version: '>= 390.0.0'
+
+      - name: Push container images to Artifact Registry
+        run: |
+          gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev
+          docker push ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+          docker push ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
       
       - name: Deploy Cloud Run service
         uses: 'google-github-actions/deploy-cloudrun@v3'
         with:
           service: go-slowmo
-          image: us-central1-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+          image: ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+
+      # -------------------------------
+      # Start COS VM that will bake custom image
+      # -------------------------------
+      - name: Start bake VM
+        run: |
+          gcloud compute instances create "$COS_IMAGE_BUILDER_INSTANCE_NAME" \
+            --zone "$GCP_ZONE" \
+            --image-family "cos-125-lts" \
+            --image-project cos-cloud \
+            --metadata=startup-script='#!/bin/bash
+              echo "Pulling images..." > /dev/ttyS1
+              docker pull ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+              docker pull ${GCP_REGION}-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
+              echo "STARTUP DONE" > /dev/ttyS1
+            '
+
+      # -------------------------------
+      # Poll serial port until startup script finishes
+      # -------------------------------
+      - name: Wait for startup script completion
+        run: |
+          echo "Waiting for COS startup to finish..."
+          while true; do
+            LOG=$(gcloud compute instances get-serial-port-output "$COS_IMAGE_BUILDER_INSTANCE_NAME" --zone "$GCP_ZONE" --port=1 || true)
+            if echo "$LOG" | grep -q "STARTUP DONE"; then
+              echo "Startup script finished!"
+              break
+            fi
+            echo "Still waiting for startup script to complete..."
+            sleep 5
+          done
+
+      # -------------------------------
+      # Stop instance for clean disk snapshot
+      # -------------------------------
+      - name: Stop instance
+        run: gcloud compute instances stop "$COS_IMAGE_BUILDER_INSTANCE_NAME" --zone "$GCP_ZONE"
+
+      # -------------------------------
+      # Create final baked image from stopped disk
+      # -------------------------------
+      - name: Create custom COS image
+        run: |
+          gcloud compute images create "$COS_CUSTOM_IMAGE_NAME" \
+            --source-disk="$COS_IMAGE_BUILDER_INSTANCE_NAME" \
+            --source-disk-zone="$GCP_ZONE" \
+            --storage-location="$GCP_REGION"
+
+      # -------------------------------
+      # Cleanup VM + disk
+      # -------------------------------
+      - name: Cleanup VM
+        if: always()
+        run: |
+          gcloud compute instances delete "$COS_IMAGE_BUILDER_INSTANCE_NAME" \
+            --zone "$GCP_ZONE" --quiet || true
