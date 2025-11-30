@@ -60,17 +60,19 @@ jobs:
       # -------------------------------
       - name: Start bake VM
         run: |
+          cat > startup.sh << 'EOF'
+          #!/bin/bash
+          set -ex
+          echo "Pulling images..." > /dev/ttyS0
+          docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+          docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
+          echo "STARTUP DONE" > /dev/ttyS0
+          EOF
           gcloud compute instances create "$COS_IMAGE_BUILDER_INSTANCE_NAME" \
             --zone "$GCP_ZONE" \
             --image-family "cos-125-lts" \
             --image-project cos-cloud \
-            --metadata=startup-script='#!/bin/bash
-            set -ex
-            echo "Pulling images..." > /dev/ttyS0
-            docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
-            docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
-            echo "STARTUP DONE" > /dev/ttyS0
-            '
+            --metadata-from-file=cos-startup-script=startup.sh
 
       # -------------------------------
       # Poll serial port until startup script finishes
