@@ -65,7 +65,7 @@ jobs:
             --image-family "cos-125-lts" \
             --image-project cos-cloud \
             --metadata=startup-script='#!/bin/bash
-            set -e
+            set -ex
             echo "Pulling images..." > /dev/ttyS0
             docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
             docker pull $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/exec-server:latest
