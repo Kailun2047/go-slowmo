@@ -53,7 +53,7 @@ jobs:
         uses: 'google-github-actions/deploy-cloudrun@v3'
         with:
           service: go-slowmo
-          image: $GCP_REGION-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
+          image: ${{ env.GCP_REGION }}-docker.pkg.dev/go-slowmo/go-slowmo/slowmo-server:latest
 
       # -------------------------------
       # Start COS VM that will bake custom image
