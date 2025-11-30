@@ -7,12 +7,6 @@ on:
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-workflow.yaml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-workflow.yaml'
 
 jobs:
   job1:

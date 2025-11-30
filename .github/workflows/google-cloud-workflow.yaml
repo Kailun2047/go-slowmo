@@ -9,14 +9,6 @@ on:
       - '.github/workflows/frontend-workflow.yaml'
       - README.md
       - config/envoy.yaml
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - 'frontend/**'
-      - '.github/workflows/frontend-workflow.yaml'
-      - README.md
-      - config/envoy.yaml
 
 jobs:
   job1:
