@@ -24,7 +24,7 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
+  display: block;
   /* place-items: center; */
   min-width: 320px;
   min-height: 100vh;
@@ -65,4 +65,44 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+
+nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50px;
+  width: 100%;
+  background: #c6e9d0;
+  color: #eee;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  font-family: sans-serif;
+  box-shadow: 0 2px 2px #d0ddd4;
+}
+
+.top-nav-a {
+  display: flex;
+  max-height: 50px;
+  margin-left: 2%;
+  color: #7a7a7a;
+}
+
+.bi-github {
+  margin-top: 15px;
+  width: 20px;
+  height: 20px;
+}
+
+.bi-patch-question-fill {
+  margin-top: 15px;
+  width: 20px;
+  height: 20px;
+}
+
+.top-nav-p {
+  display: inline;
+  margin-left: 10px;
 }
