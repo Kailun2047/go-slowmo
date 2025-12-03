@@ -168,8 +168,7 @@ func (server *SlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest, strea
 			internalErr = errors.Join(internalErr, fmt.Errorf("panic detected: %v", err))
 		}
 		if internalErr != nil {
-			logging.Logger().Errorf("unexpected error during CompileAndRun (error: %v, program: %s)", internalErr, req.GetSource())
-			compileAndRunErr = ErrInternalExecution
+			compileAndRunErr = fmt.Errorf("%w: unexpected error during CompileAndRun (error: %v, program: %s)", ErrInternalExecution, internalErr, req.GetSource())
 		}
 	}()
 

@@ -101,8 +101,11 @@ func (server *WrappedSlowmoServer) CompileAndRun(req *proto.CompileAndRunRequest
 				logging.Logger().Debug("Finished receiving exec response stream")
 				break
 			}
-			logging.Logger().Errorf("[CompileAndRun] Error receiving compile and run response from stream: %v", err)
-			return ErrInternalExecution
+			logging.Logger().Errorf("[CompileAndRun] Error received from stream: %v", err)
+			if errors.Is(err, ErrInternalExecution) {
+				err = ErrInternalExecution
+			}
+			return err
 		}
 		stream.Send(compileAndRunResp)
 	}
@@ -159,10 +162,10 @@ const (
 )
 
 var (
-	ErrInternalAuthn     = fmt.Errorf("internal authentication error")
-	ErrInternalExecution = fmt.Errorf("internal execution error")
-	ErrNoAvailableServer = fmt.Errorf("no available server")
-	ErrInternalCleanup   = fmt.Errorf("internal cleanup error")
+	ErrInternalAuthn     = errors.New("internal authentication error")
+	ErrInternalExecution = errors.New("internal execution error")
+	ErrNoAvailableServer = errors.New("no available server")
+	ErrInternalCleanup   = errors.New("internal cleanup error")
 )
 
 func (server *WrappedSlowmoServer) Authn(ctx context.Context, req *proto.AuthnRequest) (*proto.AuthnResponse, error) {
