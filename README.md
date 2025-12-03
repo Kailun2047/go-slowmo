@@ -18,7 +18,7 @@ Simply put, a Go program is instrumented and visualized with the following steps
 
 2. the compiled ELF is then analyzed and attached with probes using [eBPF](https://ebpf.io/)
 
-3. when the compiled ELF is executed, the attached probes are triggered at specific PC and help capture important runtime states and events
+3. the compiled ELF is executed in a container with 2 vCPUs (i.e. gomaxprocs=2). When the compiled ELF is executed, the attached probes are triggered at specific PC and help capture important runtime states and events
 
 4. the captured states and events are transmitted and consumed in stream manner
 
@@ -29,7 +29,7 @@ By uncovering and visualizing some of the core Go runtime concepts, this project
 
 ***Completeness:*** the Go scheduler (and the general Go runtime) does a lot of heavy lifting internally while offering ease of use to users, and this project has barely touched the tip of the iceberg. Specifically, programs with simple synchronization might be visualized fine, but other major types of scheduler event are absent at the moment. Events like network polling and preemption are still being actively worked on to make the visualization more complete.
 
-***Capacity:*** for budget reason, the publicly hosted version of this project has limited capacity (e.g. long waiting time before a remote server is provisioned). If you find the visualization useful and want to tinker with it more, feel free to set it up locally following the instructions in _"Running Locally"_ section below.
+***Capacity:*** for budget reason, the publicly hosted version of this project has limited capacity (long waiting time before a remote server is provisioned, limited max execution time for your code, etc.). If you find the visualization useful and want to tinker with it more, feel free to set it up and run locally (which eliminates all problems mentioned above) following some simple instructions in _"Running Locally"_ section below.
 
 ## Running Locally
 
