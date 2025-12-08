@@ -27,7 +27,7 @@ RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 ENV PATH="${PATH}:/build/protoc/bin:/root/go/bin"
 
 # Install the target Go versions to support.
-ARG go_versions="1.24.10 1.25.4"
+ARG go_versions="1.24.10 1.25.5"
 RUN for go_version in $go_versions; do \
     go install golang.org/dl/go${go_version}@latest; \
     go${go_version} download; \
