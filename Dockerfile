@@ -65,7 +65,7 @@ ENV PATH="${PATH}:/build/protoc/bin:$(yarn global bin)"
 COPY ./ ./go-slowmo
 WORKDIR /build/go-slowmo
 RUN make proto_ts
-ARG go_versions="1.24.10 1.25.4"
+ARG go_versions="1.24.10 1.25.5"
 ARG frontend_dev_mode="1"
 ARG oauth_client_id=""
 ARG proxy_addr="127.0.0.1:50053"

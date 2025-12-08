@@ -43,7 +43,7 @@ jobs:
         env:
           VITE_SLOWMO_CLIENT_ID: ${{ secrets.VITE_SLOWMO_CLIENT_ID }}
           VITE_SLOWMO_SERVER_HOSTNAME: https://kailunli.me/go-slowmo/api
-          VITE_GO_VERSIONS: '1.24.10 1.25.4'
+          VITE_GO_VERSIONS: '1.24.10 1.25.5'
           VITE_REMOTE_SERVER_WAIT_TIME: '1 minute'
         run: yarn build --base=/go-slowmo/
         working-directory: ./frontend
